@@ -26,6 +26,6 @@ omegaconf==2.4.0
 einops==0.8.2
 soundfile>=0.13.1
 scipy>=1.13
-# resemble-perth 1.0.1 imports pkg_resources, which setuptools 82 removed.
-# Without it the watermarker fails to import and AutoYou refuses to clone.
-setuptools==81.0.0
+# The installer replaces Perth's pkg_resources path lookup with pathlib.
+# Its model and watermark code stay unchanged; use patched build metadata tools.
+setuptools==84.2.1

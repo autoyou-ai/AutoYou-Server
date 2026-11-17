@@ -274,10 +274,11 @@ class TestSendMessageToAiAgentVoicePayload(unittest.TestCase):
                 "path": "/tmp/synthetic-image.png",
             }],
         }]
+        policy = {"images": True, "audio": True, "max_image_side": None, "model": ""}
         with patch(
             "shared.openclaw_gateway._load_attachment_bytes",
             return_value=(b"synthetic image bytes", None),
-        ):
+        ), patch("rest_api._media_input_policy", new=AsyncMock(return_value=policy)):
             captured = self._call_send(
                 "Describe this image.",
                 {"source": "chat"},
@@ -287,6 +288,26 @@ class TestSendMessageToAiAgentVoicePayload(unittest.TestCase):
         parts = captured[0]["new_message"]["parts"]
         self.assertEqual(parts[0]["inline_data"]["mime_type"], "image/png")
         self.assertEqual(parts[1]["text"], "Describe this image.")
+
+    def test_audio_and_images_a_local_model_cannot_use_stay_out_of_the_payload(self):
+        context = [{
+            "source": "admin-web",
+            "attachments": [
+                {"filename": "synthetic-note.ogg", "mimetype": "audio/ogg", "path": "/tmp/synthetic-note.ogg"},
+                {"filename": "synthetic-photo.png", "mimetype": "image/png", "path": "/tmp/synthetic-photo.png"},
+            ],
+        }]
+        policy = {"images": False, "audio": False, "max_image_side": 1536, "model": "synthetic-text:8b"}
+        with patch(
+            "shared.openclaw_gateway._load_attachment_bytes",
+            return_value=(b"synthetic bytes", None),
+        ), patch("rest_api._media_input_policy", new=AsyncMock(return_value=policy)):
+            captured = self._call_send("What is in these?", {"source": "chat"}, context=context)
+
+        parts = captured[0]["new_message"]["parts"]
+        self.assertFalse(any("inline_data" in part for part in parts))
+        # The files still reach the specialists by path.
+        self.assertIn("synthetic-note.ogg", " ".join(str(part.get("text") or "") for part in parts))
 
 
 # ---------------------------------------------------------------------------

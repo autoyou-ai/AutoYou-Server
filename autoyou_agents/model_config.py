@@ -35,7 +35,12 @@ from shared.ollama_capabilities import (
     resolve_installed_ollama_model,
     resolve_ollama_think_option,
 )
-from shared.ollama_context_policy import recommend_ollama_num_ctx
+from shared.ollama_context_policy import (
+    context_sizing_mode,
+    recommend_ollama_num_ctx,
+    resolve_context_window,
+    resolve_ollama_keep_alive,
+)
 
 __debug_provenance_v__ = "AUTOYOU-PROVENANCE-V-wallet-1b797ff2c25fd4958d5add9d"
 
@@ -110,8 +115,9 @@ def resolve_agent_harness_profile(model_name: Any = None) -> str:
     ``expanded``. Automatic mode deliberately fails closed to compact for
     unknown models. Gemma 4 and known large local families opt into the
     expanded callbacks and prompts, while Ministral 3B/8B stay compact.
-    Untagged or ``:latest`` models stay compact unless the active Ollama
-    metadata reports a large parameter size for that exact selected tag.
+    For other families the parameter size Ollama reports for the active tag
+    decides when there is one, else the size in the name; untagged or
+    ``:latest`` models without either stay compact.
     """
     override = str(os.getenv("AUTOYOU_AGENT_HARNESS_PROFILE", "") or "").strip().lower()
     if override in {"compact", "small", "minimal"}:
@@ -123,16 +129,19 @@ def resolve_agent_harness_profile(model_name: Any = None) -> str:
     if identifier.startswith("gpt-oss"):
         return AGENT_HARNESS_EXPANDED
 
-    size = _model_size_billions(identifier)
-    if size is None:
-        size = _active_ollama_metadata_size_billions(identifier)
+    named_size = _model_size_billions(identifier)
+    reported_size = _active_ollama_metadata_size_billions(identifier)
+    size = named_size if named_size is not None else reported_size
     if identifier.startswith("ministral-3"):
         return AGENT_HARNESS_EXPANDED if size is not None and size > 8 else AGENT_HARNESS_COMPACT
 
     if identifier.startswith("gemma4"):
         return AGENT_HARNESS_EXPANDED
 
-    return AGENT_HARNESS_EXPANDED if size is not None and size >= 20 else AGENT_HARNESS_COMPACT
+    # Other families: the parameter count Ollama reports for this exact tag
+    # beats the one in its name (a fine-tune or alias can carry any name).
+    general_size = reported_size if reported_size is not None else named_size
+    return AGENT_HARNESS_EXPANDED if general_size is not None and general_size >= 20 else AGENT_HARNESS_COMPACT
 
 
 def model_uses_expanded_harness(model_name: Any = None) -> bool:
@@ -161,7 +170,7 @@ def model_uses_compact_root_tool_routing(model_name: Any = None) -> bool:
 
 # Kwargs that are Ollama-specific and must NOT be forwarded to cloud or
 # OpenAI-compatible gateway endpoints that will reject unknown parameters.
-_OLLAMA_ONLY_KWARGS = frozenset({"repeat_penalty", "num_ctx", "top_k", "think", "num_predict"})
+_OLLAMA_ONLY_KWARGS = frozenset({"repeat_penalty", "num_ctx", "top_k", "think", "num_predict", "keep_alive"})
 
 # ── Mode presets (mirrors server.py _MODEL_BEHAVIOR_MODES) ───────────────────
 _MODE_PRESETS_BASE: Dict[str, Dict[str, Any]] = {
@@ -335,13 +344,48 @@ def _coerce_positive_int(value: Any) -> Optional[int]:
         return None
     return parsed if parsed > 0 else None
 
-def resolve_ollama_num_ctx(model_name: Optional[str] = None) -> tuple[int, str]:
+def resolve_ollama_num_ctx(
+    model_name: Optional[str] = None,
+    *,
+    kv_profile: Optional[Dict[str, Any]] = None,
+    weights_bytes: Optional[int] = None,
+) -> tuple[int, str]:
+    """The context window for this model; every caller of the model uses the same one.
+
+    ``kv_profile`` and ``weights_bytes`` come from Ollama when the agent builds
+    the model; other callers get the window recorded then
+    (``shared.ollama_context_policy.resolve_context_window``).
+    """
     cfg = _load_model_behavior_config()
-    explicit_override = _coerce_positive_int(cfg.get("num_ctx"))
-    if explicit_override is not None:
-        return explicit_override, "model_behavior.override"
     resolved_model_name = str(model_name or _configured_ollama_model_name() or "").strip()
-    return recommend_ollama_num_ctx(resolved_model_name), "machine_heuristic"
+    return resolve_context_window(
+        resolved_model_name,
+        override=cfg.get("num_ctx"),
+        kv_profile=kv_profile,
+        weights_bytes=weights_bytes,
+    )
+
+
+def _installed_model_size_bytes(ollama_service: Any, model_name: str) -> Optional[int]:
+    """The model's size on disk from Ollama's model list: its weights, projector included."""
+    getter = getattr(ollama_service, "get_available_models", None)
+    if not callable(getter):
+        return None
+    try:
+        models = getter() or []
+    except Exception:
+        return None
+    wanted = str(model_name or "").strip().lower()
+    for item in models:
+        def _field(key: str) -> Any:
+            try:
+                return item.get(key) if hasattr(item, "get") else getattr(item, key, None)
+            except Exception:
+                return None
+        name = str(_field("model") or _field("name") or "").strip().lower()
+        if name and (name == wanted or name == f"{wanted}:latest" or f"{name}:latest" == wanted):
+            return _coerce_positive_int(_field("size"))
+    return None
 
 def _build_mode_presets() -> Dict[str, Dict[str, Any]]:
     return {name: dict(params) for name, params in _MODE_PRESETS_BASE.items()}
@@ -642,10 +686,6 @@ def _configure_ollama_model(ollama_service: OllamaService) -> LiteLlm:
     merged.setdefault("temperature", 0.1)
     merged.setdefault("top_p", 0.9)
     merged.setdefault("repeat_penalty", 1.1)
-    if _coerce_positive_int(merged.get("num_ctx")) is None:
-        merged["num_ctx"], num_ctx_source = resolve_ollama_num_ctx(selected_model)
-    else:
-        num_ctx_source = "model_behavior.override"
     thinking_enabled = _resolve_ollama_thinking_enabled()
     thinking_level = _resolve_ollama_thinking_level()
     capability = None
@@ -656,6 +696,28 @@ def _configure_ollama_model(ollama_service: OllamaService) -> LiteLlm:
             selected_model,
             client=service_client,
         )
+    if _coerce_positive_int(merged.get("num_ctx")) is None:
+        # Sized to the GPU from the model's own cache cost when Ollama reports
+        # it; the window is recorded so the server's direct callers match it
+        # (a different num_ctx makes Ollama load the model again).
+        kv_profile = capability.get("kv_profile") if capability and capability.get("available") else None
+        weights_bytes = (
+            _installed_model_size_bytes(ollama_service, selected_model)
+            if kv_profile and context_sizing_mode() == "auto"
+            else None
+        )
+        merged["num_ctx"], num_ctx_source = resolve_ollama_num_ctx(
+            selected_model,
+            kv_profile=kv_profile,
+            weights_bytes=weights_bytes,
+        )
+    else:
+        num_ctx_source = "model_behavior.override"
+    keep_alive = resolve_ollama_keep_alive()
+    if keep_alive is not None:
+        # Ollama unloads an idle model after 5 minutes by default, and the next
+        # message then waits for a full load.
+        merged.setdefault("keep_alive", keep_alive)
     if capability and capability.get("available"):
         parameter_size = str(capability.get("parameter_size") or "").strip()
         if parameter_size:

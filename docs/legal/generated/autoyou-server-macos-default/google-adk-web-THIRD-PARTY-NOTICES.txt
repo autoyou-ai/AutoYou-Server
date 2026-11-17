@@ -1,5 +1,5 @@
 Google ADK Web frontend third-party notices
-ADK Python 2.11.0 embeds ADK Web v1.0.7, built from 34f3f8d7946c76faa664658390dcccf1e4e34677.
+ADK Python 2.14.0 embeds ADK Web v1.0.7, built from 34f3f8d7946c76faa664658390dcccf1e4e34677.
 This is a conservative non-dev lockfile notice inventory. It may include unused packages and is not a binary SBOM.
 Original third-party terms below apply to their respective components; AutoYou's license does not replace them.
 

@@ -125,12 +125,48 @@ def register_routes(
                 not isinstance(value, str) or not value or len(value) > 128 for value in selected
             ):
                 raise ValueError("Choose a valid Listen selection")
-            result = await server.asyncio.to_thread(server.WEBRTC.configure_screen_listen, mode, selected)
+            result = await server.WEBRTC.configure_screen_listen(mode, selected)
         except (ValueError, TypeError, json.JSONDecodeError) as exc:
             return JSONResponse(status_code=400, content={"error": str(exc)[:160]})
         except Exception:
             return JSONResponse(status_code=503, content={"error": "Computer audio output is unavailable"})
         return server._json_response_no_store(result)
+
+    @admin_app.post("/api/screen-listen/control")
+    async def screen_listen_control(request: Request):
+        refused = _local_listen_access(request)
+        if refused is not None:
+            return refused
+        raw = await request.body()
+        if len(raw) > 1024:
+            return JSONResponse(status_code=413, content={"error": "Input decision is too large"})
+        try:
+            body = json.loads(raw)
+            if not isinstance(body, dict):
+                raise ValueError
+            session_id, control_id, action = (body.get(key) for key in ("session_id", "control_id", "action"))
+            if not isinstance(action, str) or action not in {"approve", "approve_client", "approve_all", "ask", "deny", "revoke", "forget_client"}:
+                raise ValueError
+            # Older admin pages send a pending request with approve_all. The
+            # separate policy control can enable it without a participant.
+            review_request = action != "ask" and (action != "approve_all" or session_id is not None or control_id is not None)
+            if review_request and not (
+                isinstance(session_id, str) and 0 < len(session_id) <= 128
+                and isinstance(control_id, str) and len(control_id) <= 128
+                and (control_id or action == "forget_client")
+            ):
+                raise ValueError
+        except (ValueError, TypeError):
+            return JSONResponse(status_code=400, content={"error": "Choose a valid input decision"})
+        if review_request and not await server.WEBRTC.review_screen_control(session_id, control_id, action):
+            return JSONResponse(status_code=409, content={"error": "This input request is no longer available"})
+        if action in {"approve_all", "ask"}:
+            await server._save_admin_permissions({"meet_auto_approve": action == "approve_all"})
+            if action == "approve_all":
+                for participant in server.WEBRTC.screen_listen_snapshot()["participants"]:
+                    if participant.get("control_state") == "requested":
+                        await server.WEBRTC.review_screen_control(participant["id"], participant["control_id"], "approve")
+        return server._json_response_no_store({"success": True})
 
     def _chat_model_dict(value: Any) -> Dict[str, Any]:
         if hasattr(value, "model_dump"):

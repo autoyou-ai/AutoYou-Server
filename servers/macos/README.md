@@ -39,7 +39,7 @@ for resolving and auditing that conflict.
 
 Typical outputs are `servers/macos/build/AutoYou.app` and
 `servers/macos/build/AutoYou.dmg`; the exact outputs depend on build options.
-Version metadata comes from the repository `VERSION` file, currently `81.4.0`.
+Version metadata comes from the repository `VERSION` file, currently `81.7.0`.
 
 Review `servers/macos/build/AutoYou.app/Contents/Resources/Legal/LICENSE`,
 `THIRD-PARTY-NOTICES.md`, `NOTICE.txt`, and `sbom.cdx.json`.
@@ -68,3 +68,8 @@ including at the lock screen of a signed-in user. To stop the Mac locking
 itself during a session, choose **Keep this computer awake** in
 **Video & Calls > Remote Desktop**; it holds a `caffeinate` assertion and
 resets the idle timer while Remote Desktop is in use (or always).
+
+## Local network discovery and Wi-Fi adapter prioritization
+
+On macOS (both MacBooks and Mac Mini / Mac Studio / Mac Pro desktops), AutoYou queries hardware port mappings via `networksetup` and `ifconfig` to distinguish physical Wi-Fi and Ethernet from virtual tunnels (`utun*`, `bridge*`).
+The physical Wi-Fi and native LAN addresses are ordered first in local mDNS (`_autoyou._tcp`) announcements so that mobile clients on the same local Wi-Fi connect to the correct IP.

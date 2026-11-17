@@ -43,7 +43,7 @@ def test_game_publishing_requires_otp_even_with_public_browsing(tmp_path, monkey
     with TestClient(game_studio.app) as client:
         route = "/api/game/publish-auth"
         assert client.get(route + "/status").json() == {"success": True, "required": True, "authenticated": False}
-        html = b"<html><head></head><body>Synthetic game</body></html>"
+        html = b"<html><head></head><body>Synthetic game<button onclick=\"AutoYouGame.quit()\">Quit</button></body></html>"
         assert client.post("/api/game/publish/synthetic-publishing", content=html).status_code == 401
         assert client.post(route + "/login", json={}).status_code == 400
         assert client.post(route + "/login", json=[]).status_code == 400
@@ -70,7 +70,7 @@ def test_game_studio_publish_requires_auth_and_saves_html(tmp_path, monkeypatch)
     )
     monkeypatch.setattr(game_studio._smc, "_agent_chat_session_is_valid", lambda agent, token: auth["authenticated"] and agent == "game_agent" and token == "synthetic-game-session")
     monkeypatch.setattr(game_studio._smc, "_runtime_server", lambda: server)
-    html = b"<html><head></head><body>synthetic game</body></html>"
+    html = b"<html><head></head><body>synthetic game<button onclick=\"AutoYouGame.quit()\">Quit</button></body></html>"
     # from __debug_trace_s__ import autoyou_provenance_s_000000000000000000000000_4b1a7244afa42397d2600afd
     target = tmp_path / "mobile_games" / "synthetic-runner.html"
 
@@ -82,6 +82,9 @@ def test_game_studio_publish_requires_auth_and_saves_html(tmp_path, monkeypatch)
         assert client.post("/api/game/publish/INVALID", content=html).status_code == 400
         assert client.post("/api/game/publish/synthetic-runner", content=b"<html>no head</html>").status_code == 400
         assert client.post("/api/game/publish/synthetic-runner", content=b"\xff<head></head>").status_code == 400
+        # AutoYou shows no close button over a game, so a page without its own Quit is refused.
+        refused = client.post("/api/game/publish/synthetic-runner", content=b"<html><head></head><body>no quit</body></html>")
+        assert refused.status_code == 400 and "AutoYouGame.quit()" in refused.json()["error"]
         assert client.post("/api/game/publish/synthetic-runner", content=b"x" * (game_studio._MAX_MOBILE_GAME_BYTES + 1)).status_code == 413
         assert not target.exists()
         assert client.post("/api/game/publish/synthetic-runner", content=html).status_code == 200
@@ -135,3 +138,216 @@ def test_complete_package_upload_poll_and_download_are_authenticated_and_owner_b
         assert reply.json()["sha256"]==checksum
         assert client.get("/api/game/packages").json()["games"][0]["id"]=="synthetic-package"
         assert client.get("/api/game/packages/synthetic-package/download").content==file.read_bytes()
+
+
+def test_snake_game_compatibility_powerups_and_route(tmp_path, monkeypatch):
+    import re
+    import shutil
+    import subprocess
+    from shared import game_catalog, game_package
+
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path))
+    snake_path = game_studio._FRONTEND_DIR / "snake.html"
+    assert snake_path.is_file()
+    raw = snake_path.read_bytes()
+    html = raw.decode("utf-8")
+    assert "<title>Jungle Viper - Game Studio</title>" in html
+    assert "Launch Jungle Viper (Snake)" in (snake_path.parent / "index.html").read_text(encoding="utf-8")
+    assert (snake_path.parent / "assets/snake.html").read_bytes() == raw
+    from shared.game_package_catalog import GamePackages
+    server_root = snake_path.parents[4]
+    offline_path = server_root / "assets/game/jungle-viper.html"
+    assert offline_path.read_bytes() == game_catalog.frame_html(raw)
+    library = game_catalog.listing(game_catalog.catalog_dirs(server_root, tmp_path))
+    assert {"id": "jungle-viper", "title": "Jungle Viper", "default": False} in library
+    exported, _ = game_package.read_manifest(GamePackages(server_root, tmp_path).resolve("jungle-viper"))
+    assert exported["id"] == "jungle-viper" and exported["title"] == "Jungle Viper"
+
+    # Verify Quit (X) button next to Pause and Settings and offline/package compatibility
+    corner = re.search(r'<div class="corner">(.*?)</div>', html, re.S).group(1)
+    assert re.findall(r'<button id="([a-z-]+)"', corner) == ["pause", "settings-open", "quit"]
+    assert 'aria-label="Quit game"' in corner
+    assert game_package.supports_quit(raw)
+    assert game_catalog.read_game(snake_path) == raw
+    framed = game_catalog.frame_html(raw).decode("utf-8")
+    assert "connect-src 'none'" in framed and "window.autoYouGameInput = handleRemoteFrame" in framed
+
+    # Verify .aygame packaging for iOS, Android, v2 Windows, and v2 macOS
+    aygame = tmp_path / "jungle-viper.aygame"
+    manifest = game_package.wrap_html(snake_path, aygame, "jungle-viper", "Jungle Viper")
+    assert manifest["id"] == "jungle-viper" and manifest["title"] == "Jungle Viper"
+    assert game_package.package_supports_quit(aygame)
+
+    # Verify /snake route and publishing in Game Studio
+    auth = {"authenticated": False}
+    server = SimpleNamespace(
+        __file__=str(tmp_path / "server.py"),
+        get_mutable_data_dir=lambda *_args, **_kwargs: tmp_path,
+        _is_logged_in=lambda _request: False,
+    )
+    monkeypatch.setattr(game_studio._smc, "_describe_chat_auth_state", lambda _req, _agent: auth)
+    monkeypatch.setattr(game_studio._smc, "_agent_chat_session_is_valid", lambda agent, token: auth["authenticated"] and agent == "game_agent" and token == "synthetic-game-session")
+    monkeypatch.setattr(game_studio._smc, "_runtime_server", lambda: server)
+    with TestClient(game_studio.app) as client:
+        assert client.get("/snake").status_code == 401
+        auth["authenticated"] = True
+        res = client.get("/snake")
+        assert res.status_code == 200 and "JUNGLE VIPER" in res.text
+        client.headers["Authorization"] = "Bearer synthetic-game-session"
+        assert client.post("/api/game/publish/jungle-viper", content=raw).status_code == 200
+        assert (tmp_path / "mobile_games" / "jungle-viper.html").read_bytes() == raw
+
+    # Exercise gameplay, power-up systems, audio, and cross-platform inputs in Node VM
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is unavailable")
+    check_script = tmp_path / "check_snake.cjs"
+    check_script.write_text(r"""
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const html = fs.readFileSync(process.argv[2], 'utf8');
+const source = html.match(/<script\b[^>]*>([\s\S]*?)<\/script[^>]*>/i)[1];
+
+let clock = 0, quitCalled = 0;
+const elements = new Map(), storage = new Map([
+  ['autoyou.neon-viper.best.v1', '2345'],
+  ['autoyou.neon-viper.settings.v1', JSON.stringify({theme: 'jungle', music: false})],
+  ['autoyou.neon-viper.progress.v1', JSON.stringify({rank: 3, stars: 2, missions: []})],
+  ['autoyou.neon-viper.cleared.v1', '123'],
+]);
+const gradient = {addColorStop() {}};
+const context = new Proxy({}, {get: (_, name) => name.startsWith('create') ? () => gradient : () => {}});
+function element(id) {
+  if (!elements.has(id)) elements.set(id, {
+    textContent: '', hidden: false, style: {}, dataset: {}, events: new Map(),
+    addEventListener(name, cb) {
+      if (!this.events.has(name)) this.events.set(name, []);
+      this.events.get(name).push(cb);
+    },
+    setAttribute() {}, removeAttribute() {}, toggleAttribute() {},
+    setPointerCapture() {}, focus() {}, click() {
+      for (const cb of this.events.get('click') || []) cb({currentTarget: this, preventDefault() {}});
+    },
+    getContext: () => context,
+  });
+  return elements.get(id);
+}
+const controls = ['up', 'left', 'down', 'right', 'boost'].map(name => {
+  const b = element(name); b.dataset.action = name; return b;
+});
+const document = element('document');
+let created = 0;
+Object.assign(document, {
+  querySelector: element, querySelectorAll: () => controls,
+  createElement: () => element(`created-${created++}`),
+  documentElement: element('html'),
+  body: {hasAttribute: () => false},
+});
+const window = element('window');
+window.AutoYouGame = {quit: () => { quitCalled++; return true; }};
+const sandbox = {
+  document, window, innerWidth: 800, innerHeight: 600, devicePixelRatio: 2,
+  location: {pathname: '/snake'}, performance: {now: () => clock},
+  localStorage: {
+    getItem: k => storage.get(k) ?? null,
+    setItem: (k, v) => storage.set(k, String(v)),
+  },
+  Audio: class { constructor(src) { this.src = src; } play() { return Promise.resolve(); } },
+  btoa: text => Buffer.from(text, 'binary').toString('base64'),
+  requestAnimationFrame() {}, setTimeout() {}, clearTimeout() {},
+  addEventListener: window.addEventListener.bind(window),
+};
+vm.createContext(sandbox);
+vm.runInContext(source.replace('    best = loadBest();', '    globalThis.inspect = text => eval(text);\n    best = loadBest();'), sandbox);
+const run = sandbox.inspect;
+
+// Upgrade existing browser saves without overwriting newer records or reviving cleared scores.
+assert.equal(run('best'), 2345);
+assert.equal(run('settings.music'), false);
+assert.equal(run('progress.rank'), 3);
+assert.equal(run('progress.stars'), 2);
+assert.equal(storage.get('autoyou.jungle-viper.cleared.v1'), '123');
+assert.equal(storage.get('autoyou.jungle-viper.migrated.v1'), '1');
+assert.equal(storage.get('autoyou.neon-viper.best.v1'), '2345');
+storage.set('autoyou.jungle-viper.best.v1', '3456');
+storage.set('autoyou.neon-viper.best.v1', '9999');
+storage.delete('autoyou.jungle-viper.migrated.v1');
+run('migrateLegacySaves(); best = loadBest()');
+assert.equal(run('best'), 3456);
+run('deleteBest(); migrateLegacySaves()');
+assert.equal(run('loadBest()'), 0);
+assert.equal(storage.get('autoyou.jungle-viper.best.v1'), '0');
+
+// 1. Verify WAV sound synthesis
+const sound = run("wavSound(440, 0.1, 'sine')");
+const wav = Buffer.from(sound.src.split(',', 2)[1], 'base64');
+assert.equal(wav.toString('ascii', 0, 4), 'RIFF');
+assert.equal(wav.toString('ascii', 8, 12), 'WAVE');
+assert.ok(wav.subarray(44).some(b => b !== 0));
+
+// 2. Start run and verify movement + 2-step turn queue buffering
+run('start()');
+assert.equal(run('mode'), 'running');
+assert.equal(run('snake.length'), 4);
+run("action('down'); action('left');");
+assert.equal(run('turnQueue.length'), 2);
+run('stepGrid()');
+assert.equal(run('dir.x'), 0);
+assert.equal(run('dir.y'), 1);
+run('stepGrid()');
+assert.equal(run('dir.x'), -1);
+assert.equal(run('dir.y'), 0);
+
+// 3. Eat Bio-Core and Golden Nova Core
+const head = run('snake[0]');
+run(`foods = [{kind: 'core', x: ${head.x - 1}, y: ${head.y}, pulse: 0}]`);
+run('stepGrid()');
+assert.equal(run('cores'), 1);
+assert.ok(run('score') > 0);
+assert.equal(run('streak'), 1);
+
+const head2 = run('snake[0]');
+run(`foods = [{kind: 'nova', x: ${head2.x - 1}, y: ${head2.y}, life: 10, maxLife: 10, pulse: 0}]`);
+run('stepGrid()');
+assert.equal(run('run.novas'), 1);
+assert.equal(run('cores'), 2);
+
+// 4. Test all 6 Power-Ups & Synergy Combo
+for (const kind of ['magnet', 'ghost', 'chrono', 'surge', 'double', 'trim']) {
+  const h = run('snake[0]');
+  run(`collectPowerUp({kind: '${kind}', x: ${h.x}, y: ${h.y}})`);
+}
+assert.equal(run('run.powers'), 6);
+assert.ok(run('run.synergies') >= 4);
+assert.ok(run('magnet') > 0 && run('ghost') > 0 && run('chrono') > 0 && run('surge') > 0 && run('doubled') > 0);
+
+// 5. Magnet pulls nearby cores automatically during update(dt)
+const h3 = run('snake[0]');
+run(`foods = [{kind: 'core', x: ${h3.x + 2}, y: ${h3.y}, pulse: 0}]`);
+for (let i = 0; i < 20; i++) { clock += 50; run('update(0.05)'); }
+assert.ok(run('cores') >= 3);
+
+// 6. Surge smashes active hazard into a gem
+const h4 = run('snake[0]');
+const d4 = run('dir');
+const hx = (h4.x + d4.x + run('cols')) % run('cols');
+const hy = (h4.y + d4.y + run('rows')) % run('rows');
+run(`surge = 5; hazards = [{x: ${hx}, y: ${hy}, warmup: 0, life: 10, maxLife: 10}]`);
+run('stepGrid()');
+assert.equal(run('run.smashes'), 1);
+
+// 7. Aegis Shield absorbs fatal wall crash in solid-wall mode
+run(`settings.walls = 'solid'; ghost = 0; overdrive = 0; invincible = 0; shield = true; snake[0] = {x: 0, y: 5}; dir = {x: -1, y: 0}; turnQueue = []`);
+run('stepGrid()');
+assert.equal(run('mode'), 'running');
+assert.equal(run('shield'), false);
+assert.ok(run('ghost') > 0);
+
+// 8. Remote frame & Quit button
+run(`handleRemoteFrame({event: 'game_input', input_type: 'button', button: 'up', phase: 'down', session_id: 'p1'})`);
+element('#quit').click();
+assert.equal(quitCalled, 1);
+""", encoding="utf-8")
+    result = subprocess.run([node, str(check_script), str(snake_path)], capture_output=True, text=True, timeout=20)
+    assert result.returncode == 0, result.stdout + result.stderr

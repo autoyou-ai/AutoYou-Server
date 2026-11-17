@@ -18,8 +18,10 @@ __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 import asyncio
 from types import SimpleNamespace
 
+import pytest
 from google.genai import types
 
+from shared.adk_state import AUTOYOU_SCHEDULED_TASK_STATE_KEY
 from autoyou_agents.internet_agent.agent import (
     _INTERNET_TOOL_DISPATCH_INVOCATION_ID_STATE_KEY,
     _INTERNET_TOOL_ERROR_INVOCATION_ID_STATE_KEY,
@@ -136,7 +138,7 @@ def test_non_network_tool_is_ignored():
     assert context.state == {}
 
 
-async def test_successful_page_tool_mirrors_url_to_native_client(monkeypatch):
+def _record_client_navigation(monkeypatch):
     from autoyou_agents.client_browser_control_agent import agent as browser_control
 
     sent = []
@@ -146,13 +148,22 @@ async def test_successful_page_tool_mirrors_url_to_native_client(monkeypatch):
         return {"success": True}
 
     monkeypatch.setattr(browser_control, "_dispatch_client_browser_control_payload", dispatch)
+    return sent
+
+
+async def test_asking_to_open_a_page_shows_it_in_the_client_once(monkeypatch):
+    sent = _record_client_navigation(monkeypatch)
     context = _context("native-browser")
+    context.state[_INTERNET_USER_REQUEST_STATE_KEY] = "open example.test/page"
+
     result = await _internet_after_tool_callback(
         _tool("scrape_website"),
         {"url": "https://example.test/page"},
         context,
         {"status": "success", "url": "https://example.test/page"},
     )
+    await _internet_after_tool_callback(_tool("scrape_website"), {"url": "https://example.test/page"}, context,
+                                        {"status": "success", "url": "https://example.test/page"})
 
     assert result is None
     assert sent == [{
@@ -164,26 +175,37 @@ async def test_successful_page_tool_mirrors_url_to_native_client(monkeypatch):
     }]
 
 
-async def test_searching_a_named_website_opens_it_once_in_the_client(monkeypatch):
-    from autoyou_agents.client_browser_control_agent import agent as browser_control
+@pytest.mark.parametrize("request_text", [
+    # The owner's report: news from a named site was read on the phone, page by page.
+    "get latest news from from example.test and summarize only new ones every 6 hours",
+    "search example.test using @internet",
+    "Open and scrape https://example.test/news",
+    "visit example.test, identify any headlines that are new, and send a concise summary",
+    "what's new on example.test",
+])
+async def test_work_on_a_site_stays_on_this_computer(monkeypatch, request_text):
+    sent = _record_client_navigation(monkeypatch)
+    context = _context("synthetic-site-work")
+    context.state[_INTERNET_USER_REQUEST_STATE_KEY] = request_text
 
-    sent = []
-
-    async def dispatch(payload, context):
-        sent.append(payload)
-        return {"success": True}
-
-    monkeypatch.setattr(browser_control, "_dispatch_client_browser_control_payload", dispatch)
-    context = _context("synthetic-site-search")
-    context.state[_INTERNET_USER_REQUEST_STATE_KEY] = "search example.test using @internet"
     await _internet_after_tool_callback(_tool("internet_search"), {"query": "example.test"}, context,
-                                        {"status": "success", "results": []})
+                                        {"status": "success", "results": [{"url": "https://other.test/a"}]})
     await _internet_after_tool_callback(_tool("scrape_website"), {"url": "https://example.test/"}, context,
                                         {"status": "success", "url": "https://example.test/"})
-    assert len(sent) == 1
-    assert sent[0]["action"] == "open_url"
-    assert sent[0]["url"] == "https://example.test"
-    assert sent[0]["source"] == "internet_agent"
+
+    assert sent == []
+
+
+async def test_a_scheduled_run_never_moves_the_client_browser(monkeypatch):
+    sent = _record_client_navigation(monkeypatch)
+    context = _context("synthetic-scheduled-open")
+    context.state[_INTERNET_USER_REQUEST_STATE_KEY] = "open example.test"
+    context.state[AUTOYOU_SCHEDULED_TASK_STATE_KEY] = {"id": "synthetic-task", "instruction": "Open example.test"}
+
+    await _internet_after_tool_callback(_tool("scrape_website"), {"url": "https://example.test/"}, context,
+                                        {"status": "success", "url": "https://example.test/"})
+
+    assert sent == []
 
 
 async def test_general_search_does_not_open_a_result_or_the_app_directory(monkeypatch):
@@ -207,6 +229,34 @@ async def test_failed_site_search_does_not_open_the_client_browser(monkeypatch):
 
     monkeypatch.setattr(browser_control, "_dispatch_client_browser_control_payload", unexpected_dispatch)
     context = _context("synthetic-failed-search")
-    context.state[_INTERNET_USER_REQUEST_STATE_KEY] = "search example.test using @internet"
-    await _internet_after_tool_callback(_tool("internet_search"), {"query": "example.test"}, context,
+    context.state[_INTERNET_USER_REQUEST_STATE_KEY] = "open example.test"
+    await _internet_after_tool_callback(_tool("scrape_website"), {"url": "https://example.test/"}, context,
                                         {"status": "error", "error": "synthetic failure"})
+
+
+_GARBLED_TOOL_CALL = RuntimeError(
+    'litellm.InternalServerError: Ollama_chatException - {"error":"llama-server returned invalid tool call '
+    'arguments for \\"scrape_website\\": unexpected end of JSON input"}'
+)
+
+
+async def test_a_garbled_tool_call_after_reading_answers_from_what_was_read():
+    from autoyou_agents.internet_agent.agent import _internet_model_error_callback
+    from autoyou_agents.internet_agent.expanded_harness import _EVIDENCE_STATE_KEY
+
+    context = _context("synthetic-garbled")
+    context.state[_EVIDENCE_STATE_KEY] = [{
+        "kind": "page",
+        "url": "https://example.test/",
+        "title": "Synthetic front page",
+        "text": "",
+        "headlines": [{"title": "Synthetic headline", "url": "https://example.test/a"}],
+    }]
+
+    response = await _internet_model_error_callback(context, None, _GARBLED_TOOL_CALL)
+
+    assert "Synthetic headline" in response.content.parts[0].text
+    assert response.custom_metadata["malformed_tool_call"] is True
+    # Nothing read yet, or a different error: the generic handlers answer.
+    assert await _internet_model_error_callback(_context("empty"), None, _GARBLED_TOOL_CALL) is None
+    assert await _internet_model_error_callback(context, None, RuntimeError("synthetic timeout")) is None

@@ -41,7 +41,7 @@ from dataclasses import dataclass
 from io import BytesIO
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from aiortc.mediastreams import MediaStreamTrack
+from aiortc.mediastreams import MediaStreamError, MediaStreamTrack
 from av import AudioFrame
 
 __debug_provenance_u__ = "AUTOYOU-PROVENANCE-U-usdt-ec12509a316737912aeda90e"
@@ -351,19 +351,31 @@ def _normalize_voice_language(value: Any) -> str:
     return text
 
 def _resolve_stt_device(requested_device: str) -> str:
-    normalized = str(requested_device or "").strip().lower()
-    if normalized == "cpu":
-        return "cpu"
-    if normalized == "cuda":
-        return "cuda"
-    if normalized == "auto":
-        try:
-            import torch
+    """``cuda`` only when faster-whisper's engine, CTranslate2, can use a GPU.
 
-            return "cuda" if bool(torch.cuda.is_available()) else "cpu"
-        except Exception:
-            return "cpu"
+    PyTorch's ROCm build reports CUDA on AMD GPUs and Apple has no CUDA; the
+    standard CTranslate2 wheels run on NVIDIA only, so asking PyTorch picked a
+    GPU the recorder then could not open.
+    """
+    normalized = str(requested_device or "").strip().lower()
+    if normalized not in {"cuda", "auto"}:
+        return "cpu"
+    from shared.gpu_memory import ctranslate2_cuda_available
+
+    if ctranslate2_cuda_available():
+        return "cuda"
+    if normalized == "cuda":
+        LOGGER.warning("Speech-to-text was set to cuda, but CTranslate2 sees no CUDA GPU; using the CPU")
     return "cpu"
+
+
+def _stt_device_with_room(device: str, requested_device: str, model_name: str) -> str:
+    """With ``auto``, keep Whisper off a GPU too full for it (the chat model would spill)."""
+    if device != "cuda" or str(requested_device or "").strip().lower() != "auto":
+        return device
+    from shared.gpu_memory import whisper_device
+
+    return whisper_device("auto", model_name)
 
 def _ensure_torch_hub_repo_trusted(repo_name: str) -> None:
     try:
@@ -1635,6 +1647,8 @@ class MixedAudioStreamTrack(MediaStreamTrack):
         return frame
 
     async def recv(self):
+        if self.readyState != "live":
+            raise MediaStreamError
         with self._sources_lock:
             sources = list(self._sources)
 
@@ -1663,6 +1677,79 @@ class MixedAudioStreamTrack(MediaStreamTrack):
                 sample_arrays.append(samples)
 
         return self._mixed_frame(sample_arrays)
+
+class ScreenAudioSubscriber(MediaStreamTrack):
+    """A Meet sender consumes the latest host frame without accumulating latency."""
+
+    kind = "audio"
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._frame = None
+        self._ready = asyncio.Event()
+        self._next_pts = 0
+
+    def publish(self, frame: AudioFrame) -> None:
+        if self.readyState == "live":
+            self._frame = frame
+            self._ready.set()
+
+    def stop(self) -> None:
+        super().stop()
+        self._frame = None
+        self._ready.set()
+
+    async def recv(self) -> AudioFrame:
+        if self.readyState == "live":
+            await self._ready.wait()
+        else:
+            await asyncio.sleep(0.02)
+        self._ready.clear()
+        frame, self._frame = self._frame, None
+        if frame is None:
+            # replaceTrack does not cancel a sender's pending recv. Wake it with
+            # silence so it can pick up a replacement track on its next pull.
+            frame = AudioFrame(format="s16", layout="mono", samples=960)
+            frame.sample_rate = 48000
+            frame.time_base = fractions.Fraction(1, 48000)
+            frame.pts = self._next_pts
+            for plane in frame.planes:
+                plane.update(bytes(plane.buffer_size))
+        self._next_pts = (frame.pts or 0) + frame.samples
+        return frame
+
+
+class ScreenAudioFanout:
+    def __init__(self, source: MediaStreamTrack) -> None:
+        self.source = source
+        self.subscribers: set[ScreenAudioSubscriber] = set()
+        self.task = asyncio.create_task(self._run())
+
+    def subscribe(self) -> ScreenAudioSubscriber:
+        track = ScreenAudioSubscriber()
+        self.subscribers.add(track)
+        if self.task.done():
+            track.stop()
+        return track
+
+    def unsubscribe(self, track: ScreenAudioSubscriber) -> None:
+        self.subscribers.discard(track)
+        track.stop()
+
+    async def _run(self) -> None:
+        try:
+            while True:
+                frame = await self.source.recv()
+                for track in self.subscribers:
+                    track.publish(frame)
+        except MediaStreamError:
+            pass
+        except Exception:
+            LOGGER.exception("Meet host audio capture stopped")
+        finally:
+            for track in self.subscribers:
+                track.stop()
+
 
 class AudioTrackSink(MediaStreamTrack):
     """
@@ -2506,7 +2593,9 @@ class AudioManager:
             from shared.platform_runtime import configure_whisper_cache_environment
             whisper_cache = configure_whisper_cache_environment()
             requested_device = stt_settings.get("device", "cpu")
-            resolved_device = _resolve_stt_device(requested_device)
+            resolved_device = _stt_device_with_room(
+                _resolve_stt_device(requested_device), requested_device, stt_settings["model"]
+            )
             _patch_tqdm_ensure_lock()
             stt_kwargs = {
                 "spinner": False,

@@ -171,6 +171,18 @@ def _load_guard(state: Any, invocation_id: str) -> Dict[str, Any]:
     }
 
 
+def start_request(state: Any) -> None:
+    """Forget the previous request's pages and stop flag.
+
+    The conversation keeps every specialist's state and hands it to the next
+    call. Without this, one request that hit the loop guard made every later
+    request in that chat refuse all network calls and repeat its old pages.
+    """
+    _state_set(state, _EVIDENCE_STATE_KEY, [])
+    _state_set(state, _TERMINAL_STATE_KEY, False)
+    _state_set(state, _TERMINAL_REASON_STATE_KEY, "")
+
+
 def _correct_stale_years(query: str, user_request: str) -> str:
     current_year = str((get_current_datetime() or {}).get("date") or "")[:4]
     if not current_year:
@@ -380,6 +392,53 @@ def _cites_page_evidence(text: str, evidence: Any) -> bool:
             if headline_url and headline_url in lowered:
                 return True
     return False
+
+
+_HEADLINE_STOP_WORDS = frozenset({
+    "about", "after", "and", "are", "before", "but", "can", "for", "from", "had", "has", "have", "how",
+    "into", "its", "may", "new", "news", "not", "over", "said", "say", "says", "than", "that", "the",
+    "their", "then", "this", "was", "were", "what", "when", "who", "why", "will", "with", "would",
+})
+
+
+def _headline_terms(title: Any) -> set[str]:
+    return {
+        word
+        for word in re.findall(r"[a-z0-9]+", str(title or "").lower())
+        if len(word) >= 3 and word not in _HEADLINE_STOP_WORDS
+    }
+
+
+def _reports_page_headlines(text: str, evidence: Any) -> bool:
+    """True when a written summary visibly reports headlines read during this run.
+
+    Models summarise a front page in their own words and seldom paste its
+    links; most of a headline's words still appear. Two reported headlines
+    (or every one, when fewer were read) make the summary traceable.
+    """
+    words = set(re.findall(r"[a-z0-9]+", str(text or "").lower()))
+    readable = reported = 0
+    for item in evidence or []:
+        if not isinstance(item, dict) or item.get("kind") != "page":
+            continue
+        for headline in item.get("headlines") or []:
+            terms = _headline_terms(headline.get("title") if isinstance(headline, dict) else "")
+            if len(terms) < 3:
+                continue
+            readable += 1
+            if len(terms & words) * 2 >= len(terms):
+                reported += 1
+    return readable > 0 and reported >= min(2, readable)
+
+
+def _page_source_line(evidence: Any) -> str:
+    urls: List[str] = []
+    for item in evidence or []:
+        if isinstance(item, dict) and item.get("kind") == "page":
+            url = str(item.get("url") or "").strip()
+            if url and url not in urls:
+                urls.append(url)
+    return ("Source: " if len(urls) == 1 else "Sources: ") + ", ".join(urls[:3]) if urls else ""
 
 
 def _page_evidence_domains(evidence: Any) -> set[str]:
@@ -763,6 +822,13 @@ async def after_model_callback(callback_context: Any, llm_response: Any) -> Any:
             reason = "The model ignored retrieved page content, so the verified visible items are shown directly."
         elif page_required and page_evidence and _cites_page_evidence(response_text, evidence):
             return None
+        elif page_required and page_evidence and _reports_page_headlines(response_text, evidence):
+            # Written from the page, in the model's words, without its links:
+            # keep the summary and say where it came from.
+            return create_text_llm_response(
+                f"{response_text}\n\n{_page_source_line(evidence)}".strip(),
+                custom_metadata={"internet_sources_appended": True},
+            )
         elif not page_required and _cites_evidence(response_text, evidence):
             return None
         else:

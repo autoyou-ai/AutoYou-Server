@@ -229,6 +229,36 @@ def test_phrase_matching_is_fuzzy_about_spelling_and_returns_the_command(phrase,
     assert result.remainder == remainder
 
 
+@pytest.mark.parametrize(("text", "command"), [
+    ("They walked past the orbit display.", None),
+    ("We talked about Hey Orbit.", None),
+    ("Hey Orbits, open the map.", None),
+    ("Hey Orb, open the map.", None),
+    ("HEY-ORBIT, open the Map!", "open the Map!"),
+    ("HeyOrbit:open the Map!", "open the Map!"),
+    ("Hey, Orbit!", ""),
+    ("“Hey Orbit.”", ""),
+])
+def test_live_wake_requires_the_whole_phrase_at_the_start(text, command):
+    match = ww.match_wake_prefix("Hey Orbit", text)
+    assert match.matched is (command is not None)
+    if match.matched:
+        assert match.remainder == command
+
+
+def test_one_stray_recording_cannot_open_the_microphone():
+    rng = np.random.default_rng(162)
+    model, _ = ww.build_model("Hey Orbit", enroll(rng))
+    unrelated = synth_word(OTHER, rng=rng)
+    model.templates[-1] = ww.WakeWordTemplate(id="miscapture", features=ww.mfcc(unrelated), duration_seconds=len(unrelated)/SR)
+    negative = with_noise(unrelated, rng=rng)
+    positive = with_noise(synth_word(WAKE, rng=rng), rng=rng)
+    assert not stream(ww.StreamingWakeWordDetector(model), negative)
+    assert not ww.evaluate_clip(model, negative)["detected"]
+    assert len(stream(ww.StreamingWakeWordDetector(model), positive)) == 1
+    assert ww.evaluate_clip(model, positive)["detected"]
+
+
 def test_normalize_phrase_keeps_only_words():
     assert ww.normalize_phrase("AutoYou-Server!") == "autoyou server"
     assert ww.normalize_phrase("  Hey,   Jarvis  ") == "hey jarvis"

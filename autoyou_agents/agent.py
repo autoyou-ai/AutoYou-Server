@@ -46,7 +46,6 @@ from autoyou_agents.litellm_ollama_adapter import (
     normalize_ollama_stream_response,
     prepare_messages_for_ollama,
     prepare_tools_for_ollama,
-    repair_missing_tool_results,
     response_degenerated_into_tool_schema_echo,
     summarize_messages_for_debug,
     summarize_tool_names_for_debug,
@@ -56,7 +55,19 @@ from autoyou_agents.model_config import (
     model_uses_compact_root_tool_routing,
     resolve_ollama_num_ctx,
 )
+from shared.ollama_context_policy import (
+    context_limit as _ollama_context_limit,
+    ollama_cpu_only,
+    record_context_limit as _record_ollama_context_limit,
+    resolve_ollama_keep_alive,
+)
 from autoyou_agents.agent_harness import is_progress_only_response, nonfinal_tool_response
+from autoyou_agents.arithmetic import calculate, calculator_note
+from autoyou_agents.model_fallback import (
+    add_fallback_notice,
+    answer_with_fallback_model,
+    route_to_loadable_model,
+)
 from autoyou_agents.shared_tools.agent_identity import (
     format_agent_display_name,
     is_root_agent_name,
@@ -83,7 +94,7 @@ from autoyou_agents.shared_tools.memory_tool import (
     scan_entire_memory,
 )
 from shared.platform_runtime import is_compiled
-from shared.adk_state import AUTOYOU_SCHEDULED_TASK_STATE_KEY
+from shared.adk_state import AUTOYOU_SCHEDULED_TASK_STATE_KEY, AUTOYOU_TURN_CONTINUATION_STATE_KEY
 from shared.session_execution import create_text_llm_response, create_tool_call_llm_response
 from shared.secure_storage import SecureStorageError
 
@@ -395,6 +406,26 @@ def _learn_from_response_usage(
         conversation_context.observe_prompt_tokens(model, estimated, prompt_tokens)
 
 
+def _with_ollama_runtime_options(model_name: Any, kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    """Apply the model's placement and its measured context limit.
+
+    Set when Ollama could not allocate the cache or the model spilled onto the
+    CPU at start; every call then asks for the same smaller window, so the
+    model is not loaded again at the larger size.
+    """
+    if ollama_cpu_only(model_name):
+        kwargs = {**kwargs, "num_gpu": 0}
+    limit = _ollama_context_limit(model_name)
+    try:
+        requested = int(kwargs.get("num_ctx") or 0)
+    except (TypeError, ValueError):
+        requested = 0
+    if limit and requested > limit:
+        kwargs = dict(kwargs)
+        kwargs["num_ctx"] = limit
+    return kwargs
+
+
 def _context_overflow_already_handled(exc: Any) -> bool:
     return bool(getattr(exc, _OLLAMA_CONTEXT_OVERFLOW_HANDLED_MARKER, False))
 
@@ -416,6 +447,8 @@ async def _patched_acompletion(*args, **kwargs):
         model_name = args[0]
 
     is_ollama = is_ollama_chat_model(model_name)
+    if is_ollama:
+        kwargs = _with_ollama_runtime_options(model_name, kwargs)
     # Unfitted (but prepared) messages: a refit after an overflow re-selects
     # from the whole history rather than from an already-trimmed copy.
     original_messages = None
@@ -498,6 +531,9 @@ async def _patched_acompletion(*args, **kwargs):
                         )
                         kwargs = dict(kwargs)
                         kwargs["num_ctx"] = new_num_ctx
+                        # Every later call uses the smaller window too; halving
+                        # only this call reloaded the model twice per turn.
+                        _record_ollama_context_limit(model_name, new_num_ctx, "memory_error")
                         # A smaller window needs a smaller prompt, or the retry
                         # trades a memory error for an overflow.
                         _set_request_messages(
@@ -615,28 +651,11 @@ litellm.acompletion = _patched_acompletion
 # attributes live on the class object, not in the module's globals dict, so
 # they survive `_ensure_litellm_imported()` resetting the module-level name.
 #
-# We also keep patching _ensure_tool_results (a plain module-level function
-# not in _LITELLM_GLOBAL_SYMBOLS) - that patch still holds fine.
+# ADK owns tool-result repair before this boundary. Its request conversion
+# selects the correct role for each provider, including Gemma models behind
+# an OpenAI-compatible endpoint.
 try:
     import google.adk.models.lite_llm as _adk_lite_llm_mod
-
-    # ── _ensure_tool_results patch (module-level, not reset by lazy import) ──
-    def _patched_adk_ensure_tool_results(messages, model=""):
-        missing_result_message = getattr(
-            _adk_lite_llm_mod,
-            "_MISSING_TOOL_RESULT_MESSAGE",
-            None,
-        )
-        return repair_missing_tool_results(
-            messages,
-            missing_result_message=(
-                str(missing_result_message).strip()
-                if isinstance(missing_result_message, str) and missing_result_message.strip()
-                else "Error: Missing tool result (tool execution may have been interrupted before a response was recorded)."
-            ),
-            model=str(model or ""),
-        )
-    _adk_lite_llm_mod._ensure_tool_results = _patched_adk_ensure_tool_results
 
     # ── LiteLLMClient.acompletion class-method patch (survives lazy import) ──
     # ADK 1.26+ routes every litellm call through LiteLLMClient.acompletion().
@@ -658,6 +677,7 @@ try:
                     sorted(kwargs.keys()),
                 )
             if is_ollama:
+                kwargs = _with_ollama_runtime_options(model, kwargs)
                 tools = prepare_tools_for_ollama(tools)
                 prepared_messages = prepare_messages_for_ollama(list(messages) if messages else [])
                 messages = _fit_ollama_request(model, prepared_messages, tools, kwargs)
@@ -712,6 +732,7 @@ try:
                                 )
                                 current_kwargs = dict(current_kwargs)
                                 current_kwargs["num_ctx"] = new_num_ctx
+                                _record_ollama_context_limit(model, new_num_ctx, "memory_error")
                                 messages = _fit_ollama_request(model, prepared_messages, tools, current_kwargs)
                                 continue
                         if _is_ollama_truncated_tool_call_error(exc):
@@ -2577,6 +2598,20 @@ def _live_web_routing_text(callback_context: Any, user_text: str) -> str:
     return _scheduled_request_text(callback_context, user_text)
 
 
+# Work on a live page that a fetch cannot do: the Browser agent's real browser.
+_REAL_BROWSER_TASK_PATTERN = re.compile(
+    r"\b(?:click|tap\s+on|fill\s+(?:in|out)|log\s*(?:in|into)|sign\s*(?:in|into)|submit|"
+    r"type\s+(?:in|into)|add\s+(?:\w+\s+){0,3}to\s+(?:the\s+|my\s+)?(?:cart|basket)|"
+    r"scroll\s+(?:down|up)|real\s+browser|browser\s+agent)\b",
+    re.IGNORECASE,
+)
+
+
+def _needs_real_browser(user_text: str) -> bool:
+    """True when a web request means interacting with a page, not reading it."""
+    return bool(_REAL_BROWSER_TASK_PATTERN.search(str(user_text or "")))
+
+
 _MEMORY_QUERY_PATTERNS = (
     re.compile(r"\bfrom memory\b", re.IGNORECASE),
     re.compile(r"\bwhat do you remember\b", re.IGNORECASE),
@@ -2647,12 +2682,38 @@ _SPECIALIST_AGENT_TOOLS: Dict[str, Any] = {}
 _SPECIALIST_AGENT_DESCRIPTIONS: Dict[str, str] = {}
 
 
+# Listing every specialist as its own root tool costs the window, whatever the
+# model's size: with 42 installed specialists the schemas took ~4,100 of a
+# 12,288-token window (measured 2026-11-02, qwen38-turbo 27B: 9,956 prompt
+# tokens before the first word of conversation, 5,845 with the dispatcher).
+# Below this window the root keeps the dispatcher for every model.
+_EXPANDED_ROOT_TOOLS_MIN_CONTEXT = 65536
+# The window the current root was built for, so the topology chosen at build
+# time and the routing decisions made per turn always agree.
+_ROOT_CONTEXT_WINDOW: Optional[int] = None
+
+
+def _root_context_window() -> int:
+    """The local model's context window, or 0 when unknown or not local."""
+    if _ROOT_CONTEXT_WINDOW:
+        return int(_ROOT_CONTEXT_WINDOW)
+    if _active_ai_provider_name() != "ollama":
+        return 0
+    try:
+        return int(resolve_ollama_num_ctx(os.getenv("OLLAMA_MODEL", "") or None)[0] or 0)
+    except Exception:  # noqa: BLE001 - unknown window: the model policy decides
+        return 0
+
+
 def _two_stage_routing_enabled() -> bool:
     if _active_ai_provider_name() == "apple_intelligence":
         return True
     raw = str(os.getenv("AUTOYOU_TWO_STAGE_ROUTER", "") or "").strip().lower()
     if raw:
         return raw not in {"0", "false", "no", "off"}
+    window = _root_context_window()
+    if 0 < window < _EXPANDED_ROOT_TOOLS_MIN_CONTEXT:
+        return True
     # The specialist callback harness and the root tool topology are separate:
     # Gemma e4b keeps its expanded child-agent callbacks but must not receive
     # every installed specialist as a root-level JSON schema. The model policy
@@ -3289,6 +3350,43 @@ def _make_context_overflow_error_callback(agent_name: str):
     return _context_overflow_error_callback
 
 
+# The local runtime rejects a tool call whose arguments are not valid JSON
+# (Ollama's llama.cpp runner: "llama-server returned invalid tool call
+# arguments ... unexpected end of JSON input"). litellm raises it as a server
+# error, and without this the whole turn ended with no answer at all.
+_MALFORMED_TOOL_CALL_ERROR_PATTERN = re.compile(
+    r"invalid tool call arguments|unexpected end of json input|"
+    r"(?:failed|error|unable) (?:to )?pars(?:e|ing) (?:the )?(?:tool|function) call",
+    re.IGNORECASE,
+)
+
+
+def _make_malformed_tool_call_error_callback(agent_name: str):
+    """Turn a tool call the model garbled into a reply the user can act on."""
+
+    async def _malformed_tool_call_error_callback(callback_context: Any, llm_request: Any, error: Exception) -> Any:
+        del callback_context, llm_request
+        error_text = str(error or "")
+        if not _MALFORMED_TOOL_CALL_ERROR_PATTERN.search(error_text):
+            return None
+        tool = re.search(r'for \\?"([A-Za-z0-9_.-]{1,64})\\?"', error_text)
+        logger.error("Malformed tool call from the model in %s: %s", agent_name, error_text[:400])
+        return create_text_llm_response(
+            "The AI model sent a broken tool call"
+            + (f" ({tool.group(1)})" if tool else "")
+            + ", so this request stopped before it finished. Please ask again. If it keeps happening, "
+            "choose a different model under Models on this computer's Admin Page.",
+            custom_metadata={
+                "response_author": agent_name,
+                "agent_name": agent_name,
+                "malformed_tool_call": error_text[:400],
+            },
+        )
+
+    _malformed_tool_call_error_callback._autoyou_callback_marker = f"malformed_tool_call:{agent_name}"
+    return _malformed_tool_call_error_callback
+
+
 def _install_conversation_continuity_callbacks(agent_instance: Any) -> Any:
     """Give one specialist its conversation context and overflow handling.
 
@@ -3309,8 +3407,34 @@ def _install_conversation_continuity_callbacks(agent_instance: Any) -> Any:
             _make_context_overflow_error_callback(agent_name),
             prepend=False,
         )
+        agent_instance.on_model_error_callback = _callback_list_with_guard(
+            agent_instance.on_model_error_callback,
+            _make_malformed_tool_call_error_callback(agent_name),
+            prepend=False,
+        )
+        _install_model_fallback_callbacks(agent_instance)
     except Exception as exc:
         logger.warning("Failed to install conversation continuity callbacks for %s: %s", agent_name, exc)
+    return agent_instance
+
+
+def _install_model_fallback_callbacks(agent_instance: Any) -> Any:
+    """Let an agent answer with a smaller installed model when its own will not load.
+
+    The before-model callback goes last so the request it redirects is the
+    one every other callback already shaped; the after-model one goes last so
+    an agent's own response handling runs first.
+    """
+    for attribute, callback in (
+        ("before_model_callback", route_to_loadable_model),
+        ("after_model_callback", add_fallback_notice),
+        ("on_model_error_callback", answer_with_fallback_model),
+    ):
+        setattr(
+            agent_instance,
+            attribute,
+            _callback_list_with_guard(getattr(agent_instance, attribute, None), callback, prepend=False),
+        )
     return agent_instance
 
 
@@ -4240,8 +4364,12 @@ def _extract_explicit_route_request(user_text: str) -> Optional[Dict[str, str]]:
         return at_route
 
     searchable_text = _mask_at_agent_ignored_regions(str(user_text or ""))
-    route_candidates: list[tuple[int, int, str, re.Match[str]]] = []
+    route_candidates: list[tuple[int, int, str, re.Match[str], bool]] = []
     route_prefix = r"\b(?:go to|switch to|route to|delegate to|handoff to|send (?:to|in)|ask|open|use)\b(?:\s+the)?(?:\s+exact)?\s+"
+    # "Using the internet agent, ..." and "... via notes_agent" name a specialist
+    # as well, but only together with the word agent: "using the internet" is
+    # not steering. The request is then everything around the phrase.
+    instrument_prefix = r"\b(?:using|via)\s+(?:the\s+)?"
     for runtime_agent_name, aliases in _EXPLICIT_ROUTE_ALIASES.items():
         for alias in aliases:
             alias_pattern = _alias_to_route_pattern(alias)
@@ -4250,32 +4378,42 @@ def _extract_explicit_route_request(user_text: str) -> Optional[Dict[str, str]]:
             pattern = re.compile(route_prefix + alias_pattern + r"\b", re.IGNORECASE)
             match = pattern.search(searchable_text)
             if match:
-                route_candidates.append((match.start(), -len(alias), runtime_agent_name, match))
+                route_candidates.append((match.start(), -len(alias), runtime_agent_name, match, False))
+            if re.fullmatch(r"(?:\w+[_\s]+)+agent", str(alias or "").strip(), re.IGNORECASE):
+                match = re.compile(instrument_prefix + alias_pattern + r"\b", re.IGNORECASE).search(searchable_text)
+                if match:
+                    route_candidates.append((match.start(), -len(alias), runtime_agent_name, match, True))
 
     # Keep direct steering open to every installed or user-built specialist,
     # instead of requiring each ``xxx_agent`` identifier to be copied into the
     # hand-maintained alias table above.
-    identifier_pattern = re.compile(
-        route_prefix + r"(?P<agent>(?:autoyou_)?[a-z0-9]+(?:_[a-z0-9]+)*_agent)\b",
-        re.IGNORECASE,
-    )
-    identifier_match = identifier_pattern.search(searchable_text)
-    if identifier_match:
-        identifier = str(identifier_match.group("agent") or "").lower()
-        runtime_agent_name = resolve_runtime_agent_name(identifier)
-        if runtime_agent_name:
-            route_candidates.append(
-                (identifier_match.start(), -len(identifier), runtime_agent_name, identifier_match)
-            )
+    identifier = r"(?P<agent>(?:autoyou_)?[a-z0-9]+(?:_[a-z0-9]+)*_agent)\b"
+    for prefix, instrument in ((route_prefix, False), (instrument_prefix, True)):
+        identifier_match = re.compile(prefix + identifier, re.IGNORECASE).search(searchable_text)
+        if identifier_match:
+            name = str(identifier_match.group("agent") or "").lower()
+            runtime_agent_name = resolve_runtime_agent_name(name)
+            if runtime_agent_name:
+                route_candidates.append(
+                    (identifier_match.start(), -len(name), runtime_agent_name, identifier_match, instrument)
+                )
 
     if not route_candidates:
         return None
 
-    _, _, runtime_agent_name, match = sorted(route_candidates, key=lambda item: (item[0], item[1]))[0]
-    residual = _clean_explicit_route_residual(str(user_text or "")[match.end():], runtime_agent_name)
+    _, _, runtime_agent_name, match, instrument = sorted(
+        route_candidates, key=lambda item: (item[0], item[1])
+    )[0]
+    text = str(user_text or "")
+    if instrument:
+        before = re.sub(r"[\s,;:\-]+$", "", text[:match.start()])
+        after = re.sub(r"^[\s,;:\-]+", "", text[match.end():])
+        residual = re.sub(r"\s+([.!?])$", r"\1", f"{before} {after}".strip())
+    else:
+        residual = text[match.end():]
     return {
         "runtime_agent_name": runtime_agent_name,
-        "request": residual,
+        "request": _clean_explicit_route_residual(residual, runtime_agent_name),
     }
 
 _DIRECT_DESKTOP_TOOLS: Dict[str, tuple[str, tuple[str, ...]]] = {
@@ -4541,6 +4679,28 @@ _PENDING_REQUEST_WINDOW_SECONDS = 600.0
 # re-running an agent with side effects (Notes, Page, Notify...) could repeat them.
 _CORRECTION_REDISPATCH_INSTALL_NAMES = frozenset({"internet_agent", "browser_agent"})
 _CORRECTION_REDISPATCH_WINDOW_SECONDS = 300.0
+
+
+_TURN_CONTINUATION_NOTE = (
+    "[Turn continuation] Your last reply only said what you were about to do, so the user's latest "
+    "request is still unanswered. Do it now: use your tools if you need them, then reply with the "
+    "actual result, in the language the user wrote in. Do not announce steps."
+)
+
+
+def _turn_continuation_note(callback_context: Any) -> str:
+    """The note for a model call the server made to finish an unanswered turn.
+
+    The server re-sends the user's own message and marks the run in session
+    state, instead of writing English words as the user, so the reply keeps the
+    user's language and routing sees the real request.
+    """
+    state = getattr(callback_context, "state", None)
+    try:
+        attempt = int((state.get(AUTOYOU_TURN_CONTINUATION_STATE_KEY) if state is not None else 0) or 0)
+    except (AttributeError, TypeError, ValueError):
+        attempt = 0
+    return _TURN_CONTINUATION_NOTE if attempt > 0 else ""
 
 
 def _append_root_instruction(llm_request: Any, text: str) -> None:
@@ -5195,22 +5355,29 @@ async def _root_router_before_model_callback(callback_context: Any, llm_request:
         and _looks_like_internet_agent_request(live_routing_text, url_is_signal=not awaiting_answer)
     ):
         browser_runtime = resolve_runtime_agent_name("browser_agent")
-        target_web_agent = None
+        browser_ready = False
         if browser_runtime and _is_runtime_agent_enabled(browser_runtime):
             try:
                 from autoyou_agents.browser_agent.browser_tool import (
                     is_browser_agent_enabled,
                     is_auto_browser_available,
                 )
-                if is_browser_agent_enabled() and is_auto_browser_available():
-                    target_web_agent = browser_runtime
+                browser_ready = bool(is_browser_agent_enabled() and is_auto_browser_available())
             except Exception:
-                target_web_agent = None
+                browser_ready = False
+        internet_runtime = resolve_runtime_agent_name("internet_agent")
+        internet_ready = bool(internet_runtime and _is_runtime_agent_enabled(internet_runtime))
 
-        if not target_web_agent:
-            internet_runtime = resolve_runtime_agent_name("internet_agent")
-            if internet_runtime and _is_runtime_agent_enabled(internet_runtime):
-                target_web_agent = internet_runtime
+        # Searching, reading and summarising the web is one fetch on this
+        # computer: the Internet agent's job. The Browser agent drives a real
+        # browser, so it gets the work that needs one (clicking, typing,
+        # signing in), or everything when the Internet agent is not installed.
+        if browser_ready and (_needs_real_browser(live_routing_text) or not internet_ready):
+            target_web_agent = browser_runtime
+        elif internet_ready:
+            target_web_agent = internet_runtime
+        else:
+            target_web_agent = None
 
         if target_web_agent:
             _mark_tool_dispatched_for_invocation(callback_context.state, invocation_id)
@@ -5279,6 +5446,16 @@ async def _root_before_model_callback(callback_context: Any, llm_request: Any) -
             _append_root_instruction(llm_request, _root_conversation_note(callback_context))
         except Exception:
             logger.debug("Could not add the conversation note to the root request", exc_info=True)
+        # A plain arithmetic question gets its exact result: models get the
+        # order of operations wrong ("37x52-3/3" answered as 1921/3).
+        try:
+            _append_root_instruction(llm_request, calculator_note(_extract_text_from_llm_request(llm_request)))
+        except Exception:
+            logger.debug("Could not add the calculator note to the root request", exc_info=True)
+        try:
+            _append_root_instruction(llm_request, _turn_continuation_note(callback_context))
+        except Exception:
+            logger.debug("Could not add the turn continuation note to the root request", exc_info=True)
     return response
 
 
@@ -5419,7 +5596,17 @@ def _build_resilient_fallback_model():
     if "/" not in base_model:
         base_model = f"ollama_chat/{base_model}"
     api_base = os.getenv("OLLAMA_API_BASE", os.getenv("OLLAMA_API_URL", "http://localhost:11434"))
-    return LiteLlm(model=base_model, api_base=api_base)
+    # The same window and keep-alive as every other caller of this model, so
+    # Ollama does not load it again at a different size.
+    options: Dict[str, Any] = {}
+    try:
+        options["num_ctx"] = int(resolve_ollama_num_ctx(base_model.split("/", 1)[-1])[0])
+    except Exception:
+        pass
+    keep_alive = resolve_ollama_keep_alive()
+    if keep_alive is not None:
+        options["keep_alive"] = keep_alive
+    return LiteLlm(model=base_model, api_base=api_base, **options)
 
 def process_media_content(
     attachments: List[Dict[str, Any]],
@@ -5674,9 +5861,53 @@ def _active_ai_provider_name() -> str:
         return "google"
     return "ollama"
 
+def _llm_compaction_enabled() -> bool:
+    """ADK's model-written history summaries: off unless the operator opts in.
+
+    Every request is already fitted to the window without a model call
+    (`_fit_ollama_request`: the current question and its tool chain whole,
+    older turns ranked by recency and topic, long tool results trimmed first).
+    The summaries replaced the turns they covered and were replayed as the
+    assistant's own words. Local models often wrote a reply instead of a
+    summary ("I don't have access to your personal information ..."), and the
+    trigger counted the fixed instructions and tool schemas, so with those
+    above it compaction ran on every turn, an extra model call each time.
+    """
+    return str(os.getenv("AUTOYOU_ADK_COMPACTION", "") or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _install_stored_compaction_bypass() -> None:
+    """Read conversations from their original turns, not stored summaries.
+
+    ADK keeps every raw event when it compacts and only hides the ones a
+    summary covers. While LLM compaction is off, summaries written earlier are
+    skipped, so those conversations get their real turns back and the fitter
+    chooses what fits.
+    """
+    try:
+        from google.adk.flows.llm_flows.context import _contents as adk_contents
+    except Exception as exc:  # noqa: BLE001 - an older ADK simply keeps its behaviour
+        logger.debug("ADK contents module unavailable; stored compaction summaries still apply: %s", exc)
+        return
+    original = getattr(adk_contents, "_process_compaction_events", None)
+    if original is None or getattr(original, "_autoyou_compaction_bypass", False):
+        return
+
+    def _process_compaction_events(events, agent_name=""):
+        if _llm_compaction_enabled():
+            return original(events, agent_name)
+        return [event for event in events if not (getattr(event, "actions", None) and event.actions.compaction)]
+
+    _process_compaction_events._autoyou_compaction_bypass = True
+    adk_contents._process_compaction_events = _process_compaction_events
+
+
+_install_stored_compaction_bypass()
+
+
 def _build_events_compaction_config() -> Optional[EventsCompactionConfig]:
-    """Compact older Ollama conversation events before the active window fills."""
-    if _active_ai_provider_name() != "ollama":
+    """Compact older Ollama conversation events, only when the operator opts in."""
+    if _active_ai_provider_name() != "ollama" or not _llm_compaction_enabled():
         return None
 
     try:
@@ -5723,7 +5954,7 @@ def initialize_root_agent():
     UI (or by agent_builder_agent patching) are reflected immediately on every
     AI-agent restart, without requiring a full binary rebuild.
     """
-    global root_agent
+    global root_agent, _ROOT_CONTEXT_WINDOW
     try:
         _reload_prompt_from_disk()
         try:
@@ -5738,6 +5969,15 @@ def initialize_root_agent():
             )
             model_config = _build_resilient_fallback_model()
         logger.info("Successfully configured model: %s", getattr(model_config, "model", model_config))
+        try:
+            _ROOT_CONTEXT_WINDOW = int((getattr(model_config, "_additional_args", None) or {}).get("num_ctx") or 0) or None
+        except (TypeError, ValueError):
+            _ROOT_CONTEXT_WINDOW = None
+        logger.info(
+            "Root context window=%s; specialists reached through %s",
+            _ROOT_CONTEXT_WINDOW or "unknown",
+            "one dispatcher" if _two_stage_routing_enabled() else "one tool each",
+        )
 
         try:
             installed_agents = get_installed_agent_names(agents_root=_AGENTS_ROOT)
@@ -5798,8 +6038,18 @@ def initialize_root_agent():
         effective_instruction = _build_effective_agent_instruction(available_agent_names)
         memory_agent = initialized_agents.get("memory_agent")
 
-        # Prepare base tools list
-        tools = [remember_long_term_memory, scan_entire_memory, get_current_datetime, process_media_content]
+        # Prepare base tools list. `calculate` answers arithmetic exactly in any
+        # language; `send_follow_up` lets a turn post another message into the
+        # conversation (now, or for work that finishes later).
+        from autoyou_agents.shared_tools.outbox import send_follow_up
+        tools = [
+            remember_long_term_memory,
+            scan_entire_memory,
+            get_current_datetime,
+            process_media_content,
+            calculate,
+            send_follow_up,
+        ]
         if initialized_agents.get("persona_agent") is not None:
             # The website and chat must read/append the same persona.md journal.
             from autoyou_agents.persona_agent.agent import read_persona, append_persona
@@ -5903,7 +6153,7 @@ def initialize_root_agent():
             "tools": tools
         }
 
-        root_agent = Agent(**agent_kwargs)
+        root_agent = _install_model_fallback_callbacks(Agent(**agent_kwargs))
         _refresh_adk_app_binding(root_agent)
         return root_agent
 
@@ -5917,13 +6167,13 @@ def initialize_root_agent():
             fallback_instruction = _build_effective_agent_instruction(
                 get_installed_agent_names(agents_root=_AGENTS_ROOT)
             ) or str(root_prompt.AGENT_INSTRUCTION or "")
-            root_agent = Agent(
+            root_agent = _install_model_fallback_callbacks(Agent(
                 name=root_prompt.AGENT_NAME,
                 model=_build_resilient_fallback_model(),
                 description=root_prompt.AGENT_DESCRIPTION,
                 instruction=fallback_instruction,
                 tools=[get_current_datetime],
-            )
+            ))
             _refresh_adk_app_binding(root_agent)
             logger.warning("Initialized fallback root_agent with minimal configuration")
             return root_agent

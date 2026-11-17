@@ -20,6 +20,7 @@ from tests.support.paths import ensure_repo_on_path
 ensure_repo_on_path()
 
 import base64
+from types import SimpleNamespace
 
 import pytest
 
@@ -191,3 +192,90 @@ def test_a_changed_pairing_password_is_not_masked_by_what_this_process_read_earl
     assert fake.passwords == {}
     assert server._load_keystore_server_password() is None, "a cleared password is not served from memory"
     assert len(fake.get_calls) == reads + 1
+
+
+@pytest.mark.parametrize("platform", ["windows", "linux"])
+def test_source_checkout_password_writes_stay_with_their_config(monkeypatch, tmp_path, platform):
+    import server
+
+    credential = server._KS_SERVER_PASSWORD_CRED_NAME
+    legacy = (SERVICE, credential)
+    fake = _install(monkeypatch, _FakeKeyring({legacy: "synthetic-legacy-password"}))
+    monkeypatch.setattr(server, "_KS_SERVICE_NAME", SERVICE)
+    monkeypatch.setattr(server, "_server_keyring", fake)
+    monkeypatch.setattr(server, "_keystore_server_password_available", lambda: True)
+    monkeypatch.setattr(server, "get_platform", lambda: platform)
+    monkeypatch.setattr(server.STATE, "server_password", None)
+    monkeypatch.delenv("AUTOYOU_TEST_ROOT", raising=False)
+    monkeypatch.delenv("AUTOYOU_RUNTIME_ROOT", raising=False)
+
+    owner_config = tmp_path / "owner" / "config.keystore.enc"
+    owner_config.parent.mkdir()
+    owner_config.write_bytes(b"synthetic-legacy-config")
+    monkeypatch.setattr(server, "CONFIG_KEYSTORE_PATH", owner_config)
+    owner_service = server._server_pairing_password_service_name()
+    assert server._load_keystore_server_password() == "synthetic-legacy-password"
+
+    probe_config = tmp_path / "probe" / "config.keystore.enc"
+    monkeypatch.setattr(server, "CONFIG_KEYSTORE_PATH", probe_config)
+    probe_service = server._server_pairing_password_service_name()
+    assert probe_service != owner_service
+    assert server._load_keystore_server_password() is None
+    server._persist_server_password("synthetic-probe-password")
+    assert server._load_keystore_server_password() == "synthetic-probe-password"
+    server._clear_persisted_server_password()
+    assert (probe_service, credential) not in fake.passwords
+    assert fake.passwords[legacy] == "synthetic-legacy-password"
+
+    monkeypatch.setattr(server, "CONFIG_KEYSTORE_PATH", owner_config)
+    assert server._load_keystore_server_password() == "synthetic-legacy-password"
+    server._persist_server_password("synthetic-legacy-password")
+    assert fake.passwords[(owner_service, credential)] == "synthetic-legacy-password"
+    fake.passwords[legacy] = "synthetic-updated-legacy-entry"
+    keystore.forget_credential()
+    assert server._load_keystore_server_password() == "synthetic-legacy-password"
+
+
+def test_legacy_fallback_requires_a_missing_credential(monkeypatch):
+    legacy = "autoyou-synthetic-legacy"
+    credential = "pairing-password"
+    fake = _install(monkeypatch, _FakeKeyring({(legacy, credential): "synthetic-legacy-password"}))
+    fake.fail_with = RuntimeError("Synthetic keystore failure")
+
+    assert keystore.get_keyring_password(SERVICE, credential, fallback_service_name=legacy) is None
+    assert fake.get_calls == [(SERVICE, credential)]
+
+
+@pytest.mark.parametrize(
+    ("platform", "opt_in", "backend", "expected"),
+    [
+        ("win32", "1", "keyring.backends.Windows.WinVaultKeyring", False),
+        ("linux", "1", "keyring.backends.SecretService.Keyring", False),
+        ("darwin", "", "keyring.backends.macOS.Keyring", False),
+        ("darwin", "1", "keyring.backends.null.Keyring", False),
+        ("darwin", "1", "keyring.backends.macOS.Keyring", True),
+    ],
+)
+def test_test_root_allows_only_the_opt_in_macos_keychain_smoke(
+    monkeypatch, tmp_path, platform, opt_in, backend, expected
+):
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path))
+    monkeypatch.setenv("AUTOYOU_TEST_MACOS_KEYCHAIN", opt_in)
+    monkeypatch.setattr(keystore, "sys", SimpleNamespace(platform=platform))
+    monkeypatch.setattr(keystore, "_HAS_KEYRING", True)
+    monkeypatch.setattr(keystore, "_HAS_FERNET", True)
+    monkeypatch.setattr(keystore, "_backend_name", lambda: backend)
+
+    assert keystore.keyring_available() is expected
+
+
+def test_normal_test_root_skips_config_key_cleanup_in_the_os_backend(monkeypatch, tmp_path):
+    def unexpected_delete(*_args):
+        pytest.fail("A normal test must not call the native credential store")
+
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path))
+    monkeypatch.delenv("AUTOYOU_TEST_MACOS_KEYCHAIN", raising=False)
+    monkeypatch.setattr(keystore, "_HAS_KEYRING", True)
+    monkeypatch.setattr(keystore, "_keyring_mod", SimpleNamespace(delete_password=unexpected_delete))
+
+    assert not keystore.delete_key(SERVICE)

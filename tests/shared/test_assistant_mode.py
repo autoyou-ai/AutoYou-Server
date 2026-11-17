@@ -96,6 +96,12 @@ def silence(seconds):
     return np.zeros(int(seconds * SR))
 
 
+def spoken(seconds):
+    """An uploaded question: speech-level sound for its whole length."""
+    t = np.arange(int(seconds * SR)) / SR
+    return 0.25 * np.sin(2 * np.pi * 180 * t) * (0.6 + 0.4 * np.sin(2 * np.pi * 3 * t))
+
+
 def train_voice_model(rng, phrase="Hey AutoYou"):
     for recording in enroll(rng):
         assert am.add_sample(recording)["stored"] is True
@@ -109,7 +115,7 @@ def test_settings_round_trip_and_phrase_defaults_to_the_server_name(isolated_sto
     assert am.save_settings({"enabled": "off"})["enabled"] is False
     saved = am.save_settings({"enabled": "on", "confirm": "nonsense", "sensitivity": 7, "listen_seconds": 99})
     assert saved["enabled"] is True
-    assert saved["confirm"] == "voice"
+    assert saved["confirm"] == "both"
     assert saved["sensitivity"] == 1.0
     assert saved["listen_seconds"] == 30
     assert am.load_settings()["enabled"] is True
@@ -117,6 +123,17 @@ def test_settings_round_trip_and_phrase_defaults_to_the_server_name(isolated_sto
     am.save_settings({"wake_phrase": "  Hey\tJarvis\n"})
     assert am.effective_phrase(am.load_settings(), "AutoYou-Server") == "Hey Jarvis"
     assert (isolated_store / am.SETTINGS_FILENAME).is_file()
+
+
+def test_legacy_voice_default_upgrades_but_an_explicit_voice_only_choice_persists():
+    am._write_json(am.SETTINGS_FILENAME, {"enabled": False, "confirm": "voice", "wake_phrase": "Hey Orbit"})
+    upgraded = am.load_settings()
+    assert upgraded["confirm"] == "both" and upgraded["wake_phrase"] == "Hey Orbit" and not upgraded["enabled"]
+    am.save_settings({"confirm": "voice"})
+    am.save_settings({"listen_seconds": 5})
+    assert am.load_settings()["confirm"] == "voice"
+    am._write_json(am.SETTINGS_FILENAME, {"confirm": "text"})
+    assert am.load_settings()["confirm"] == "text"
 
 
 def test_samples_are_checked_bounded_and_deletable():
@@ -184,6 +201,29 @@ def test_voice_wake_word_gates_transcription_and_hands_over_one_command():
         states = recorder.states()
         assert states[0] == ("listening", "wake_word")
         assert ("thinking", "transcribing") in states
+    finally:
+        hub.close()
+
+
+@pytest.mark.parametrize("invention", [
+    "You",
+    "200g de quake 20g de quake 20g de quake 50g de quake",
+    "Sous-titres réalisés par la communauté d'Amara.org",
+])
+def test_whisper_inventions_after_the_wake_word_are_never_sent(invention):
+    # Owner report 2026-11-03: these reached the model as questions.
+    rng = np.random.default_rng(31)
+    train_voice_model(rng)
+    am.save_settings({"enabled": True, "wake_phrase": "Hey AutoYou", "confirm": "voice"})
+    recorder = Recorder(transcripts=[invention])
+    hub = make_hub(recorder)
+    try:
+        feed(hub, "phone", with_noise(synth_word(WAKE, rng=rng, f0=138), rng=rng, pad_seconds=0.1))
+        feed(hub, "phone", synth_word(OTHER, rng=rng, f0=138))
+        feed(hub, "phone", silence(1.6))
+        assert recorder.wait_for(lambda r: ("idle", "no_speech") in r.states())
+        assert len(recorder.transcribed) == 1
+        assert recorder.commands == []
     finally:
         hub.close()
 
@@ -275,7 +315,7 @@ def test_client_detected_wake_opens_listening_and_times_out_without_speech():
 
 
 def test_only_one_device_answers_a_wake_word_heard_by_two():
-    am.save_settings({"enabled": True, "wake_phrase": "Jarvis"})
+    am.save_settings({"enabled": True, "wake_phrase": "Jarvis", "confirm": "voice"})
     recorder = Recorder()
     hub = make_hub(recorder)
     try:
@@ -376,7 +416,7 @@ def test_devices_get_the_model_only_when_it_is_ready_and_on():
         train_voice_model(rng)
         model = _run_device(hub, "assistant_model_request")[0]["model"]
         assert model["format"] == ww.MODEL_FORMAT and len(model["templates"]) == 3
-        assert model["wake_phrase"] == "Hey AutoYou" and model["confirm"] == "voice"
+        assert model["wake_phrase"] == "Hey AutoYou" and model["confirm"] == "both"
         assert ww.WakeWordModel.from_dict(model).distance_threshold > 0
     finally:
         hub.close()
@@ -420,6 +460,30 @@ def test_an_uploaded_utterance_after_an_on_device_wake_reaches_the_conversation(
         assert recorder.wait_for(lambda r: ("idle", "not_confirmed") in r.states("pi"))
         assert len(recorder.commands) == 1
         assert _run_device(hub, "assistant_utterance", {"audio_base64": "not base64!"})[0]["reason"] == "bad_audio"
+    finally:
+        hub.close()
+
+
+def test_unverified_device_hits_cannot_submit_ambient_conversation(monkeypatch):
+    rng = np.random.default_rng(85)
+    train_voice_model(rng, phrase="Hey Orbit")
+    am.save_settings({"enabled": True, "wake_phrase": "Hey Orbit"})
+    recorder = Recorder(transcripts=["ordinary room conversation", "we discussed Hey Orbit", "Hey Orbits, start", "Hey Orbit, open the map"])
+    hub = make_hub(recorder)
+    clock = {"t": 100.0}
+    monkeypatch.setattr(am, "time", SimpleNamespace(monotonic=lambda: clock["t"], time=time.time))
+    pcm = ww.float_to_pcm16(spoken(2))
+    try:
+        hub._dispatch("synthetic-phone", "client_wake", 1.0)
+        assert hub.session_state("synthetic-phone") == "idle"  # no audio proof in this legacy announcement
+        for i in range(4):
+            clock["t"] += 20
+            wake_id = f"synthetic-{i}"
+            hub.reserve_device_wake("synthetic-phone", wake_id, score=0.99)
+            hub.device_utterance("synthetic-phone", pcm, score=0.99, wake_id=wake_id)
+            assert recorder.wait_for(lambda r: r.states("synthetic-phone").count(("idle","not_confirmed")) + len(r.commands) == i+1)
+            assert [c[1] for c in recorder.commands] == (["open the map"] if i==3 else [])
+        assert recorder.states("synthetic-phone").count(("idle","not_confirmed")) == 3
     finally:
         hub.close()
 
@@ -563,7 +627,7 @@ def _drain(hub, recorder):
 
 def test_a_command_is_not_submitted_after_the_listener_was_cancelled():
     am.save_settings({"enabled": True, "wake_phrase": "Hey AutoYou"})
-    words = ww.float_to_pcm16(silence(1.0))
+    words = ww.float_to_pcm16(spoken(1.0))
     # Control: without a cancel the same command is handed over.
     release = threading.Event()
     recorder = Recorder(transcripts=["hey autoyou what time is it"])
@@ -598,7 +662,7 @@ def test_a_command_is_not_submitted_after_assistant_mode_was_turned_off():
     recorder = Recorder(transcripts=["hey autoyou what time is it"])
     hub = _blocking_hub(recorder, release)
     try:
-        hub.device_utterance("pi", ww.float_to_pcm16(silence(1.0)), score=0.9)
+        hub.device_utterance("pi", ww.float_to_pcm16(spoken(1.0)), score=0.9)
         assert recorder.wait_for(lambda r: ("thinking", "transcribing") in r.states("pi"), timeout=5)
         am.save_settings({"enabled": False})
         hub.reload()
@@ -658,7 +722,7 @@ def test_devices_refetch_the_model_when_its_settings_change():
 def test_one_device_answers_even_when_another_uploads_seconds_later(monkeypatch):
     clock = {"now": 100.0}
     monkeypatch.setattr(am, "time", SimpleNamespace(monotonic=lambda: clock["now"], time=time.time))
-    am.save_settings({"enabled": True, "wake_phrase": "Hey AutoYou"})
+    am.save_settings({"enabled": True, "wake_phrase": "Hey AutoYou", "confirm": "voice"})
     recorder = Recorder(transcripts=["hey autoyou what time is it"] * 4)
     hub = make_hub(recorder)
     try:
@@ -667,11 +731,11 @@ def test_one_device_answers_even_when_another_uploads_seconds_later(monkeypatch)
         assert recorder.wait_for(lambda r: ("listening", "wake_word") in r.states("phone"), timeout=5)
         # The Pi heard the same words itself and uploads 4.5 s of them 4 s later.
         clock["now"] = 104.0
-        hub.device_utterance("pi", ww.float_to_pcm16(silence(4.5)), score=0.9)
+        hub.device_utterance("pi", ww.float_to_pcm16(spoken(4.5)), score=0.9)
         assert recorder.wait_for(lambda r: ("idle", "answered_elsewhere") in r.states("pi"), timeout=5)
         # A separate request a while later is answered.
         clock["now"] = 130.0
-        hub.device_utterance("pi", ww.float_to_pcm16(silence(2.0)), score=0.9)
+        hub.device_utterance("pi", ww.float_to_pcm16(spoken(2.0)), score=0.9)
         assert recorder.wait_for(lambda r: any(sid == "pi" for sid, _, _ in r.commands), timeout=5)
     finally:
         hub.close()
@@ -725,17 +789,17 @@ def test_announced_wakes_keep_their_decision_across_delayed_uploads(monkeypatch)
     second = hub._session("synthetic-phone")
     second.reserve_device_wake("synthetic-duplicate", config, 0.9)
     clock["now"] = 112.0  # Recording and upload took longer than the matching window.
-    second.device_utterance(ww.float_to_pcm16(silence(4.5)), config, 0.9, "synthetic-duplicate")
+    second.device_utterance(ww.float_to_pcm16(spoken(4.5)), config, 0.9, "synthetic-duplicate")
     assert second.stats["wakes"] == 0
     assert recorder.transcribed == []
     clock["now"] = 130.0
     second.reserve_device_wake("synthetic-next", config, 0.9)
     clock["now"] = 145.0
-    second.device_utterance(ww.float_to_pcm16(silence(2.0)), config, 0.9, "synthetic-next")
+    second.device_utterance(ww.float_to_pcm16(spoken(2.0)), config, 0.9, "synthetic-next")
     assert recorder.wait_for(lambda r: len(r.commands) == 1)
     # Neither an upload retry nor an announcement retry may run it again.
     second.reserve_device_wake("synthetic-next", config, 0.9)
-    second.device_utterance(ww.float_to_pcm16(silence(2.0)), config, 0.9, "synthetic-next")
+    second.device_utterance(ww.float_to_pcm16(spoken(2.0)), config, 0.9, "synthetic-next")
     _drain(hub, recorder)
     assert len(recorder.commands) == 1
     hub.close()

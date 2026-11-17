@@ -5,6 +5,15 @@ The requested review used `gpt-6-astra` to inspect source and primary upstream
 license materials. This records an engineering license assessment, not a
 certification of every release artifact or the applicability of service terms.
 
+On 2026-11-07 the server pins moved to ADK 2.14.0 to permit the patched
+OpenTelemetry dependencies. All 112 regular files in the hash-verified ADK Web
+v1.0.7 archive matched the ADK 2.14.0 wheel's browser files byte for byte, with
+no additional browser files. The archive has 112 files, correcting the earlier
+113-file count below. Its source commit, archive hash and third-party notice
+inventory remain unchanged. The generator and provenance now identify 2.14.0.
+This comparison covers the embedded frontend, not patent clearance or a final
+packaged inventory.
+
 ## Optional ADK Web controls
 
 [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) permits modified

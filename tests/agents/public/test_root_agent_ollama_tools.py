@@ -7,13 +7,22 @@
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
+import asyncio
+import base64
+import io
+import json
 from types import SimpleNamespace
 
+import httpx
 import pytest
 from google.adk.agents import Agent
-from google.adk.models.lite_llm import LiteLlm
-import google.adk.models.lite_llm as adk_lite_llm
+from google.adk.models.lite_llm import LiteLlm, LiteLLMClient
+from google.adk.models.llm_request import LlmRequest
+from google.genai import types
+from litellm import ModelResponse
+from PIL import Image
 from shared.secure_storage import SecureStorageError
+from shared.session_execution import SessionExecutionManager
 
 import autoyou_agents.agent as root_agent_module
 
@@ -448,50 +457,92 @@ def test_initialize_root_agent_keeps_desktop_graph_when_provider_starts_late(mon
     assert root_agent.before_model_callback, "deterministic router callbacks must survive degraded startup"
 
 
-def test_adk_tool_history_repair_patch_heals_dangling_tool_results():
-    messages = [
-        {
-            "role": "assistant",
-            "content": None,
-            "tool_calls": [
-                {
-                    "id": "call_y0k79bmu",
-                    "type": "function",
-                    "function": {"name": "autoyou_internet_agent", "arguments": "{}"},
-                }
-            ],
-        },
-        {"role": "user", "content": "follow up"},
-    ]
+@pytest.mark.parametrize(
+    "model, provider, tool_role",
+    [
+        ("ollama_chat/synthetic-text", None, "tool"),
+        ("ollama_chat/gemma4:e4b", None, "tool_responses"),
+        ("openai/synthetic/gemma-4-e4b", "openai", "tool"),
+        ("anthropic/claude-synthetic", None, "tool"),
+        ("gemini/gemini-synthetic", None, "tool"),
+    ],
+)
+async def test_adk_model_request_recovers_interrupted_tool_history(model, provider, tool_role):
+    """Exercise ADK's actual request conversion with the AutoYou agent imported."""
+    class RecordingClient(LiteLLMClient):
+        async def acompletion(self, model, messages, tools, **kwargs):
+            assert [message["role"] for message in messages] == ["assistant", tool_role, "user"]
+            assert messages[1]["tool_call_id"] == "synthetic-call"
+            assert "Missing tool result" in messages[1]["content"]
+            return ModelResponse(choices=[{
+                "index": 0,
+                "finish_reason": "stop",
+                "message": {"role": "assistant", "content": "Recovered."},
+            }])
 
-    prepared = adk_lite_llm._ensure_tool_results(messages)
+    config = {"custom_llm_provider": provider} if provider else {}
+    llm = LiteLlm(model=model, llm_client=RecordingClient(), **config)
+    request = LlmRequest(
+        contents=[
+            types.Content(role="model", parts=[types.Part(function_call=types.FunctionCall(
+                id="synthetic-call", name="lookup_sample", args={},
+            ))]),
+            types.Content(role="user", parts=[types.Part(text="Continue the synthetic lookup.")]),
+        ],
+    )
 
-    assert prepared[1]["role"] == "tool"
-    assert prepared[1]["tool_call_id"] == "call_y0k79bmu"
-    assert "Missing tool result" in prepared[1]["content"]
+    responses = [response async for response in llm.generate_content_async(request)]
+
+    assert responses[-1].content.parts[0].text == "Recovered."
 
 
-def test_adk_tool_history_repair_patch_accepts_adk_2_model_argument():
-    messages = [
-        {
-            "role": "assistant",
-            "content": None,
-            "tool_calls": [
-                {
-                    "id": "call_gemma4",
-                    "type": "function",
-                    "function": {"name": "autoyou_page_agent", "arguments": "{}"},
-                }
-            ],
-        },
-        {"role": "user", "content": "follow up"},
-    ]
+async def test_adk_ollama_vision_turns_reach_the_provider_concurrently(monkeypatch):
+    """Independent conversations can submit media without mixing their payloads."""
+    monkeypatch.setenv("AUTOYOU_OLLAMA_CPU_MODELS", "gemma4:e4b")
+    manager = SessionExecutionManager(queue_limit=3, default_turn_timeout_seconds=10)
+    received = {}
+    both_started = asyncio.Event()
+    images = {}
+    for label, color in (("first", "red"), ("second", "blue")):
+        image = io.BytesIO()
+        Image.new("RGB", (8, 8), color).save(image, format="PNG")
+        images[label] = image.getvalue()
 
-    prepared = adk_lite_llm._ensure_tool_results(messages, "ollama_chat/gemma4:12b")
+    async def send(client, request, **kwargs):
+        assert str(request.url) == "http://127.0.0.1:9/api/chat"
+        payload = json.loads(request.content)
+        assert payload["options"]["num_gpu"] == 0
+        message = payload["messages"][-1]
+        label = message["content"].strip()
+        received[label] = message["images"]
+        if len(received) == 2:
+            both_started.set()
+        await asyncio.wait_for(both_started.wait(), timeout=5)
+        return httpx.Response(200, request=request, json={
+            "model": "gemma4:e4b",
+            "created_at": "2026-01-01T00:00:00Z",
+            "message": {"role": "assistant", "content": f"Reply for {label}"},
+            "done": True,
+            "done_reason": "stop",
+        })
 
-    assert prepared[1]["role"] == "tool_responses"
-    assert prepared[1]["tool_call_id"] == "call_gemma4"
-    assert "Missing tool result" in prepared[1]["content"]
+    monkeypatch.setattr(httpx.AsyncClient, "send", send)
+    llm = LiteLlm(model="ollama_chat/gemma4:e4b", api_base="http://127.0.0.1:9")
+
+    async def run(label):
+        request = LlmRequest(contents=[types.Content(role="user", parts=[
+            types.Part.from_bytes(data=images[label], mime_type="image/png"),
+            types.Part(text=label),
+        ])])
+        responses = [response async for response in llm.generate_content_async(request)]
+        return responses[-1].content.parts[0].text
+
+    async def submit(label):
+        identity = manager.bind_transport_owner("local", f"synthetic-{label}", raw_session_id=f"chat-{label}")
+        return await manager.submit_turn(identity, lambda: run(label), label=label)
+
+    assert await asyncio.gather(submit("first"), submit("second")) == ["Reply for first", "Reply for second"]
+    assert received == {label: [base64.b64encode(data).decode("ascii")] for label, data in images.items()}
 
 
 class _TruncatedToolCallError(Exception):

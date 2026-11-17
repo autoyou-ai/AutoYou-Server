@@ -1,76 +1,76 @@
 <!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Files Agent</title>
-    <base href="./">
-    <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="./assets/styles.css">
-  </head>
-  <body>
-    <script id="autoyou-bootstrap" type="application/json">__BOOTSTRAP_JSON__</script>
-    <main class="app-shell">
-      <header class="topbar">
-        <div class="app-mark" aria-hidden="true">FA</div>
-        <div class="app-title">
-          <p>This Computer</p>
-          <h1>Files Agent</h1>
-        </div>
-        <div class="topbar-actions" aria-label="File actions">
-          <button class="toolbar-button" id="copy-path-button" type="button" title="Copy selected path">Copy path</button>
-          <button class="toolbar-button" id="refresh-button" type="button" title="Refresh folder">Refresh</button>
-        </div>
-      </header>
-
-      <section class="toolbar" aria-label="Folder controls">
-        <div class="nav-buttons">
-          <button class="square-button" id="back-button" type="button" title="Back">Back</button>
-          <button class="square-button" id="up-button" type="button" title="Up one folder">Up</button>
-        </div>
-        <label class="path-control">
-          <span>Path</span>
-          <input id="path-input" type="text" autocomplete="off" spellcheck="false">
-        </label>
-        <button class="go-button" id="go-button" type="button">Go</button>
-        <label class="search-control">
-          <span>Search</span>
-          <input id="file-search" type="search" autocomplete="off" placeholder="Filter this folder">
-        </label>
-        <div class="view-toggle" aria-label="View mode">
-          <button id="list-view" class="toggle-button active" type="button">List</button>
-          <button id="grid-view" class="toggle-button" type="button">Grid</button>
-        </div>
-      </section>
-
-      <section class="workspace" aria-label="Local file explorer">
-        <nav class="locations-panel" aria-label="Locations">
-          <div class="panel-header">
-            <strong>Locations</strong>
-            <span id="location-count">0 locations</span>
+<html lang="en" data-skin="professional">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Files - AutoYou</title>
+  <base href="./">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="./assets/styles.css">
+</head>
+<body>
+  <script id="autoyou-bootstrap" type="application/json">__BOOTSTRAP_JSON__</script>
+  <main class="app-shell">
+    <header class="topbar">
+      <span class="app-mark" data-icon="folder" aria-hidden="true"></span>
+      <div class="app-title"><p>AutoYou / This computer</p><h1>Files</h1></div>
+      <div class="topbar-actions">
+        <button class="toolbar-button" id="copy-path-button" type="button" aria-label="Copy path"><span data-icon="copy" aria-hidden="true"></span><span>Copy path</span></button>
+        <button class="toolbar-button" id="refresh-button" type="button" aria-label="Refresh"><span data-icon="refresh" aria-hidden="true"></span><span>Refresh</span></button>
+        <button class="toolbar-button" id="settings-button" type="button" aria-label="Appearance" aria-haspopup="dialog"><span data-icon="settings" aria-hidden="true"></span><span>Appearance</span></button>
+      </div>
+    </header>
+    <section class="workspace" aria-label="Computer files">
+      <nav class="locations-panel" aria-label="Locations">
+        <div class="panel-header"><strong>Locations</strong><span id="location-count"></span></div>
+        <div id="locations-list" class="locations-list"></div>
+        <p class="sidebar-note">Files on your connected computer.<br>Access follows your permissions.</p>
+      </nav>
+      <section class="browser-panel" aria-label="Folder contents">
+        <header class="folder-header">
+          <p class="eyebrow">FILE EXPLORER</p><h2 id="folder-title">Workspace</h2>
+          <nav id="breadcrumbs" class="breadcrumbs" aria-label="Folder path"></nav>
+        </header>
+        <section class="toolbar" aria-label="Folder controls">
+          <div class="nav-buttons">
+            <button class="square-button" id="back-button" type="button" aria-label="Back" title="Back"><span data-icon="back" aria-hidden="true"></span></button>
+            <button class="square-button" id="up-button" type="button" aria-label="Up one folder" title="Up one folder"><span data-icon="up" aria-hidden="true"></span></button>
           </div>
-          <div id="locations-list" class="locations-list"></div>
-        </nav>
-
-        <section class="browser-panel" aria-label="Folder contents">
-          <div class="panel-header">
-            <strong>Folder</strong>
-            <span id="status-line">Loading folder...</span>
-          </div>
-          <div id="entries" class="entries list-view"></div>
+          <label class="path-control"><span class="sr-only">Folder path</span><input id="path-input" type="text" autocomplete="off" spellcheck="false" aria-label="Folder path" enterkeyhint="go"></label>
+          <button class="go-button" id="go-button" type="button">Go</button>
         </section>
-
-        <article class="preview-panel" aria-label="Preview">
-          <div class="preview-header">
-            <p id="preview-meta">Current folder</p>
-            <h2 id="preview-title">Workspace</h2>
+        <section class="filterbar" aria-label="File filters">
+          <label class="search-control"><span data-icon="search" aria-hidden="true"></span><span class="sr-only">Search this folder</span><input id="file-search" type="search" autocomplete="off" placeholder="Search this folder"></label>
+          <label class="sort-control"><span class="sr-only">Sort files</span><select id="sort-select" aria-label="Sort files"><option value="name">Name</option><option value="modified">Modified</option><option value="size">Size</option></select></label>
+          <div class="view-toggle" role="group" aria-label="View mode">
+            <button id="list-view" class="toggle-button active" type="button" aria-label="List view" aria-pressed="true"><span data-icon="list" aria-hidden="true"></span></button>
+            <button id="grid-view" class="toggle-button" type="button" aria-label="Grid view" aria-pressed="false"><span data-icon="grid" aria-hidden="true"></span></button>
           </div>
-          <div id="preview-body" class="preview-body"></div>
-        </article>
+        </section>
+        <div class="table-heading" aria-hidden="true"><span>Name</span><span>Type</span><span>Modified</span><span>Size</span></div>
+        <div id="entries" class="entries list-view" aria-label="Files" aria-busy="true"></div>
+        <footer class="browser-footer"><span id="status-line" role="status">Loading folder...</span><label><input id="show-hidden" type="checkbox"> Show hidden files</label></footer>
       </section>
-
-      <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    </main>
-    <script type="module" src="./assets/main.js"></script>
-  </body>
+      <article class="preview-panel" id="preview-panel" aria-label="File preview">
+        <div class="preview-header"><p id="preview-meta">DETAILS</p><button id="preview-close" class="square-button" type="button" aria-label="Close preview"><span data-icon="close" aria-hidden="true"></span></button><h2 id="preview-title">A closer look</h2></div>
+        <div id="preview-body" class="preview-body"></div>
+      </article>
+    </section>
+  </main>
+  <dialog id="appearance-dialog" aria-labelledby="appearance-title">
+    <form method="dialog" class="dialog-header"><div><p class="eyebrow">MAKE IT YOURS</p><h2 id="appearance-title">Appearance</h2></div><button class="square-button" aria-label="Close appearance"><span data-icon="close" aria-hidden="true"></span></button></form>
+    <p class="settings-description">Choose a skin, then adjust the details. Saved in this browser.</p>
+    <fieldset class="skin-options"><legend>Skin</legend>
+      <label class="skin-card professional"><input type="radio" name="skin" value="professional" checked><span class="skin-preview"></span><strong>Professional</strong><small>Warm and focused</small></label>
+      <label class="skin-card midnight"><input type="radio" name="skin" value="midnight"><span class="skin-preview"></span><strong>Midnight</strong><small>Quiet after hours</small></label>
+      <label class="skin-card neon"><input type="radio" name="skin" value="neon"><span class="skin-preview"></span><strong>Neon</strong><small>A little more energy</small></label>
+    </fieldset>
+    <label class="setting-row"><span>Accent color</span><input id="accent-input" type="color" value="#2563eb"></label>
+    <label class="setting-row"><span>Row spacing</span><select id="density-select"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label>
+    <div class="settings-footer"><button id="appearance-reset" class="toolbar-button" type="button">Reset appearance</button><form method="dialog"><button class="go-button">Done</button></form></div>
+  </dialog>
+  <dialog id="preview-dialog" aria-label="File preview"></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="./assets/main.js"></script>
+</body>
 </html>

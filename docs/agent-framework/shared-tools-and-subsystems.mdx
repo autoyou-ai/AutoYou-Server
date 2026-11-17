@@ -43,6 +43,15 @@ Shared helpers for canonical AutoYou agent ids and display labels.
 | `is_root_agent_name` | function | Return True when the name refers to the AutoYou root agent. |
 | `format_agent_display_name` | function | Humanize an agent id for UI display. |
 
+## `agent_input_ux.py`
+
+Shared focus and visual-viewport behavior for agent websites.
+
+| Public name | Kind | Summary |
+| :--- | :--- | :--- |
+| `inject_agent_input_ux` | function | &nbsp; |
+| `AgentHTMLResponse` | class | &nbsp; |
+
 ## `agent_install_registry.py`
 
 Disk-backed install state for AutoYou sub-agents.
@@ -321,6 +330,16 @@ No module docstring.
 | `fetch_long_term_memory` | function | Search long-term memory wired through session_utils/service_manager. |
 | `scan_entire_memory` | function | Scan all matching memory in the current logical conversation by default. |
 | `scan_all_client_memory` | function | Privileged owner-level memory search across all connected client identities. |
+
+## `outbox.py`
+
+One way for any agent to send the user another message.
+
+| Public name | Kind | Summary |
+| :--- | :--- | :--- |
+| `follow_up_target` | function | Where a follow-up from this turn goes, read from the turn's session state. |
+| `post_follow_up` | function | Hand a message to the server's outbox for this conversation. |
+| `send_follow_up` | function | Send the user another message in this conversation, separate from your reply. |
 
 ## `scheduler_mission_control.py`
 

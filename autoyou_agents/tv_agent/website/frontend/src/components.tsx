@@ -41,7 +41,7 @@ export function Artwork({ item, className = '', eager = false }: { item: Item; c
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [url]);
   return <div className={`artwork tone-${parseInt(item.id.slice(0, 4), 16) % 4 || 0} ${className}`}>
-    {url && !failed ? <img src={url} alt="" loading={eager ? 'eager' : 'lazy'} onError={() => setFailed(true)} /> :
+    {url && !failed ? <img src={url} alt="" decoding="async" loading={eager ? 'eager' : 'lazy'} onError={() => setFailed(true)} /> :
       <div className="artwork-fallback"><span>{item.series || item.title}</span><small>{item.metadata.genre?.split(',')[0] || kindLabel(item.kind)}</small></div>}
   </div>;
 }

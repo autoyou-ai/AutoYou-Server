@@ -40,6 +40,10 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG_PATH = REPO_ROOT / "docs" / "legal" / "release-artifacts.json"
 
 THIRD_PARTY_LICENSE_FILES = {'google-adk': 'google-adk-APACHE-2.0.txt', 'mcp': 'mcp-MIT.txt', 'mcp-types': 'mcp-types-MIT.txt', 'httpx2': 'httpx2-BSD-3-Clause.txt', 'httpcore2': 'httpcore2-BSD-3-Clause.txt'}
+THIRD_PARTY_LICENSE_FILES.update({
+    'ffmpeg': 'ffmpeg-LGPL-3.0-NOTICES.txt',
+    'openh264': 'openh264-BSD-2-Clause.txt',
+})
 ADK_WEB_NOTICE_FILE = "google-adk-web-THIRD-PARTY-NOTICES.txt"
 
 REQ_NAME_RE = re.compile(r"^\s*([A-Za-z0-9_.-]+)(?:\[[^\]]+\])?\s*(.*)$")

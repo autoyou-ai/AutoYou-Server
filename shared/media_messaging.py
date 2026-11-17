@@ -184,6 +184,8 @@ def load_attachment_bytes(attachment: Dict[str, Any]) -> Tuple[Optional[bytes], 
     if path_value and os.path.exists(path_value):
         try:
             path = Path(path_value)
+            if path.stat().st_size > max_bytes:
+                return None, f"{os.path.basename(path_value)} exceeds {max_bytes} byte limit"
             raw = path.read_bytes()
             data = read_secure_file(path) if raw.startswith(SPM_FILE_HEADER) else raw
             if len(data) > max_bytes:

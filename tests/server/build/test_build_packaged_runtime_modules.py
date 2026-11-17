@@ -3,6 +3,7 @@
 # See LICENSE in the project root for license information.
 
 from pathlib import Path
+from threading import Barrier
 
 import pytest
 
@@ -12,6 +13,31 @@ import scripts.build_packaged_runtime_modules as runtime_builder
 def _write_text(path: Path, content: str = "pass\n") -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
+
+
+def test_macos_builds_independent_runtime_modules_concurrently(tmp_path, monkeypatch):
+    paths = (Path("pkg/a.py"), Path("pkg/b.py"))
+    plan = runtime_builder.RuntimeModulePlan(
+        tuple(map(runtime_builder.ModuleBuildSpec, paths)), (), (), ()
+    )
+    barrier = Barrier(2, timeout=5)
+    roots = []
+
+    def fake_compile(*, build_root, output_root, spec, job_count, **_kwargs):
+        assert job_count == 2
+        roots.append(build_root)
+        barrier.wait()
+        _write_text(output_root / spec.source_relative_path.with_suffix(".so"))
+
+    monkeypatch.setattr(runtime_builder.sys, "platform", "darwin")
+    monkeypatch.setattr(runtime_builder, "build_runtime_module_plan", lambda *_a, **_kw: plan)
+    monkeypatch.setattr(runtime_builder, "_run_nuitka_module_build", fake_compile)
+    manifest = runtime_builder.build_packaged_runtime_modules(
+        repo_root=tmp_path, bundle_root=tmp_path / "bundle", build_root=tmp_path / "work",
+        job_count=4, extra_nuitka_args=(),
+    )
+    assert len(set(roots)) == 2
+    assert set(manifest["files"]) == {f"runtime_modules/{path.with_suffix('.so')}" for path in paths}
 
 
 def _populate_required_runtime_sources(repo_root: Path) -> None:

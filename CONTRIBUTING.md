@@ -73,9 +73,10 @@ safe. See [requirements/README.md](requirements/README.md).
 
 Existing provenance comments and debug markers are maintainer traces. They
 do not expand or reduce license rights. Preserve them when editing.
-See [PROVENANCE.md](PROVENANCE.md) for the voluntary contribution game and the
-educational permission proposed for legal approval. Markers authorize no tasks
-or payments.
+See [PROVENANCE.md](PROVENANCE.md) for the provenance, attribution, and
+license-compliance policy, including permissive personal, educational, and
+demonstration use versus commercial licensing requirements. Markers authorize
+no automatic tasks or payments.
 
 ## AI-assisted work
 

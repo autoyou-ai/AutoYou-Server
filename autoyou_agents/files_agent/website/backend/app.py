@@ -13,6 +13,7 @@ __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 import base64
 import mimetypes
 import os
+import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
@@ -137,9 +138,33 @@ def _entry_payload(path: Path) -> Dict[str, Any]:
     }
 
 
-def _locations() -> list[Dict[str, str]]:
+def _windows_drive_roots() -> list[str]:
+    listdrives = getattr(os, "listdrives", None)
+    if callable(listdrives):
+        return list(listdrives())
+    # Python 3.11 and packaged runtimes also need every mapped/local drive.
+    import ctypes
+    mask = ctypes.windll.kernel32.GetLogicalDrives()
+    return [f"{chr(65 + index)}:\\" for index in range(26) if mask & (1 << index)]
+
+
+def _mounted_drive_roots() -> list[Path]:
+    roots = [Path("/")]
+    for parent in (Path("/Volumes"), Path("/media"), Path("/mnt"), Path("/run/media")):
+        try:
+            for child in parent.iterdir():
+                if os.path.ismount(child):
+                    roots.append(child)
+                elif child.is_dir():
+                    roots.extend(path for path in child.iterdir() if os.path.ismount(path))
+        except OSError:
+            continue
+    return roots
+
+
+def _locations() -> list[Dict[str, Any]]:
     seen: set[str] = set()
-    rows: list[Dict[str, str]] = []
+    rows: list[Dict[str, Any]] = []
 
     def add(label: str, path: Path, kind: str) -> None:
         try:
@@ -153,7 +178,14 @@ def _locations() -> list[Dict[str, str]]:
         if key in seen:
             return
         seen.add(key)
-        rows.append({"label": label, "path": _path_text(resolved), "kind": kind})
+        row = {"label": label, "path": _path_text(resolved), "kind": kind}
+        if kind == "drive":
+            try:
+                usage = shutil.disk_usage(resolved)
+                row.update(total_bytes=usage.total, free_bytes=usage.free, used_bytes=usage.used)
+            except OSError:
+                pass
+        rows.append(row)
 
     workspace = _default_workspace_root()
     add("Workspace", workspace, "workspace")
@@ -162,12 +194,11 @@ def _locations() -> list[Dict[str, str]]:
     for label in ("Desktop", "Documents", "Downloads", "Pictures"):
         add(label, home / label, "folder")
     if os.name == "nt":
-        listdrives = getattr(os, "listdrives", None)
-        drives = listdrives() if callable(listdrives) else sorted({Path.home().anchor, workspace.anchor})
-        for drive in drives:
+        for drive in _windows_drive_roots():
             add(str(drive).rstrip("\\/") or str(drive), Path(drive), "drive")
     else:
-        add("Computer", Path("/"), "drive")
+        for drive in _mounted_drive_roots():
+            add("Computer" if drive == Path("/") else drive.name, drive, "drive")
     return rows
 
 

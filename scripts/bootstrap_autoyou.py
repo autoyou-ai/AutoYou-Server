@@ -51,7 +51,7 @@ __debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-via-d75fad4170445a6251a427b1"
 _monotonic = time.monotonic
 import zipfile
 from pathlib import Path
-from typing import Callable, Iterable, List, Sequence
+from typing import Any, Callable, Iterable, List, Optional, Sequence
 from urllib.request import Request, urlopen
 
 def _load_dotenv_fallback(
@@ -485,6 +485,22 @@ def resolve_components(profile: str, with_values: Sequence[str], without_values:
     if "base" not in components:
         components.insert(0, "base")
     return components
+
+
+def resolve_optional_components(
+    components: Sequence[str], optional_values: Sequence[str], without_values: Sequence[str]
+) -> List[str]:
+    """Components to try to install on top of ``components``; ``--without`` still wins."""
+    excluded = set(parse_component_values(without_values))
+    optional: List[str] = []
+    for component in parse_component_values(optional_values):
+        if component not in COMPONENT_REQUIREMENTS:
+            raise BootstrapError(
+                f"Unknown component '{component}'. Choose from: {', '.join(COMPONENT_REQUIREMENTS)}"
+            )
+        if component not in components and component not in excluded and component not in optional:
+            optional.append(component)
+    return optional
 
 
 def venv_python_path() -> Path:
@@ -1294,35 +1310,66 @@ def install_requirements(
     before_component: Callable[[str], dict[str, str]] | None = None,
     upgrade: bool = False,
     torch_pins: dict[str, str] | None = None,
-) -> None:
+    optional: Sequence[str] = (),
+) -> List[str]:
+    """Install each component's requirements; return the optional ones that failed.
+
+    A required component that fails stops bootstrap. An optional one (from
+    ``--with-optional``) is reported and skipped, so the server still starts.
+    """
+    skipped: List[str] = []
     constraints = build_locked_constraints(torch_pins=torch_pins)
     if constraints is not None:
         info(f"Pinning installs to audited lockfile versions via {constraints.name}")
     for component in components:
-        dynamic_env: dict[str, str] = {}
-        if before_component is not None:
-            dynamic_env = before_component(component) or {}
-        req_name = COMPONENT_REQUIREMENTS[component]
-        req_path = REQUIREMENTS_DIR / req_name
-        if not req_path.exists():
-            raise BootstrapError(f"Missing requirements file: {req_path}")
-        info(f"Installing '{component}' profile from {req_path.relative_to(REPO_ROOT)}...")
-        install_overrides = dict((component_env or {}).get(component) or {})
-        install_overrides.update(dynamic_env)
-        install_env = merge_env(install_overrides)
-        if component == "voice":
-            # Replace a reused legacy RealtimeSTT 0.x install before pip sees
-            # voice.txt's newer scipy/faster-whisper/websocket pins. The
-            # server-safe 1.0.2 shim is intentionally installed separately.
-            install_realtimestt_runtime(venv_python)
-        verified_pip_install(
-            venv_python,
-            ["-r", str(req_path)],
-            constraints=constraints,
-            env=install_env,
-            upgrade=upgrade,
-        )
-        success(f"Installed '{component}' dependencies")
+        if component in optional:
+            try:
+                _install_component_requirements(
+                    venv_python, component, constraints, component_env, before_component, upgrade
+                )
+            except BootstrapError as exc:
+                warn(
+                    f"Optional component '{component}' could not be installed ({exc}); continuing without it. "
+                    f"Run bootstrap with --with {component} to see the full error."
+                )
+                skipped.append(component)
+            continue
+        _install_component_requirements(venv_python, component, constraints, component_env, before_component, upgrade)
+    return skipped
+
+
+def _install_component_requirements(
+    venv_python: Path,
+    component: str,
+    constraints: Any,
+    component_env: dict[str, dict[str, str]] | None,
+    before_component: Callable[[str], dict[str, str]] | None,
+    upgrade: bool,
+) -> None:
+    dynamic_env: dict[str, str] = {}
+    if before_component is not None:
+        dynamic_env = before_component(component) or {}
+    req_name = COMPONENT_REQUIREMENTS[component]
+    req_path = REQUIREMENTS_DIR / req_name
+    if not req_path.exists():
+        raise BootstrapError(f"Missing requirements file: {req_path}")
+    info(f"Installing '{component}' profile from {req_path.relative_to(REPO_ROOT)}...")
+    install_overrides = dict((component_env or {}).get(component) or {})
+    install_overrides.update(dynamic_env)
+    install_env = merge_env(install_overrides)
+    if component == "voice":
+        # Replace a reused legacy RealtimeSTT 0.x install before pip sees
+        # voice.txt's newer scipy/faster-whisper/websocket pins. The
+        # server-safe 1.0.2 shim is intentionally installed separately.
+        install_realtimestt_runtime(venv_python)
+    verified_pip_install(
+        venv_python,
+        ["-r", str(req_path)],
+        constraints=constraints,
+        env=install_env,
+        upgrade=upgrade,
+    )
+    success(f"Installed '{component}' dependencies")
 
 
 def install_realtimestt_runtime(venv_python: Path) -> None:
@@ -2144,12 +2191,68 @@ def preseed_tunnelmole(venv_python: Path) -> None:
         warn(f"Tunnelmole runtime check failed: {exc}. Pairing availability was not verified.")
 
 
-def start_ollama_if_possible() -> None:
+# Ollama server settings used when bootstrap starts Ollama itself. Flash
+# attention lets Ollama keep the context cache in 8 bits, which roughly halves
+# the memory each token of context takes. A value the user already set is kept.
+OLLAMA_SERVE_DEFAULTS = {"OLLAMA_FLASH_ATTENTION": "1", "OLLAMA_KV_CACHE_TYPE": "q8_0"}
+DEFAULT_OLLAMA_MODEL = "ministral-3:8b"
+
+
+def ollama_installed_models() -> Optional[List[str]]:
+    request = Request("http://127.0.0.1:11434/api/tags", headers={"User-Agent": "AutoYou-Bootstrap"})
+    try:
+        with urlopen(request, timeout=5) as response:
+            data = json.loads(response.read() or b"{}")
+    except Exception:
+        return None
+    return [str(item.get("name") or item.get("model") or "") for item in data.get("models") or []]
+
+
+def ensure_default_ollama_model(ollama: Optional[str], pull: bool) -> None:
+    """Say how to get the default model when it is missing, or download it when asked to."""
+    model = str(os.environ.get("OLLAMA_MODEL") or DEFAULT_OLLAMA_MODEL).strip()
+    installed = ollama_installed_models()
+    if installed is None or not model:
+        return
+    tagged = model if ":" in model else f"{model}:latest"
+    if any(name in {model, tagged} for name in installed):
+        return
+    if pull and ollama:
+        info(f"Downloading the default Ollama model {model} (several GB)...")
+        try:
+            run_command([ollama, "pull", model])
+            success(f"Downloaded {model}")
+        except BootstrapError as exc:
+            warn(f"Could not download {model}: {exc}")
+        return
+    meanwhile = " AutoYou uses another installed model meanwhile." if installed else ""
+    info(
+        f"The default Ollama model {model} is not installed. Download it with 'ollama pull {model}', "
+        f"or run bootstrap with --pull-default-model.{meanwhile}"
+    )
+
+
+def suggest_ollama_memory_settings() -> None:
+    """For an Ollama that bootstrap did not start, say how to get the smaller context cache."""
+    if all(os.environ.get(key) for key in OLLAMA_SERVE_DEFAULTS):
+        return
+    hint = (
+        "Tip: give Ollama OLLAMA_FLASH_ATTENTION=1 and OLLAMA_KV_CACHE_TYPE=q8_0, then restart it, to roughly "
+        "halve the memory a context window takes."
+    )
+    if platform.system() == "Darwin":
+        hint += " For the Ollama app: launchctl setenv OLLAMA_FLASH_ATTENTION 1; launchctl setenv OLLAMA_KV_CACHE_TYPE q8_0."
+    info(hint)
+
+
+def start_ollama_if_possible(pull_default_model: bool = False) -> None:
+    ollama = resolve_executable("ollama")
     if ollama_is_reachable():
         success("Ollama is already reachable at http://127.0.0.1:11434")
+        suggest_ollama_memory_settings()
+        ensure_default_ollama_model(ollama, pull_default_model)
         return
 
-    ollama = resolve_executable("ollama")
     if not ollama:
         warn("Ollama is not installed. Install it from https://ollama.com/download if you want local models.")
         return
@@ -2159,17 +2262,23 @@ def start_ollama_if_possible() -> None:
         if system == "Darwin" and Path("/Applications/Ollama.app").exists():
             info("Launching Ollama.app...")
             subprocess.run(["open", "-a", "Ollama"], check=False)
+            suggest_ollama_memory_settings()
         else:
-            info("Starting 'ollama serve' in the background...")
-            kwargs: dict[str, object] = {
-                "stdout": subprocess.DEVNULL,
-                "stderr": subprocess.DEVNULL,
-            }
+            env = os.environ.copy()
+            for key, value in OLLAMA_SERVE_DEFAULTS.items():
+                env.setdefault(key, value)
+                # The server reads these to size the context window to the GPU.
+                os.environ.setdefault(key, value)
+            log_path = REPO_ROOT / "logs" / "ollama.log"
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            info(f"Starting 'ollama serve' in the background (8-bit context cache; log: {log_path})...")
+            kwargs: dict[str, object] = {"stderr": subprocess.STDOUT, "env": env}
             if os.name == "nt":
                 kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
             else:
                 kwargs["start_new_session"] = True
-            subprocess.Popen([ollama, "serve"], cwd=str(REPO_ROOT), **kwargs)
+            with open(log_path, "ab") as log_handle:
+                subprocess.Popen([ollama, "serve"], cwd=str(REPO_ROOT), stdout=log_handle, **kwargs)
     except OSError as exc:
         warn(f"Ollama command exists but could not be launched: {exc}")
         return
@@ -2177,6 +2286,7 @@ def start_ollama_if_possible() -> None:
     time.sleep(3)
     if ollama_is_reachable():
         success("Ollama responded after startup")
+        ensure_default_ollama_model(ollama, pull_default_model)
     else:
         warn("Ollama was launched but is not responding yet. Open the app or run 'ollama serve' manually if needed.")
 
@@ -2293,6 +2403,19 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--profile", default="recommended", choices=sorted(PROFILE_COMPONENTS))
     parser.add_argument("--with", dest="with_components", action="append", default=[], metavar="COMPONENTS")
     parser.add_argument("--without", dest="without_components", action="append", default=[], metavar="COMPONENTS")
+    parser.add_argument(
+        "--with-optional",
+        dest="optional_components",
+        action="append",
+        default=[],
+        metavar="COMPONENTS",
+        help="Install these components when possible; if one fails, setup continues without it.",
+    )
+    parser.add_argument(
+        "--pull-default-model",
+        action="store_true",
+        help="Download the default Ollama model when it is not installed (several GB).",
+    )
     parser.add_argument("--skip-install", action="store_true", help="Reuse the existing environment without pip installs.")
     parser.add_argument("--install-only", action="store_true", help="Prepare the environment, then exit without starting the server.")
     parser.add_argument("--skip-playwright", action="store_true", help="Do not install Playwright browsers.")
@@ -2437,6 +2560,10 @@ def main(argv: Sequence[str]) -> int:
     args = parse_args(argv)
     report_remote_desktop_input_readiness()
     components = resolve_components(args.profile, args.with_components, args.without_components)
+    optional_components = resolve_optional_components(
+        components, args.optional_components, args.without_components
+    )
+    components.extend(optional_components)
 
     print_profile_summary(args.profile, components)
 
@@ -2460,13 +2587,16 @@ def main(argv: Sequence[str]) -> int:
                 return ensure_voice_native_dependencies(venv_python)
             return {}
 
-        install_requirements(
+        skipped_optional = install_requirements(
             venv_python,
             components,
             before_component=before_component_install,
             upgrade=upgrade_requested,
             torch_pins=torch_pins,
+            optional=optional_components,
         )
+        for component in skipped_optional:
+            components.remove(component)
         reconcile_runtime_dependency_drift(venv_python, components, torch_pins=torch_pins)
         if "local-llm" in components:
             run_command([str(venv_python), str(REPO_ROOT / "scripts/prepare_intent_router.py")])
@@ -2512,7 +2642,9 @@ def main(argv: Sequence[str]) -> int:
         preseed_tunnelmole(venv_python)
 
     if "local-llm" in components and not args.skip_ollama:
-        start_ollama_if_possible()
+        start_ollama_if_possible(
+            pull_default_model=bool(args.pull_default_model) or env_flag("AUTOYOU_OLLAMA_PULL_DEFAULT")
+        )
 
     if args.service == "autoyou":
         report_autoyou_config_storage_status()

@@ -7,7 +7,7 @@ set -uo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-AUTOYOU_BUILD_VERSION="81.4.0"
+AUTOYOU_BUILD_VERSION="81.7.0"
 if [ -f "$SCRIPT_DIR/VERSION" ]; then
     AUTOYOU_BUILD_VERSION="$(head -n 1 "$SCRIPT_DIR/VERSION" | tr -d '\r\n')"
 fi
@@ -41,4 +41,6 @@ fi
 # still removes the component during bootstrap.
 # Bootstrap installs the pinned Node pairing client before checking availability;
 # --skip-tunnelmole skips that check, not the installed client's use by /pair.
-exec "$PYTHON_CMD" scripts/bootstrap_autoyou.py --with internet "$@"
+# Voice (speech-to-text, text-to-speech) is installed when it can be; if it
+# fails, the launch continues without it. --without voice skips it.
+exec "$PYTHON_CMD" scripts/bootstrap_autoyou.py --with internet --with-optional voice "$@"

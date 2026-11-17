@@ -33,6 +33,11 @@ __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 import argparse
+import base64
+import csv
+import hashlib
+import importlib.metadata
+import io
 import json
 import os
 import subprocess
@@ -47,6 +52,78 @@ WORKER_SCRIPT = REPO_ROOT / "shared" / "voice_clone_worker.py"
 CHATTERBOX_SPEC = "chatterbox-tts==0.1.7"
 RUNTIME_DIRNAME = "voice_clone_runtime"
 SUPPORTED_PYTHONS = ((3, 10), (3, 11), (3, 12), (3, 13))
+PERTH_VERSION = "1.0.1"
+PERTH_RESOURCES_OLD = (
+    'from pkg_resources import resource_filename\n'
+    'PREPACKAGED_MODELS_DIR = resource_filename(__name__, "pretrained")\n'
+)
+PERTH_RESOURCES_NEW = (
+    'from pathlib import Path\n'
+    'PREPACKAGED_MODELS_DIR = str(Path(__file__).resolve().parent / "pretrained")\n'
+)
+
+
+def patch_perth_resources(site_packages: Path) -> bool:
+    """Backport the resource lookup only, retaining Perth's model and watermark.
+
+    Work only in the explicitly selected runtime. Never import Perth or fall
+    back to a distribution inherited from another Python environment.
+    """
+    root = site_packages.resolve()
+    matches = [dist for dist in importlib.metadata.distributions(path=[str(root)])
+               if dist.metadata.get("Name", "").lower().replace("_", "-") == "resemble-perth"]
+    if len(matches) != 1 or matches[0].version != PERTH_VERSION:
+        raise RuntimeError(f"Expected resemble-perth {PERTH_VERSION} in the voice runtime")
+    dist = matches[0]
+    package_file = root / "perth/perth_net/__init__.py"
+    records = [root / item for item in (dist.files or ()) if str(item).replace("\\", "/").endswith(".dist-info/RECORD")]
+    if len(records) != 1:
+        raise RuntimeError("Perth's wheel RECORD is missing or ambiguous")
+    record = records[0]
+    provenance = record.parent / "AUTOYOU-PATCHES.json"
+    for path in (package_file, record, provenance):
+        if not path.resolve().is_relative_to(root):
+            raise RuntimeError("Refusing to patch Perth outside the selected runtime")
+    original = package_file.read_text(encoding="utf-8")
+    suffix = '\nfrom .perth_net_implicit.perth_watermarker import PerthImplicitWatermarker\n'
+    if original not in (PERTH_RESOURCES_OLD + suffix, PERTH_RESOURCES_NEW + suffix):
+        raise RuntimeError("Perth's resource module differs from the reviewed 1.0.1 source")
+    patched = (PERTH_RESOURCES_NEW + suffix).encode("utf-8")
+    evidence = (json.dumps({
+        "upstream": "resemble-perth", "version": PERTH_VERSION,
+        "patch": "stdlib-resource-path-2026-11-07", "license": "MIT",
+        "file": "perth/perth_net/__init__.py",
+        "before_sha256": hashlib.sha256((PERTH_RESOURCES_OLD + suffix).encode()).hexdigest(),
+        "after_sha256": hashlib.sha256(patched).hexdigest(),
+        "scope": "Replace pkg_resources lookup only; model files and watermark code unchanged",
+    }, indent=2) + "\n").encode("utf-8")
+    updates = {package_file.relative_to(root).as_posix(): patched,
+               provenance.relative_to(root).as_posix(): evidence}
+    rows = list(csv.reader(io.StringIO(record.read_text(encoding="utf-8"))))
+    rows = [row for row in rows if row and row[0] not in updates]
+    for name, data in updates.items():
+        digest = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(b"=").decode()
+        rows.append([name, "sha256=" + digest, str(len(data))])
+    output = io.StringIO(newline="")
+    csv.writer(output, lineterminator="\n").writerows(rows)
+    updates[record.relative_to(root).as_posix()] = output.getvalue().encode("utf-8")
+    changed = False
+    for name, data in updates.items():
+        path = root / name
+        if not path.exists() or path.read_bytes() != data:
+            # An interrupted install must not leave a truncated Python module
+            # which the strict source check cannot safely recognize next time.
+            temporary = None
+            try:
+                with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".autoyou-patch-", delete=False) as handle:
+                    temporary = Path(handle.name)
+                    handle.write(data)
+                os.replace(temporary, path)
+            finally:
+                if temporary is not None:
+                    temporary.unlink(missing_ok=True)
+            changed = True
+    return changed
 
 
 def default_target() -> Path:
@@ -151,7 +228,10 @@ def install(
             torch_args += ["--index-url", torch_index_url]
         _run(pip_command(python, *torch_args), dry_run=dry_run)
 
-    with tempfile.TemporaryDirectory(prefix="autoyou-voice-clone-") as scratch:
+    test_root = os.environ.get("AUTOYOU_TEST_ROOT")
+    if test_root:
+        Path(test_root).mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="autoyou-voice-clone-", dir=test_root) as scratch:
         constraints = Path(scratch) / "constraints.txt"
         if dry_run:
             pinned = {"torch": "<installed>", "numpy": "<installed>"}
@@ -167,6 +247,15 @@ def install(
             constraints.write_text("".join(f"{name}=={value}\n" for name, value in pinned.items()), encoding="utf-8")
         print("Keeping " + ", ".join(f"{name} {value}" for name, value in pinned.items()))
         _run(pip_command(python, "-r", str(REQUIREMENTS_FILE), "-c", str(constraints)), dry_run=dry_run)
+        # A reused Torch environment's .pth may also expose Perth. Pip could
+        # otherwise consider that borrowed copy satisfied and leave no local
+        # copy to patch. Ignore it without uninstalling or editing the donor.
+        _run(pip_command(python, "--ignore-installed", "--no-deps", f"resemble-perth=={PERTH_VERSION}"), dry_run=dry_run)
+        if not dry_run:
+            site_packages = _site_packages(python).resolve()
+            if not site_packages.is_relative_to(venv_dir.resolve()):
+                raise RuntimeError("Refusing to patch packages outside the voice-clone venv")
+            patch_perth_resources(site_packages)
         _run(pip_command(python, "--no-deps", CHATTERBOX_SPEC), dry_run=dry_run)
 
     if not dry_run:

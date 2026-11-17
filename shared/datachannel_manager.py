@@ -721,6 +721,11 @@ class DataChannelManager:
             role: Either 'server' or 'client' to determine behavior
             runtime_settings: Optional explicit transport tuning overrides
         """
+        self.chat_file_limit = 5 * 1024**3
+        self.chat_file_allow_uploads = True
+        self.chat_file_scope = uuid.uuid4().hex
+        self._chat_file_store = None
+        self._chat_file_waiters = {}
         self.role = role.lower()
         if self.role not in ['server', 'client']:
             raise ValueError("Role must be either 'server' or 'client'")
@@ -753,6 +758,8 @@ class DataChannelManager:
             ),
         )
         self._adaptive_frame_size: int = self._adaptive_frame_ceiling
+        self._adaptive_clean_send_streak: int = 0
+        self._last_chunked_send_had_retry: bool = False
         # A lost final ACK can make a sender retry a message the receiver already
         # dispatched. Keep a small TTL cache so adaptive fallback is at-least-once
         # on the wire but at-most-once at the application handler.
@@ -805,6 +812,9 @@ class DataChannelManager:
         """Set the datachannel for message sending"""
         if self.datachannel is not datachannel:
             self.binary_http_supported = False
+            self._adaptive_frame_size = self._adaptive_frame_ceiling
+            self._adaptive_clean_send_streak = 0
+            self._last_chunked_send_had_retry = False
             self._binary_body_inbox.clear()
             self._binary_response_sequences.clear()
             for future in self._binary_window_waiters.values():
@@ -988,17 +998,24 @@ class DataChannelManager:
         adaptive_delay = max(base_delay, pressure_component, wait_component, retry_component)
         return min(adaptive_delay, min(self._ack_timeout / 2.0, 0.75))
 
-    async def _wait_for_buffer_capacity(self) -> tuple[int, int]:
+    async def _wait_for_buffer_capacity(
+        self,
+        high_watermark_bytes: Optional[int] = None,
+    ) -> tuple[int, int]:
         """Throttle sends when the SCTP buffer is already backed up."""
         if self.datachannel is None or not hasattr(self.datachannel, 'bufferedAmount'):
             return 0, 0
 
+        watermark = int(
+            high_watermark_bytes
+            if high_watermark_bytes is not None
+            else self.runtime_settings.buffered_amount_high_watermark_bytes
+        )
         wait_iterations = 0
         peak_buffered_amount = self._current_buffered_amount()
         while (
             self._ensure_transport_ready()
-            and self._current_buffered_amount()
-            > self.runtime_settings.buffered_amount_high_watermark_bytes
+            and self._current_buffered_amount() > watermark
         ):
             peak_buffered_amount = max(peak_buffered_amount, self._current_buffered_amount())
             wait_iterations += 1
@@ -1022,6 +1039,7 @@ class DataChannelManager:
         *,
         max_chunk_size: int,
     ) -> bool:
+        self._last_chunked_send_had_retry = False
         chunks = self.chunker.chunk_message(
             message,
             max_chunk_size=max_chunk_size,
@@ -1157,6 +1175,7 @@ class DataChannelManager:
                                 continue
                             retries = retries_by_index.get(chunk_info.chunk_index, 0) + 1
                             retries_by_index[chunk_info.chunk_index] = retries
+                            self._last_chunked_send_had_retry = True
                             logger.warning(
                                 f"⏱ ACK timeout for chunk {chunk_info.chunk_index}/{chunk_info.total_chunks} "
                                 f"(chunk_id={chunk_info.chunk_id}); retry {retries}/{self._ack_max_retries} "
@@ -1212,19 +1231,61 @@ class DataChannelManager:
 
         return True
 
+    def _next_adaptive_frame_step_up(self, frame_size: int) -> Optional[int]:
+        """Return the next larger adaptive frame size rung up to the ceiling."""
+        larger = [
+            size
+            for size in reversed(ADAPTIVE_FRAME_SIZE_STEPS)
+            if frame_size < size <= self._adaptive_frame_ceiling
+        ]
+        return larger[0] if larger else None
+
+    def _update_adaptive_frame_size_after_send(
+        self,
+        *,
+        starting_frame_size: int,
+        succeeded_frame_size: int,
+        had_retry: bool,
+    ) -> None:
+        self._adaptive_frame_size = succeeded_frame_size
+        if (
+            had_retry
+            or succeeded_frame_size < starting_frame_size
+            or succeeded_frame_size >= self._adaptive_frame_ceiling
+        ):
+            self._adaptive_clean_send_streak = 0
+            return
+        self._adaptive_clean_send_streak += 1
+        if self._adaptive_clean_send_streak >= 3:
+            next_size = self._next_adaptive_frame_step_up(succeeded_frame_size)
+            self._adaptive_clean_send_streak = 0
+            if next_size is not None:
+                self._adaptive_frame_size = next_size
+                logger.info(
+                    "Recovering adaptive chunk frame size %s -> %s after 3 clean transfers",
+                    succeeded_frame_size,
+                    next_size,
+                )
+
     async def _send_chunked_message(self, message: DataChannelMessage) -> bool:
         """Send oversized messages with ACK-backed adaptive frame sizing."""
+        starting_frame_size = self._adaptive_frame_size
         for frame_size in self._adaptive_frame_size_candidates():
             if not self._ensure_transport_ready(message):
                 return False
             if await self._send_chunked_message_once(message, max_chunk_size=frame_size):
-                self._adaptive_frame_size = frame_size
+                self._update_adaptive_frame_size_after_send(
+                    starting_frame_size=starting_frame_size,
+                    succeeded_frame_size=frame_size,
+                    had_retry=self._last_chunked_send_had_retry,
+                )
                 return True
             if frame_size > DEFAULT_MAX_CHUNK_SIZE:
                 logger.warning(
                     "Chunk ACK delivery failed for %s-byte frames; stepping down",
                     frame_size,
                 )
+        self._adaptive_clean_send_streak = 0
         return False
 
     def _remember_completed_chunk_message(self, message_id: str) -> bool:
@@ -1262,11 +1323,18 @@ class DataChannelManager:
             if sequence % WINDOW_FRAMES == 0:
                 window = asyncio.get_running_loop().create_future()
                 self._binary_window_waiters[(request_id, sequence)] = window
-            await self._wait_for_buffer_capacity()
+            # Allow at least one full Binary HTTP ACK window (512 KiB) in the
+            # SCTP buffer so 32-frame windows do not stall mid-burst on 256 KiB.
+            binary_watermark = max(
+                int(self.runtime_settings.buffered_amount_high_watermark_bytes),
+                512 * 1024,
+            )
+            await self._wait_for_buffer_capacity(high_watermark_bytes=binary_watermark)
             if self.datachannel is not channel or not self.connection_active or getattr(channel, "readyState", "open") != "open":
                 return False
             channel.send(frame)
-            await asyncio.sleep(0)
+            if sequence % 8 == 0:
+                await asyncio.sleep(0)
             if window is not None and not await asyncio.wait_for(window, timeout=30):
                 return False
             return True
@@ -1482,6 +1550,35 @@ class DataChannelManager:
                 logger.error("Peer relay interceptor failed; dropping message: %s", e)
                 return message
 
+        from shared.chat_file_transfer import PREFIX, ChatFileStore
+        kind = message.header.message_type
+        payload = message.payload
+        if kind == MessageType.HTTP_RESPONSE and str(payload.get('request_id', '')).startswith('cf-'):
+            pending = self._chat_file_waiters.get(payload.get('request_id'))
+            if pending is not None and not pending.done():
+                pending.set_result(payload)
+            return message
+        if kind == MessageType.HTTP_REQUEST and str(payload.get('url', '')).startswith(PREFIX + '/'):
+            if self._chat_file_store is None:
+                self._chat_file_store = ChatFileStore(limit=self.chat_file_limit, scope=self.chat_file_scope)
+            try:
+                body = payload.get('body') or '{}'
+                if len(body) > 600000: raise ValueError('Chat file request is too large')
+                if payload.get('body_base64'):
+                    body = base64.b64decode(body, validate=True).decode('utf8')
+                value = json.loads(body)
+                if not self.chat_file_allow_uploads and payload.get('url') != PREFIX + '/read':
+                    raise ValueError('Only this Lobby host can send files')
+                result = await asyncio.to_thread(self._chat_file_store.request, payload.get('method'), payload.get('url'), value)
+                status = 200
+            except Exception as exc:
+                result, status = {'error': str(exc)}, 400
+            await self.send_message(create_http_response_message(status, {'Content-Type':'application/json'}, json.dumps(result),
+                payload.get('request_id') or message.header.message_id, session_id=message.header.session_id))
+            return message
+        if kind == MessageType.CHAT and self.role == 'server' and self._chat_file_store is not None:
+            self._chat_file_store.resolve_context(payload)
+
         message_type = message.header.message_type
 
         if message_type == MessageType.HTTP_BODY_ACK:
@@ -1578,6 +1675,28 @@ class DataChannelManager:
             await self._send_error_response(f"Unsupported message type: {message_type.value}")
 
         return message
+
+    async def _request_chat_file(self, method, path, body):
+        request_id = 'cf-' + str(uuid.uuid4())
+        future = asyncio.get_running_loop().create_future()
+        self._chat_file_waiters[request_id] = future
+        try:
+            message = create_http_request_message(method, path, {'Content-Type':'application/json'},
+                json.dumps(body or {}), session_id=self.session_id)
+            message.header.message_id = request_id
+            message.payload['request_id'] = request_id
+            if not await self.send_message(message):
+                raise ConnectionError('The file receiver is no longer connected')
+            response = await asyncio.wait_for(future, 180 if path.endswith("/finish") else 30)
+            if not 200 <= int(response.get('status_code', 0)) < 300:
+                raise ValueError('The receiver could not accept this chat file; update the receiver or check its free storage')
+            return json.loads(response.get('body') or '{}')
+        finally:
+            self._chat_file_waiters.pop(request_id, None)
+
+    async def upload_chat_files(self, files, *, limit=None):
+        from shared.chat_file_transfer import upload_files
+        return await upload_files(files, self._request_chat_file, limit=self.chat_file_limit if limit is None else limit, scope=self.chat_file_scope)
 
     def _create_chunk_ack(self, chunk_message: DataChannelMessage) -> DataChannelMessage:
         """Create a CHUNK_ACK message acknowledging one received chunk."""
@@ -1820,10 +1939,29 @@ class DataChannelManager:
                 logger.error(f"Error in periodic ping: {e}")
                 await asyncio.sleep(5.0)
 
+    async def fetch_chat_files(self, attachments):
+        from shared.chat_file_transfer import ChatFileStore, fetch_file
+        if self._chat_file_store is None:
+            self._chat_file_store = ChatFileStore(limit=self.chat_file_limit, scope=self.chat_file_scope)
+        for item in attachments:
+            if isinstance(item.get('file_ref'), dict):
+                await fetch_file(item, self._request_chat_file, self._chat_file_store)
+
     def disconnect(self):
         """Mark connection as inactive and cleanup"""
         self.connection_active = False
+        for future in self._chat_file_waiters.values():
+            if not future.done(): future.set_exception(DataChannelSendAbortedError("File transfer disconnected"))
+        self._chat_file_waiters.clear()
+        if self._chat_file_store is not None:
+            try:
+                asyncio.get_running_loop().create_task(asyncio.to_thread(self._chat_file_store.close))
+            except RuntimeError:
+                self._chat_file_store.close()
         self.datachannel = None
+        self._adaptive_frame_size = self._adaptive_frame_ceiling
+        self._adaptive_clean_send_streak = 0
+        self._last_chunked_send_had_retry = False
         self._abort_pending_ack_waiters("DataChannel disconnected")
         self._ping_sent_at_monotonic.clear()
         for waiter in self._pong_waiters.values():

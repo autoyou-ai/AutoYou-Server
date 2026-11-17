@@ -18,6 +18,7 @@ __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 
+import sys
 from typing import Any, Dict, Iterable, Optional, Tuple
 
 from .remote_desktop_keyboard import (
@@ -139,7 +140,7 @@ def normalize_remote_desktop_input_payload(payload: Any) -> Optional[Dict[str, A
         normalized.update({"button": button, "phase": phase})
         x = _bounded_float(payload.get("x"), 0.0, 1.0)
         y = _bounded_float(payload.get("y"), 0.0, 1.0)
-        if (x is None) != (y is None):
+        if ("x" in payload or "y" in payload) and (x is None or y is None):
             return None
         if x is not None and y is not None:
             normalized.update({"x": x, "y": y})
@@ -157,6 +158,14 @@ def _control_backend(pyautogui: Any = None) -> Any:
     if pyautogui is not None:
         return pyautogui
     return load_remote_input_backend()
+
+
+def remote_desktop_cursor_position() -> Optional[Tuple[int, int]]:
+    try:
+        x, y = _control_backend().position()
+        return int(x), int(y)
+    except Exception:
+        return None
 
 
 # Importing this module only proves the protocol is present. The backend that
@@ -243,7 +252,11 @@ def _absolute_point(track: Any, payload: Dict[str, Any]) -> Optional[Tuple[int, 
     return int(point[0]), int(point[1])
 
 
-def execute_remote_desktop_input(payload: Any, *, track: Any, pyautogui: Any = None) -> bool:
+def execute_remote_desktop_input(
+    payload: Any, *, track: Any, pyautogui: Any = None,
+    relative_remainder: Optional[Dict[str, float]] = None,
+    drag_button: Optional[str] = None,
+) -> bool:
     normalized = normalize_remote_desktop_input_payload(payload)
     if normalized is None or track is None:
         return False
@@ -260,20 +273,33 @@ def execute_remote_desktop_input(payload: Any, *, track: Any, pyautogui: Any = N
 
         input_type = normalized["input_type"]
         if input_type == "move":
+            # Quartz distinguishes mouse movement from a drag while a button is held.
+            drag = sys.platform == "darwin" and drag_button in ALLOWED_BUTTONS
             if normalized["coordinate_mode"] == "absolute":
                 point = _absolute_point(track, normalized)
                 if point is None:
                     return False
-                backend.moveTo(point[0], point[1])
+                if drag:
+                    backend.dragTo(*point, button=drag_button, mouseDownUp=False)
+                else:
+                    backend.moveTo(*point)
                 return True
             bounds = _track_bounds(track)
             if bounds is None:
                 return False
-            delta_x = int(round(float(normalized["dx"]) * bounds["width"]))
-            delta_y = int(round(float(normalized["dy"]) * bounds["height"]))
-            if delta_x == 0 and delta_y == 0:
-                return True
-            backend.moveRel(delta_x, delta_y)
+            pixels_x = float(normalized["dx"]) * bounds["width"]
+            pixels_y = float(normalized["dy"]) * bounds["height"]
+            if relative_remainder is not None:
+                pixels_x += relative_remainder.get("x", 0.0)
+                pixels_y += relative_remainder.get("y", 0.0)
+            delta_x, delta_y = round(pixels_x), round(pixels_y)
+            if delta_x or delta_y:
+                if drag:
+                    backend.dragRel(delta_x, delta_y, button=drag_button, mouseDownUp=False)
+                else:
+                    backend.moveRel(delta_x, delta_y)
+            if relative_remainder is not None:
+                relative_remainder.update(x=pixels_x - delta_x, y=pixels_y - delta_y)
             return True
 
         if input_type == "button":
@@ -312,6 +338,7 @@ def release_remote_desktop_inputs(
     *,
     held_keys: Iterable[str] = (),
     pyautogui: Any = None,
+    release_modifiers: bool = True,
 ) -> None:
     try:
         backend = _control_backend(pyautogui)
@@ -330,4 +357,5 @@ def release_remote_desktop_inputs(
             pass
     for key in set(held_keys or ()):
         execute_remote_desktop_keyboard({"action": "key", "key": key, "phase": "up"}, pyautogui=backend)
-    release_stuck_modifiers(backend)
+    if release_modifiers:
+        release_stuck_modifiers(backend)

@@ -7,7 +7,7 @@ use, modification, building, and sharing.
 ## Publishable Source Scope
 
 The intended public tree contains server runtime modules, the local
-administration interface, built-in agents, optional integration adapters,
+administration interface, built-in agents (including Page Agent direct-first CDN media playback and optional third-party/Instagram embed controls, plus Assistant Agent `.ayskin` skin pack validation and storage in `shared/assistant_skin.py`), optional integration adapters,
 dependency manifests, platform server build tools, synthetic test fixtures,
 and the documentation needed to work on these components.
 

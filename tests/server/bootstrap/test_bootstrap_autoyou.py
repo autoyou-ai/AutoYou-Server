@@ -80,8 +80,8 @@ def test_source_wrappers_enable_the_internet_component_by_default():
     bat_text = (bootstrap.REPO_ROOT / "run_autoyou.bat").read_text(encoding="utf-8")
     sh_text = (bootstrap.REPO_ROOT / "run_autoyou.sh").read_text(encoding="utf-8")
 
-    assert "bootstrap_autoyou.py --with internet %*" in bat_text
-    assert "bootstrap_autoyou.py --with internet \"$@\"" in sh_text
+    assert "bootstrap_autoyou.py --with internet --with-optional voice %*" in bat_text
+    assert "bootstrap_autoyou.py --with internet --with-optional voice \"$@\"" in sh_text
     assert "--without internet" in bat_text
     assert "--without internet" in sh_text
 

@@ -1313,6 +1313,25 @@ def _unique_work_dir(base_dir: Path) -> Path:
         candidate = base_dir.with_name(f"{base_dir.name}_{suffix}")
     return candidate
 
+def _ollama_model_options(model_name: str) -> Dict[str, Any]:
+    """The agent's context window and keep-alive for this model.
+
+    Without them Ollama used its default window and loaded the chat model a
+    second time for this one call, then again for the next chat.
+    """
+    options: Dict[str, Any] = {}
+    try:
+        from autoyou_agents.model_config import resolve_ollama_num_ctx
+        from shared.ollama_context_policy import resolve_ollama_keep_alive
+
+        options["num_ctx"] = int(resolve_ollama_num_ctx(model_name)[0])
+        keep_alive = resolve_ollama_keep_alive()
+        if keep_alive is not None:
+            options["keep_alive"] = keep_alive
+    except Exception:
+        pass
+    return options
+
 def ai_enhance_prompt(prompt: str, media_type: str = "video") -> str:
     """Optimize the prompt using the active AutoYou model provider."""
     try:
@@ -1403,6 +1422,7 @@ def ai_enhance_prompt(prompt: str, media_type: str = "video") -> str:
                 model=f"ollama_chat/{model_name}",
                 api_base=api_base,
                 **completion_kwargs,
+                **_ollama_model_options(model_name),
             )
             
         enhanced = _clean_prompt_text(response.choices[0].message.content)

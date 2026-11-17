@@ -39,7 +39,7 @@ servers/windows/dist/AutoYou-win-x64/
 ```
 
 It contains the native host, the packaged backend, and selected runtime files.
-Version metadata comes from the repository `VERSION` file, currently `81.4.0`.
+Version metadata comes from the repository `VERSION` file, currently `81.7.0`.
 
 Review `servers/windows/dist/AutoYou-win-x64/Legal/LICENSE`,
 `THIRD-PARTY-NOTICES.md`, `NOTICE.txt`, and `sbom.cdx.json`.
@@ -89,3 +89,9 @@ with `--secure-desktop status`. Logs are in
 Without the helper, **Keep this computer awake** in the same section keeps the
 display awake and the idle timer reset so Windows does not lock for
 inactivity during a session.
+
+## Local network discovery and Wi-Fi adapter prioritization
+
+When AutoYou runs on Windows, the server discovers and announces its local IP address over mDNS (`_autoyou._tcp`).
+Physical Wi-Fi/Wireless LAN adapters are automatically prioritized (#1) and native Ethernet adapters (#2) over virtual switches (WSL, Hyper-V, Docker, VMware, VirtualBox).
+Mobile iOS and Android clients on the same home Wi-Fi automatically resolve against their local subnet and pair seamlessly without manual IP entry.

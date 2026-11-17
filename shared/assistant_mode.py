@@ -21,11 +21,11 @@ The wake word is chosen by the owner in one of three ways, mirroring the
     (:mod:`shared.wake_word`). Nothing is transcribed until it matches.
 ``text``
     Only the typed phrase. Short bursts of speech are transcribed locally and
-    thrown away unless they contain the phrase. Costs more CPU and transcribes
+    thrown away unless they start with the phrase. Costs more CPU and transcribes
     speech that is then discarded, so the admin page recommends recording.
 ``both``
-    The acoustic model triggers, and the transcript must also contain the
-    phrase before anything reaches the model. The fewest false wakes.
+    The default: the recordings must match, and the transcript must start
+    with the full phrase before anything reaches chat.
 
 Everything persistent lives under ``assistant_mode/`` in the mutable data
 directory, which honours ``AUTOYOU_TEST_ROOT``; files are written through
@@ -84,7 +84,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     # is told to, and a voice wake word still needs recordings and training.
     "enabled": True,
     "wake_phrase": "",
-    "confirm": "voice",
+    "confirm": "both",
     "sensitivity": ww.DEFAULT_SENSITIVITY,
     "listen_seconds": 8,
     "listen_during_safety_recording": True,
@@ -242,7 +242,7 @@ def normalize_settings(raw: Optional[Mapping[str, Any]], *, previous: Optional[M
         if key in source:
             result[key] = _as_bool(source.get(key))
     result["enabled"] = bool(result["enabled"])
-    result["confirm"] = result["confirm"] if result["confirm"] in CONFIRM_MODES else "voice"
+    result["confirm"] = result["confirm"] if result["confirm"] in CONFIRM_MODES else DEFAULT_SETTINGS["confirm"]
     result["sensitivity"] = ww.normalize_sensitivity(result["sensitivity"])
     result["wake_phrase"] = clean_phrase_text(result["wake_phrase"])
     return result
@@ -264,6 +264,9 @@ def _as_bool(value: Any) -> bool:
 
 def load_settings() -> Dict[str, Any]:
     stored = _read_json(SETTINGS_FILENAME, {})
+    # Older saves always wrote the old voice-only default, even if the owner never chose it.
+    if isinstance(stored, Mapping) and stored.get("confirm") == "voice" and not stored.get("voice_only_selected"):
+        stored = {**stored, "confirm": "both"}
     return normalize_settings(stored if isinstance(stored, Mapping) else {})
 
 
@@ -271,7 +274,7 @@ def save_settings(changes: Mapping[str, Any]) -> Dict[str, Any]:
     current = load_settings()
     updated = normalize_settings(changes, previous=current)
     updated["updated_at"] = time.time()
-    _write_json(SETTINGS_FILENAME, updated)
+    _write_json(SETTINGS_FILENAME, {**updated, "voice_only_selected": updated["confirm"] == "voice"})
     model = load_model()
     if model is not None and abs(model.sensitivity - updated["sensitivity"]) > 1e-9:
         model.sensitivity = updated["sensitivity"]
@@ -297,6 +300,41 @@ def load_model() -> Optional[ww.WakeWordModel]:
     except ValueError as exc:
         LOGGER.warning("Ignoring an unusable wake word model: %s", exc)
         return None
+
+
+def import_model(payload: Mapping[str, Any]) -> Dict[str, Any]:
+    """Import bounded acoustic templates; never import executable code or credentials."""
+    if not isinstance(payload, Mapping) or len(json.dumps(payload)) > 1024 * 1024:
+        raise ValueError("Wake word model must be at most 1 MiB")
+    templates = payload.get("templates")
+    if not isinstance(templates, list) or not 1 <= len(templates) <= 8:
+        raise ValueError("Wake word model needs 1 to 8 templates")
+    def finite(value):
+        try:
+            return type(value) in (int, float) and math.isfinite(value)
+        except OverflowError:
+            return False
+    for key in ("base_threshold", "sensitivity", "listen_seconds", "created_at"):
+        value = payload.get(key)
+        if value is not None and not finite(value):
+            raise ValueError("Invalid wake word settings")
+    for item in templates:
+        rows = item.get("mfcc") if isinstance(item, Mapping) else None
+        if not isinstance(rows, list) or not 1 <= len(rows) <= 500:
+            raise ValueError("Invalid wake word template length")
+        if item.get("duration_seconds") is not None and not finite(item["duration_seconds"]):
+            raise ValueError("Invalid wake word template duration")
+        for row in rows:
+            if not isinstance(row, list) or len(row) != 12 or not all(finite(v) for v in row):
+                raise ValueError("Invalid wake word acoustic features")
+    model = ww.WakeWordModel.from_dict(payload)
+    phrase = clean_phrase_text(payload.get("wake_phrase") or model.phrase)
+    if not phrase:
+        raise ValueError("Wake phrase is required")
+    model.phrase = phrase
+    _write_json(MODEL_FILENAME, model.to_dict())
+    save_settings({"wake_phrase": phrase})
+    return model.to_dict()
 
 
 def delete_model() -> None:
@@ -1050,7 +1088,7 @@ class _SessionAssistant:
             self.text_check_pending = False
             if not config.enabled or self.state != "idle":
                 return
-            match = ww.match_phrase(config.phrase, text)
+            match = ww.match_wake_prefix(config.phrase, text)
             if not match.matched:
                 return  # Ordinary speech: dropped, never stored, never sent.
             if match.remainder:
@@ -1068,7 +1106,7 @@ class _SessionAssistant:
         if not text:
             self._set_state("idle", "no_speech")
             return
-        match = ww.match_phrase(config.phrase, text)
+        match = ww.match_wake_prefix(config.phrase, text)
         # A device's upload starts with the word itself, like the server's own
         # pre-roll, so "both"/"text" confirm it the same way.
         must_confirm = config.confirm in {"both", "text"} and self.wake_source in {"voice", "device"}
@@ -1211,7 +1249,7 @@ class WakeArbiter:
         self._decided: Dict[int, str] = {}
         self._next_round = 0
         self._pages: Dict[str, Tuple[str, float]] = {}
-        self._speakers: Dict[str, Tuple[str, float]] = {}
+        self._speakers: List[Tuple[str, str, float, float]] = []  # listener, place, playback start and end
 
     @staticmethod
     def _listener(listener: Any) -> WakeListener:
@@ -1243,7 +1281,7 @@ class WakeArbiter:
         revoked: Optional[_Candidate] = None
         with self._lock:
             self._forget_expired(now)
-            refused = self._standing_rule(who, now)
+            refused = self._standing_rule(who, now, when)
             if refused:
                 return WakeClaim(False, refused, decided_at=now)
             current = self._rounds.get(who.place)
@@ -1317,14 +1355,15 @@ class WakeArbiter:
         except (TypeError, ValueError):
             length = 0.0
         with self._lock:
-            previous = self._speakers.pop(who.key, None)
+            for index in range(len(self._speakers) - 1, -1, -1):
+                key, place, start, until = self._speakers[index]
+                if key == who.key and place == who.place and until > now:
+                    end = now + length + SPEAKING_TAIL_SECONDS
+                    self._speakers[index] = (key, place, start, end if length else min(until, end))
+                    return
             if length > 0:
-                self._speakers[who.key] = (who.place, now + length + SPEAKING_TAIL_SECONDS)
-            elif previous is not None and previous[1] > now:
-                # Finished: the room still gets the short tail.
-                self._speakers[who.key] = (who.place, min(previous[1], now + SPEAKING_TAIL_SECONDS))
-            while len(self._speakers) > MAX_TRACKED_LISTENERS:
-                self._speakers.pop(next(iter(self._speakers)))
+                self._speakers.append((who.key, who.place, now, now + length + SPEAKING_TAIL_SECONDS))
+                del self._speakers[:-MAX_TRACKED_LISTENERS]
 
     def page_listening_on(self, device: str, *, exclude: str = "") -> bool:
         with self._lock:
@@ -1336,17 +1375,18 @@ class WakeArbiter:
             self._forget_expired(now)
             return {
                 "pages_listening": len(self._pages),
-                "speaking": sorted({place for place, _until in self._speakers.values()}),
+                "speaking": sorted({place for _, place, _, until in self._speakers if until > now}),
             }
 
     # -- internals -----------------------------------------------------------
 
-    def _standing_rule(self, who: WakeListener, now: float) -> str:
+    def _standing_rule(self, who: WakeListener, now: float, heard_at: float) -> str:
         if who.in_call and who.kind != LISTENER_CALL:
             return "in_call"
         if who.kind not in {LISTENER_PAGE, LISTENER_CALL} and self._page_on(who.device_key, now, exclude=who.key):
             return "assistant_page"
-        if any(place == who.place and until > now for key, (place, until) in self._speakers.items() if key != who.key):
+        if any(place == who.place and (start <= heard_at < until or start <= now < until)
+               for _, place, start, until in self._speakers):
             return "speaking"
         return ""
 
@@ -1365,9 +1405,9 @@ class WakeArbiter:
             self._rounds.pop(place, None)
         while len(self._rounds) > MAX_TRACKED_LISTENERS:
             self._rounds.pop(next(iter(self._rounds)))
-        for table in (self._pages, self._speakers):
-            for key in [k for k, (_v, until) in table.items() if until <= now]:
-                table.pop(key, None)
+        for key in [k for k, (_, until) in self._pages.items() if until <= now]:
+            self._pages.pop(key, None)
+        self._speakers[:] = [interval for interval in self._speakers if interval[3] > now - horizon]
 
 
 class AssistantModeHub:
@@ -1660,7 +1700,9 @@ class AssistantModeHub:
         if kind == "audio":
             item.feed(value, config)
         elif kind == "client_wake":
-            if config.enabled and item.state == "idle":
+            # Old streaming clients announce a hit without audio proof. In verified
+            # modes the stream's own detector/text spotter decides when to open.
+            if config.enabled and config.confirm == "voice" and item.state == "idle":
                 item.wake(config, source="client", score=value)
         elif kind == "device_wake":
             wake_id, score = value
@@ -1727,10 +1769,18 @@ class AssistantModeHub:
         spoken_at = time.monotonic() - len(audio) / (2.0 * ww.SAMPLE_RATE)
 
         def job() -> None:
-            try:
-                text = self._transcribe_cb(audio)
-            except Exception as exc:
-                LOGGER.warning("Assistant mode transcription failed: %s", exc)
+            # Nothing said (a breath, a click, the room): nothing to transcribe,
+            # and what Whisper invents for it never becomes a question.
+            voiced = speech_seconds(audio)
+            text = ""
+            if voiced >= MIN_QUESTION_SPEECH_SECONDS:
+                try:
+                    text = self._transcribe_cb(audio)
+                except Exception as exc:
+                    LOGGER.warning("Assistant mode transcription failed: %s", exc)
+                    text = ""
+            if text and transcript_is_noise(text, voiced):
+                LOGGER.info("Assistant mode dropped a transcript that is not speech (%.2f s voiced)", voiced)
                 text = ""
             self._post(item.session_id, "result", (item, purpose, text, ticket, spoken_at))
 
@@ -1885,8 +1935,92 @@ def _is_this_computer(value: str) -> bool:
     return bool((mapped or address).is_loopback)
 
 
+# ---------------------------------------------------------------------------
+# Telling a spoken question from Whisper's inventions
+# ---------------------------------------------------------------------------
+
+#: Below this much speech there is nothing to transcribe.
+MIN_QUESTION_SPEECH_SECONDS = 0.2
+#: Only a sound this short can be one of Whisper's stock phrases.
+STOCK_PHRASE_MAX_SPEECH_SECONDS = 1.2
+# Phrases Whisper writes for a breath, a click or the room, in the languages
+# it most often invents them in. Spoken questions are never just these.
+_STOCK_PHRASES = frozenset({
+    "you", "thank you", "thanks", "thank you so much", "thanks for watching", "thank you for watching",
+    "bye", "bye bye", "okay", "ok", "so", "oh", "uh", "um", "hmm", "mm",
+    "merci", "merci beaucoup", "gracias", "danke", "obrigado", "obrigada", "grazie",
+    "спасибо", "ありがとう", "ありがとうございました", "谢谢", "謝謝", "감사합니다",
+})
+# Captions from the subtitled video Whisper learned from; never something said.
+_SUBTITLE_CREDIT_RE = re.compile(
+    r"amara\.org|subtitles? by|captions? by|sous-titr|untertitel|subtítulos|subtitulado|字幕|ご視聴|"
+    r"radio-canada|\bzdf\b|mbc ?뉴스",
+    re.IGNORECASE,
+)
+
+
+def speech_seconds(pcm: bytes) -> float:
+    """How much of a recording is speech: 20 ms frames well above its quiet floor.
+
+    A frame loud enough to be speech counts even with no quieter moment to
+    compare it with, so an utterance recorded without a pause is not "nothing".
+    """
+    samples = ww.pcm16_to_float(pcm or b"")
+    frame = int(0.02 * ww.SAMPLE_RATE)
+    if samples.size < frame:
+        return 0.0
+    levels = [ww.rms_dbfs(samples[start:start + frame]) for start in range(0, samples.size - frame + 1, frame)]
+    floor = sorted(levels)[len(levels) // 5]
+    threshold = min(max(-50.0, floor + 10.0), -32.0)
+    return sum(1 for level in levels if level >= threshold) * 0.02
+
+
+def _words(text: str) -> List[str]:
+    return re.findall(r"\w+", str(text or "").casefold())
+
+
+def _loops(words: List[str]) -> bool:
+    """A Whisper repetition loop: a word or phrase over and over."""
+    for n in (1, 2, 3):
+        for start in range(0, len(words) - 3 * n + 1):
+            unit = words[start:start + n]
+            if words[start + n:start + 2 * n] == unit and words[start + 2 * n:start + 3 * n] == unit:
+                return True
+    if len(words) >= 6:
+        for n in (2, 3):
+            counts: Dict[Tuple[str, ...], int] = {}
+            for start in range(0, len(words) - n + 1):
+                key = tuple(words[start:start + n])
+                counts[key] = counts.get(key, 0) + 1
+            if any(count >= 3 and count * n * 2 >= len(words) for count in counts.values()):
+                return True
+    return False
+
+
+def transcript_is_noise(text: str, voiced: Optional[float] = None) -> bool:
+    """True when a transcript is Whisper's invention, not a question.
+
+    The same in every language: no words, a stock phrase from a short sound,
+    a subtitle credit, or a repetition loop ("since since since", "20g de
+    quake 20g de quake 20g de quake").
+    """
+    words = _words(text)
+    if not words:
+        return True
+    if _SUBTITLE_CREDIT_RE.search(str(text)):
+        return True
+    short = voiced is None or voiced < STOCK_PHRASE_MAX_SPEECH_SECONDS
+    if short and " ".join(words) in _STOCK_PHRASES:
+        return True
+    return _loops(words)
+
+
 def local_transcriber(settings_provider: Optional[Callable[[], Mapping[str, Any]]] = None) -> Transcribe:
-    """Local Whisper via the voice-note path; audio is a temp file deleted at once."""
+    """Local Whisper via the voice-note path; audio is a temp file deleted at once.
+
+    Strict: Whisper decodes only where it hears speech and drops segments that
+    are probably silence or loop on themselves.
+    """
 
     def transcribe(pcm: bytes) -> str:
         import tempfile
@@ -1899,7 +2033,7 @@ def local_transcriber(settings_provider: Optional[Callable[[], Mapping[str, Any]
             with open(path, "wb") as output:
                 output.write(ww.pcm16_to_wav_bytes(pcm))
             settings = settings_provider() if settings_provider else None
-            return str(transcribe_voice_note(path, settings=dict(settings) if settings else None) or "").strip()
+            return str(transcribe_voice_note(path, settings=dict(settings) if settings else None, strict=True) or "").strip()
         finally:
             try:
                 os.unlink(path)

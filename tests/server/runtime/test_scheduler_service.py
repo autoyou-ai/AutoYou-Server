@@ -588,8 +588,10 @@ async def test_execute_direct_task_action_uses_cloud_notification_for_cloud_webr
     )
 
     assert result["status"] == "success"
-    assert result["message"] == "Sent message via AutoYou Cloud notification."
-    assert scheduler_service.load_json(str(queue_path)) == []
+    assert result["message"].startswith("Sent a push notification")
+    # The push alerts the phone; the message itself still waits for its chat.
+    [queued] = scheduler_service.load_json(str(queue_path))
+    assert queued["cloud_notified_at_s"] > 0
     assert cloud_calls == [
         {
             "title": "AutoYou notification",
@@ -922,9 +924,116 @@ async def test_cloud_push_is_tried_before_anything_is_recorded(monkeypatch, tmp_
 
     result = await _queue_for_a_device_that_is_away(device)
 
-    assert result["message"] == "Sent message via AutoYou Cloud notification."
+    assert result["message"].startswith("Sent a push notification")
     assert [call["body"] for call in cloud_calls] == ["synthetic reminder"]
-    assert await _stored_turns(manager, device) == []
+    [turn] = await _stored_turns(manager, device)
+    assert turn["agent_response"] == "synthetic reminder"
+    [queued] = scheduler_service.load_json(str(queue_path))
+    assert queued["cloud_notified_at_s"] > 0 and queued["history_recorded_at_s"] > 0
+
+
+@pytest.mark.asyncio
+async def test_a_pushed_notification_reaches_the_chat_when_the_phone_reconnects(monkeypatch, tmp_path):
+    """Owner report 2026-11-03: a scheduled task result arrived as a push while
+    the phone was away, and was never in the chat after reconnecting, because
+    the push counted as delivered and the queued message was dropped."""
+    device = _synthetic_device("cloud")
+    manager = await _conversation_with_history(tmp_path, device)
+    cloud_calls = []
+
+    async def notify_cloud_client(**kwargs):
+        cloud_calls.append(kwargs)
+        return {"success": True, "offline_allowed": True, "devices": 1, "apns_sent": 1, "fcm_sent": 0}
+
+    queue_path = _runtime_with_devices_away(
+        monkeypatch, tmp_path, session_manager=manager, notify_cloud_client=notify_cloud_client
+    )
+    logged = []
+    monkeypatch.setattr(
+        scheduler_service,
+        "append_scheduler_activity_log",
+        lambda event_type, **kwargs: logged.append(event_type),
+    )
+    await _queue_for_a_device_that_is_away(device)
+    [queued] = scheduler_service.load_json(str(queue_path))
+
+    # Retries while the phone is still away never push it a second time, and
+    # the activity log keeps the push, not each retry.
+    for _ in range(3):
+        retry = await scheduler_service.process_pending_notifications(force_ids={queued["id"]})
+        assert retry[queued["id"]]["status"] == "pushed"
+    assert len(cloud_calls) == 1
+    assert logged.count("notification_pushed") == 1
+
+    # Two hours later, well past the 30-minute wait for other queued messages.
+    two_hours_later = queued["created_at_s"] + 2 * 60 * 60
+    monkeypatch.setattr(scheduler_service.time, "time", lambda: two_hours_later)
+    live_webrtc = _FakeOwnerAwareWebRTCManager(
+        owner_key=device.owner_key,
+        canonical_user_id=device.user_id,
+        session_ids=["live-a"],
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "__main__",
+        _make_runtime_server(webrtc=live_webrtc, session_manager=manager, notify_cloud_client=notify_cloud_client),
+    )
+    flushed = await scheduler_service.flush_pending_notifications_for_owner(owner_key=device.owner_key)
+
+    assert flushed[queued["id"]]["status"] == "success"
+    assert [call["message"] for call in live_webrtc.calls] == ["synthetic reminder"]
+    assert len(cloud_calls) == 1
+    assert scheduler_service.load_json(str(queue_path)) == []
+    assert len(await _stored_turns(manager, device)) == 1
+    assert logged[-1] == "notification_delivered"
+
+
+@pytest.mark.asyncio
+async def test_a_pushed_result_reaches_the_chat_on_the_phones_next_connection(monkeypatch, tmp_path):
+    """Through the real engine (owner report 2026-11-03): the phone was away when
+    a scheduled result went out as a push, then connected again on a new session."""
+    webrtc, _, paired, manager = connect_device(tmp_path, monkeypatch, transport="cloud")
+    # The phone goes away.
+    del webrtc.datachannel_managers["synthetic-live"]
+    cloud_calls = []
+
+    async def notify_cloud_client(**kwargs):
+        cloud_calls.append(kwargs)
+        return {"success": True, "offline_allowed": True, "devices": 1, "apns_sent": 1, "fcm_sent": 0}
+
+    queue_path = tmp_path / "scheduled_notification_queue.json"
+    monkeypatch.setattr(scheduler_service, "OUTBOUND_NOTIFICATION_QUEUE_FILE", str(queue_path))
+    monkeypatch.setattr(scheduler_service, "SCHEDULER_ACTIVITY_LOG_FILE", str(tmp_path / "scheduler_activity_log.jsonl"))
+    runtime_server = _make_runtime_server(webrtc=webrtc, session_manager=manager, notify_cloud_client=notify_cloud_client)
+    monkeypatch.setattr(scheduler_service, "_get_runtime_server_module", lambda: runtime_server)
+
+    result = await scheduler_service._queue_notification_for_delivery(
+        "synthetic reminder",
+        owner_key=paired.owner_key,
+        canonical_user_id=paired.canonical_user_id,
+        reply_target={"transport": "webrtc", "owner_key": paired.owner_key, "session_id": "synthetic-live"},
+        source="scheduled-task:synthetic",
+    )
+    assert result["queued"] is True
+    assert result["message"].startswith("Sent a push notification")
+    assert len(cloud_calls) == 1
+
+    # The phone connects again on a new session id, and the engine flushes the
+    # owner's queue the way it does when a data channel opens.
+    server.bind_transport_chat_owner("cloud", "synthetic-device", raw_session_id="synthetic-reconnected")
+    channel = OpenChannel()
+    webrtc.datachannel_managers["synthetic-reconnected"] = channel
+    identity = webrtc._resolve_chat_identity("synthetic-reconnected")
+    flushed = await scheduler_service.flush_pending_notifications_for_owner(
+        owner_key=identity.owner_key,
+        canonical_user_id=identity.canonical_user_id,
+    )
+
+    assert [entry["status"] for entry in flushed.values()] == ["success"]
+    [message] = channel.sent
+    assert message.payload["message"] == "synthetic reminder"
+    assert message.payload["metadata"]["notification_delivery_mode"] == "scheduled_notification"
+    assert len(cloud_calls) == 1
     assert scheduler_service.load_json(str(queue_path)) == []
 
 

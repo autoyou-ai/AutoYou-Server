@@ -21,6 +21,7 @@
         <span id="status-text">Starting…</span>
       </div>
       <div class="top-actions">
+        <button type="button" class="icon-btn" id="world-expand" aria-label="Expand world" title="Expand world">⛶</button>
         <button type="button" class="icon-btn" id="mic-btn" aria-pressed="false" title="Start listening">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
           <span class="sr-only" id="mic-btn-label">Start listening</span>
@@ -72,12 +73,16 @@
 
           <g id="bot">
             <g id="legs">
-              <rect x="152" y="430" width="38" height="70" rx="18" fill="url(#g-shell)" stroke="#aeb7cf" stroke-width="2"/>
-              <rect x="210" y="430" width="38" height="70" rx="18" fill="url(#g-shell)" stroke="#aeb7cf" stroke-width="2"/>
-              <circle cx="171" cy="466" r="9" fill="url(#g-blue)"/>
-              <circle cx="229" cy="466" r="9" fill="url(#g-blue)"/>
-              <path d="M134 512c0-16 14-24 37-24s35 8 35 24z" fill="url(#g-blue)"/>
-              <path d="M194 512c0-16 12-24 35-24s37 8 37 24z" fill="url(#g-blue)"/>
+              <g id="leg-left">
+                <rect x="152" y="430" width="38" height="70" rx="18" fill="url(#g-shell)" stroke="#aeb7cf" stroke-width="2"/>
+                <circle cx="171" cy="466" r="9" fill="url(#g-blue)"/>
+                <path d="M134 512c0-16 14-24 37-24s35 8 35 24z" fill="url(#g-blue)"/>
+              </g>
+              <g id="leg-right">
+                <rect x="210" y="430" width="38" height="70" rx="18" fill="url(#g-shell)" stroke="#aeb7cf" stroke-width="2"/>
+                <circle cx="229" cy="466" r="9" fill="url(#g-blue)"/>
+                <path d="M194 512c0-16 12-24 35-24s37 8 37 24z" fill="url(#g-blue)"/>
+              </g>
             </g>
 
             <!-- Everything above the hips leans and breathes together. Each arm turns
@@ -114,7 +119,7 @@
               <g id="reactor" transform="translate(200 365)">
                 <circle r="31" fill="url(#g-blue)" stroke="#aeb7cf" stroke-width="1.5"/>
                 <circle r="26.5" fill="#080f26"/>
-                <circle r="26.5" fill="none" stroke="#3fd8ff" stroke-width="1.8" opacity="0.75"/>
+                <circle id="reactor-pulse" r="26.5" fill="none" stroke="#3fd8ff" stroke-width="1.8" opacity="0.75"/>
                 <circle r="23" fill="#0b1538"/>
                 <circle r="23" fill="none" stroke="#25b0ff" stroke-width="1" opacity="0.4"/>
                 <g id="core" transform="scale(0.33)" fill="none" stroke-linecap="round" stroke-linejoin="round">
@@ -252,6 +257,49 @@
         <span class="sr-only">Close settings</span>
       </button>
     </div>
+    <section class="drawer-section">
+      <h3>World &amp; interaction</h3>
+      <label class="field">Robot interaction<select id="world-interaction"><option value="tap">Tap to talk</option><option value="wake_word">Wake word</option><option value="hold">Hold to talk</option><option value="off">Off (microphone button only)</option></select></label>
+      <button type="button" id="world-edit">Edit world · photos and objects</button>
+      <label class="switch"><input type="checkbox" id="world-idle">Idle movements</label>
+      <label class="switch"><input type="checkbox" id="world-professional">Professional (calm) movements</label>
+      <label class="switch"><input type="checkbox" id="world-sounds">Interaction sounds</label>
+      <p class="note">Ask the assistant to build or edit your world. Backgrounds, objects and reactions travel with your skin pack. Use number keys to preview idle gestures.</p>
+    </section>
+    <section class="drawer-section">
+      <h3>Design your agent</h3>
+      <label class="field"><span>Preset theme</span>
+        <select id="skin-preset">
+          <option value="autoyou_classic">AutoYou Classic</option>
+          <option value="neon_cyber">Neon Cyber</option>
+          <option value="solar_amber">Solar Amber</option>
+          <option value="emerald_tech">Emerald Tech</option>
+          <option value="cosmic_violet">Cosmic Violet</option>
+          <option value="stealth_dark">Stealth Dark</option>
+        </select>
+      </label>
+      <div class="color-row">
+        <label class="field-compact"><span>Glow</span><input type="color" id="skin-glow" value="#3fd8ff"></label>
+        <label class="field-compact"><span>Accent</span><input type="color" id="skin-accent" value="#5b86ff"></label>
+        <label class="field-compact"><span>Core</span><input type="color" id="skin-core" value="#ffffff"></label>
+      </div>
+      <label class="field"><span>Eye optics</span>
+        <select id="skin-eye-style">
+          <option value="ring">Classic Ring</option>
+          <option value="neon">Neon Lens</option>
+          <option value="visor_bar">Visor Bar</option>
+        </select>
+      </label>
+      <label class="field"><span>Breathing & physics speed</span>
+        <input type="range" id="skin-breath" min="0.5" max="3.0" step="0.1" value="1.6">
+      </label>
+      <div class="btn-row">
+        <button type="button" class="action-btn" id="skin-export-btn">Download pack</button>
+        <button type="button" class="action-btn" id="skin-import-btn">Upload pack</button>
+        <input type="file" id="skin-file-input" accept=".json,.ayskin" style="display:none">
+      </div>
+      <button type="button" class="text-btn" id="skin-reset-btn">Reset appearance to default</button>
+    </section>
     <section class="drawer-section">
       <h3>This device</h3>
       <label class="switch"><input type="checkbox" data-pref="autoStart"><span>Start listening when this page opens</span></label>

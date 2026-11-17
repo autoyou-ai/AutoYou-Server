@@ -18,7 +18,8 @@ import asyncio
 import threading
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
+from autoyou_agents.shared_tools.agent_input_ux import AgentHTMLResponse as HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from autoyou_agents.media_generation_agent.media_generation_tool import (

@@ -15,9 +15,9 @@ import subprocess
 import tarfile
 
 if __package__:
-    from .build_macos_appstore_dependencies import minimum_macos
+    from .build_macos_appstore_dependencies import minimum_macos, prepare_portaudio
 else:
-    from build_macos_appstore_dependencies import minimum_macos
+    from build_macos_appstore_dependencies import minimum_macos, prepare_portaudio
 
 
 CODECS = ('libsox.dylib', 'libFLAC.14.dylib', 'libmp3lame.0.dylib', 'libogg.0.dylib',
@@ -54,7 +54,7 @@ def download(item: dict, destination: Path) -> Path:
 def prepare(build_dir: Path, jobs: int) -> Path:
     pkg_config = shutil.which('pkgconf') or shutil.which('pkg-config')
     if not pkg_config:
-        raise RuntimeError('pkgconf is required to build the full App Store audio runtime')
+        raise RuntimeError('pkgconf is required to build the full macOS audio runtime')
     manifest = Path(__file__).with_name('macos_appstore_native.json')
     digest = hashlib.sha256(manifest.read_bytes() + Path(__file__).read_bytes()).hexdigest()[:12]
     work = build_dir.resolve() / f'native-{digest}-{platform.machine()}'
@@ -157,8 +157,20 @@ def main() -> None:
     args = parser.parse_args()
     if platform.system() != 'Darwin' or args.jobs < 1:
         parser.error('Requires macOS and a positive job count')
-    stage(prepare(args.build_dir, args.jobs), args.bundle_root.resolve())
-    print('SoX codecs and libsodium staged for macOS 14; licenses retained.')
+    bundle = args.bundle_root.resolve()
+    stage(prepare(args.build_dir, args.jobs), bundle)
+    portaudio_targets = [path for path in (
+        bundle / 'libportaudio.2.dylib',
+        bundle / 'runtime_site_packages/pyaudio/libportaudio.2.dylib',
+    ) if path.is_file()]
+    if not portaudio_targets:
+        raise RuntimeError('Missing packaged PortAudio library')
+    portaudio = prepare_portaudio(args.build_dir, args.jobs)
+    for target in portaudio_targets:
+        shutil.copy2(portaudio, target)
+        subprocess.run(['install_name_tool', '-id', '@loader_path/libportaudio.2.dylib', str(target)], check=True)
+        subprocess.run(['codesign', '--force', '--sign', '-', str(target)], check=True)
+    print('SoX codecs, PortAudio, and libsodium staged for macOS 14; licenses retained.')
 
 
 if __name__ == '__main__':

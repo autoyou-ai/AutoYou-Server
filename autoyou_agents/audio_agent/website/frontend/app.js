@@ -2059,6 +2059,8 @@ function relayAction(action, extra) {
 
 //  Settings Drawer
 function openSettings() {
+    if (elOtpGate) elOtpGate.hidden = true;
+    if (elSettingsForm) elSettingsForm.hidden = true;
     elSettingsOverlay.classList.add('open');
     elSettingsOverlay.setAttribute('aria-hidden', 'false');
     // Check auth and show appropriate panel
@@ -2074,6 +2076,8 @@ function openSettings() {
 function closeSettings() {
     elSettingsOverlay.classList.remove('open');
     elSettingsOverlay.setAttribute('aria-hidden', 'true');
+    if (elOtpGate) elOtpGate.hidden = true;
+    if (elSettingsForm) elSettingsForm.hidden = true;
 }
 
 function showOtpGate() {

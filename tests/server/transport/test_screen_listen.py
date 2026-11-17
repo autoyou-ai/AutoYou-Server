@@ -170,6 +170,272 @@ def test_screen_audio_and_choices_never_enter_ai(monkeypatch):
     assert len(heard) == 1
 
 
+def test_meet_without_voice_calls_shares_one_host_capture(monkeypatch):
+    from aiortc import AudioStreamTrack
+
+    cfg = server._default_config()
+    cfg["video_call"]["audio_enabled"] = False
+    monkeypatch.setattr(server.STATE, "config", cfg)
+    monkeypatch.setattr(server, "_get_outbound_video_available", lambda **_kwargs: True)
+
+    class Sender:
+        track = None
+
+        def replaceTrack(self, track):
+            self.track = track
+
+    async def run():
+        manager = server.WebRTCManager()
+        source = AudioStreamTrack()
+        capture_ids = []
+        monkeypatch.setattr(server, "_create_configured_outbound_audio_track", lambda **kwargs:
+                            capture_ids.append(kwargs["session_id"]) or source)
+
+        async def set_meet(session_id, active):
+            payload = {"event": "call_state", "active": active, "screen_mode": "interactive"}
+            await manager._handle_voice_call_control_message(SimpleNamespace(payload=payload), trusted_session_id=session_id)
+
+        first, second = "synthetic-meet-ios", "synthetic-meet-android"
+        await manager._handle_voice_call_control_message(SimpleNamespace(payload={
+            "event": "call_state", "active": True,
+        }), trusted_session_id="synthetic-voice-caller")
+        assert not manager._voice_call_client_active_for_session("synthetic-voice-caller")
+        manager.audio_transceivers[first] = SimpleNamespace(sender=Sender(), direction="inactive")
+        manager.audio_transceivers[second] = SimpleNamespace(sender=Sender(), direction="inactive")
+        await set_meet(first, True)
+        await set_meet(second, True)
+        first_track = manager.audio_transceivers[first].sender.track
+        second_track = manager.audio_transceivers[second].sender.track
+        await manager._handle_voice_call_control_message(SimpleNamespace(payload={
+            "event": "background_audio_state", "active": False, "platform": "ios",
+        }), trusted_session_id=first)
+        assert manager.audio_transceivers[first].sender.track is first_track
+        assert first_track is not second_track
+        assert not manager._voice_call_client_active_for_session(first)
+        assert not manager._voice_call_client_active_for_session(second)
+        assert {row["id"] for row in manager.screen_listen_snapshot()["participants"]} == {first, second}
+        assert len(capture_ids) == 1
+        first_frame, second_frame = await asyncio.wait_for(asyncio.gather(first_track.recv(), second_track.recv()), 1)
+        assert first_frame is second_frame
+        await set_meet(first, False)
+        assert manager.audio_transceivers[first].sender.track is None
+        assert source.readyState == "live"
+        assert (await asyncio.wait_for(second_track.recv(), 1)).samples > 0
+        await set_meet(second, False)
+        assert manager._screen_audio_source is None
+        assert source.readyState == "ended"
+
+    asyncio.run(run())
+
+
+def test_meet_hands_and_unicode_drafts_are_independent_of_microphone(monkeypatch):
+    manager = server.WebRTCManager()
+    first, second = "synthetic-meet-first", "synthetic-meet-second"
+    manager._set_screen_session(first, "interactive")
+    manager._set_screen_session(second, "interactive")
+    monkeypatch.setattr(manager, "_handle_call_remote_desktop_keyboard", AsyncMock())
+
+    async def send(kind, value, phase):
+        await manager._handle_voice_call_control_message(SimpleNamespace(
+            header=SimpleNamespace(session_id=second),
+            payload={"event": "screen_input", "kind": kind, "value": value, "phase": phase},
+        ), trusted_session_id=first)
+
+    async def run():
+        await send("hand", "raised", "set")
+        await send("text", "Hello 😀", "edit")
+        snapshot = manager.screen_listen_snapshot()
+        assert snapshot["participants"][0]["hand_raised"] is True
+        assert snapshot["participants"][0]["muted"] is True
+        assert snapshot["participants"][0]["typing"] == "Hello 😀"
+        assert "typing" not in snapshot["participants"][1]
+        assert snapshot["inputs"] == []
+        await send("text", "Hello", "edit")
+        await send("text", "x" * 501, "edit")
+        await send("text", "\ud800", "edit")
+        await send("hand", "lowered", "set")
+        manager.screen_sessions[first]["typing_at"] -= 5.1
+        snapshot = manager.screen_listen_snapshot()
+        assert snapshot["participants"][0]["hand_raised"] is False
+        assert "typing" not in snapshot["participants"][0]
+        assert snapshot["participants"][0]["recent_text"] == "Hello"
+        assert "recent_text" not in snapshot["participants"][1]
+        assert [(row["session_id"], row["kind"], row["value"]) for row in snapshot["inputs"]] == [
+            (first, "text", "Hello"),
+        ]
+        manager.screen_inputs[-1]["timestamp"] -= 5
+        expired = manager.screen_listen_snapshot()
+        assert "recent_text" not in expired["participants"][0]
+        assert expired["inputs"][-1]["value"] == "Hello"
+        await send("text", "erased", "edit")
+        await send("text", "", "edit")
+        await send("text", "", "end")
+        assert len(manager.screen_listen_snapshot()["inputs"]) == 1
+        await send("text", "Sent directly", "edit")
+        await send("text", "", "end")
+        snapshot = manager.screen_listen_snapshot()
+        assert snapshot["participants"][0]["recent_text"] == "Sent directly"
+        assert snapshot["inputs"][-1]["value"] == "Sent directly"
+        manager._handle_call_remote_desktop_keyboard.assert_not_awaited()
+
+    asyncio.run(run())
+
+
+def test_meet_approval_and_multiple_clients_keep_drag_and_key_ownership(monkeypatch):
+    cfg = server._default_config()
+    cfg["video_call"]["audio_enabled"] = False
+    cfg["video_call"]["remote_desktop"].update(control_enabled=True, meet_auto_approve=False)
+    monkeypatch.setattr(server.STATE, "config", cfg)
+    monkeypatch.setattr(server, "_get_remote_desktop_control_available", lambda **_kwargs: True)
+    cursor_position = [400, 300]
+    monkeypatch.setattr(server, "remote_desktop_cursor_position", lambda: tuple(cursor_position))
+    pointer, keyboard, released = [], [], []
+    monkeypatch.setattr(server, "execute_remote_desktop_input", lambda payload, **_kwargs: pointer.append(payload) or True)
+    monkeypatch.setattr(server, "execute_remote_desktop_keyboard", lambda payload: keyboard.append(payload) or True)
+    monkeypatch.setattr(server, "release_remote_desktop_inputs", lambda buttons=(), **kwargs:
+                        released.append((set(buttons), kwargs)))
+
+    async def run():
+        manager = server.WebRTCManager()
+        monkeypatch.setattr(manager, "_probe_remote_desktop_input_backend", AsyncMock(return_value=True))
+        track = SimpleNamespace(
+            is_enabled=True,
+            remote_desktop_mapping=lambda: {
+                "content_rect": {"x": 0, "y": 0, "width": 1, "height": 1},
+                "monitor_bounds": {"left": 0, "top": 0, "width": 801, "height": 601},
+            },
+            map_output_point_to_desktop=lambda x, y: (round(x * 800), round(y * 600)),
+        )
+        first, second = "synthetic-ios", "synthetic-android"
+
+        async def send(session_id, event, **fields):
+            await manager._handle_voice_call_control_message(SimpleNamespace(payload={
+                "event": event, "control_id": session_id, "source": "autoyou_lite",
+                "platform": "ios" if session_id == first else "android", **fields,
+            }), trusted_session_id=session_id)
+
+        for session_id in (first, second):
+            manager._set_screen_session(session_id, "interactive")
+            manager.desktop_video_tracks[session_id] = track
+            manager.datachannel_managers[session_id] = SimpleNamespace(send_message=AsyncMock(return_value=True))
+            await send(session_id, "remote_desktop_control", action="start", fullscreen=True, touch_mode="relative")
+            pending = manager.datachannel_managers[session_id].send_message.await_args.args[0].payload
+            assert pending["pending"] is True and pending["active"] is False
+        assert not manager.remote_desktop_control_leases_by_session
+        assert {row["control_state"] for row in manager.screen_listen_snapshot()["participants"]} == {"requested"}
+        await send(first, "remote_desktop_input", input_type="button", button="left", phase="click")
+        assert pointer == []
+        assert not await manager.review_screen_control(first, "synthetic-stale", "approve")
+        assert await manager.review_screen_control(first, first, "approve_client")
+        assert await manager.review_screen_control(second, second, "approve")
+        grant = manager.datachannel_managers[first].send_message.await_args.args[0].payload
+        assert grant["control_id"] == first and grant["active"] is True
+        assert grant["cursor"] == {"x": 0.5, "y": 0.5}
+
+        await send(first, "remote_desktop_input", input_type="button", button="left", phase="down")
+        await send(first, "remote_desktop_input", input_type="button", button="left", phase="click")
+        await send(second, "remote_desktop_input", input_type="move", coordinate_mode="relative", dx=0.1, dy=0)
+        await send(first, "remote_desktop_input", input_type="move", coordinate_mode="relative", dx=0.1, dy=0)
+        assert [item["control_id"] for item in pointer] == [first, first]
+        await send(first, "remote_desktop_keyboard", action="key", key="control", phase="down")
+        await send(second, "remote_desktop_keyboard", action="key", key="w", phase="press")
+        await send(second, "remote_desktop_keyboard", action="key", key="ctrl", phase="down")
+        assert len(keyboard) == 1
+        assert await manager.review_screen_control(first, first, "revoke")
+        assert released[-1] == ({"left"}, {"release_modifiers": False})
+        await send(second, "remote_desktop_input", input_type="button", button="left", phase="double_click")
+        assert pointer[-1]["control_id"] == second and "x" not in pointer[-1]
+        assert await manager.review_screen_control(second, second, "revoke")
+        assert released[-1][1]["held_keys"] == {"ctrl"}
+        await send(first, "remote_desktop_control", action="start", fullscreen=True, touch_mode="direct")
+        await send(second, "remote_desktop_control", action="start", fullscreen=True, touch_mode="direct")
+        assert manager._remote_desktop_control_lease_for_session(first)
+        assert manager.datachannel_managers[first].send_message.await_args.args[0].payload["cursor"] == {"x": 0.5, "y": 0.5}
+        assert not manager._remote_desktop_control_lease_for_session(second)
+        assert manager._screen_client_always_allowed(first)
+        await send(first, "remote_desktop_input", input_type="button", button="left", phase="down", x=0.25, y=0.25)
+        await send(first, "remote_desktop_input", input_type="move", coordinate_mode="absolute", x=0.75, y=0.5)
+        await send(first, "remote_desktop_input", input_type="button", button="left", phase="up")
+        assert [(item["input_type"], item.get("phase"), item.get("x"), item.get("y")) for item in pointer[-3:]] == [
+            ("button", "down", 0.25, 0.25), ("move", None, 0.75, 0.5), ("button", "up", None, None),
+        ]
+        cursor_updated = asyncio.Event()
+
+        def receive_cursor(message):
+            if message.payload.get("cursor") == {"x": 0.75, "y": 0.5}:
+                cursor_updated.set()
+            return True
+
+        manager.datachannel_managers[first].send_message.side_effect = receive_cursor
+        cursor_position[0] = 600
+        await asyncio.wait_for(cursor_updated.wait(), timeout=2)
+        manager.datachannel_managers[first] = SimpleNamespace(send_message=AsyncMock(return_value=True))
+        assert not manager._screen_client_always_allowed(first)
+        assert await manager.review_screen_control(first, "", "forget_client")
+        assert await manager.review_screen_control(first, first, "revoke")
+        await send(first, "remote_desktop_control", action="start", fullscreen=True, touch_mode="direct")
+        assert not manager._remote_desktop_control_lease_for_session(first)
+
+        # Host review must not retain an active lease or remember a client
+        # when its transport cannot send the grant.
+        manager.datachannel_managers[first].send_message.return_value = False
+        assert not await manager.review_screen_control(first, first, "approve_client")
+        assert manager._remote_desktop_control_lease_for_session(first) is None
+        assert not manager._screen_client_always_allowed(first)
+        assert all(row.get("control_state") != "approved" for row in manager.screen_listen_snapshot()["participants"])
+
+        # A Windows host can advertise support while the current input desktop
+        # is locked. A failed cursor probe must explain the rejection.
+        from shared import windows_secure_desktop
+        monkeypatch.setattr(windows_secure_desktop, "secure_desktop_unavailable_hint", lambda: "Synthetic desktop is locked.")
+        monkeypatch.setattr(server, "remote_desktop_cursor_position", lambda: None)
+        manager.datachannel_managers[first].send_message.return_value = True
+        await send(first, "remote_desktop_control", action="start", fullscreen=True, touch_mode="direct")
+        assert not await manager.review_screen_control(first, first, "approve")
+        denial = manager.datachannel_managers[first].send_message.await_args.args[0].payload
+        assert denial["active"] is False and denial["reason"] == "Synthetic desktop is locked."
+
+    asyncio.run(run())
+
+
+def test_interact_control_review_requires_the_local_admin(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    review = AsyncMock(return_value=True)
+    save = AsyncMock(return_value={})
+    monkeypatch.setattr(server.WEBRTC, "review_screen_control", review)
+    monkeypatch.setattr(server.WEBRTC, "screen_listen_snapshot", lambda: {"participants": []})
+    monkeypatch.setattr(server, "_save_admin_permissions", save)
+    monkeypatch.setattr(server, "_require_api_login", lambda request: None)
+    monkeypatch.setattr(server, "_is_loopback_client_host", lambda host: True)
+    endpoint = "/api/screen-listen/control"
+    decision = {"session_id": "synthetic-meet", "control_id": "synthetic-input", "action": "approve"}
+    with TestClient(server.admin_app, base_url="http://127.0.0.1:8001") as client:
+        assert client.post(endpoint, json=decision, headers={"X-AutoYou-Tunnel-Client-Ip": "203.0.113.9"}).status_code == 403
+        assert client.post(endpoint, json={**decision, "action": "invalid"}).status_code == 400
+        review.assert_not_awaited()
+        assert client.post(endpoint, json=decision).status_code == 200
+        review.assert_awaited_once_with("synthetic-meet", "synthetic-input", "approve")
+        review.return_value = False
+        assert client.post(endpoint, json=decision).status_code == 409
+        assert client.post(endpoint, json={**decision, "action": "approve_all"}).status_code == 409
+        save.assert_not_awaited()
+        review.return_value = True
+        assert client.post(endpoint, json={**decision, "action": "approve_all"}).status_code == 200
+        save.assert_awaited_once_with({"meet_auto_approve": True})
+        assert client.post(endpoint, json={"action": "ask"}).status_code == 200
+        assert save.await_args.args == ({"meet_auto_approve": False},)
+
+        review.reset_mock()
+        monkeypatch.setattr(server.WEBRTC, "screen_listen_snapshot", lambda: {"participants": [
+            {"id": "synthetic-meet", "control_id": "synthetic-input", "control_state": "requested"},
+        ]})
+        assert client.post(endpoint, json={"action": "approve_all", "session_id": "synthetic-meet"}).status_code == 400
+        assert client.post(endpoint, json={"action": "approve_all"}).status_code == 200
+        assert save.await_args.args == ({"meet_auto_approve": True},)
+        review.assert_awaited_once_with("synthetic-meet", "synthetic-input", "approve")
+
+
 def _synthetic_camera(manager, monkeypatch):
     """One phone camera sink registered under two session ids, like a real call."""
     registry = video_call_manager.LatestVideoFrameRegistry(max_age_seconds=30)

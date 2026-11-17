@@ -55,6 +55,10 @@ SCHEDULER_ACTIVE_RETRY_SECONDS = 5.0
 OUTBOUND_NOTIFICATION_BASE_BACKOFF_SECONDS = 15.0
 OUTBOUND_NOTIFICATION_MAX_BACKOFF_SECONDS = 300.0
 OUTBOUND_NOTIFICATION_DEFAULT_MAX_AGE_SECONDS = 30 * 60
+# A push is the phone's alert, not its chat. A notification that went out as
+# one still waits this long for the device to reconnect, without a second push,
+# and is then delivered into the conversation like any queued message.
+OUTBOUND_NOTIFICATION_PUSHED_MAX_AGE_SECONDS = 7 * 24 * 60 * 60
 
 def _get_outbound_notification_max_age_seconds() -> float:
     try:
@@ -921,15 +925,27 @@ async def _attempt_queued_notification_delivery(notification: Dict[str, Any]) ->
             return result
         errors.append(str(result.get("message") or "Delivery failed."))
 
-    cloud_result = await _attempt_cloud_offline_notification_delivery(notification, message)
-    if cloud_result.get("status") == "success":
-        return cloud_result
-    if cloud_result.get("status") == "error":
-        errors.append(str(cloud_result.get("message") or "Cloud notification failed."))
+    # A push alerts the phone once. It does not put the message in the chat,
+    # so the message stays queued for the reconnect flush either way.
+    pushed = bool(notification.get("cloud_notified_at_s"))
+    push_sent = False
+    if not pushed:
+        cloud_result = await _attempt_cloud_offline_notification_delivery(notification, message)
+        if cloud_result.get("status") == "success":
+            notification["cloud_notified_at_s"] = time.time()
+            pushed = push_sent = True
+        elif cloud_result.get("status") == "error":
+            errors.append(str(cloud_result.get("message") or "Cloud notification failed."))
 
     # Nothing delivered it. A copy goes in the conversation it came from so it
     # is not lost, but it is still undelivered and stays queued for the device.
     recorded_in_history = await _record_undelivered_notification_in_history(notification, message)
+
+    if pushed:
+        detail = "Sent a push notification; the message goes into the chat when the device reconnects."
+        if recorded_in_history:
+            detail = f"{detail} Recorded in the conversation history."
+        return {"status": "pushed", "message": detail, "push_sent": push_sent}
 
     if errors:
         detail = "; ".join(dict.fromkeys(error for error in errors if error))
@@ -1353,7 +1369,12 @@ async def process_pending_notifications(*, force_ids: Optional[set[str]] = None)
 
             created_at_s = _normalize_timestamp(notification.get("created_at_s"), now)
             next_attempt_at_s = _normalize_timestamp(notification.get("next_attempt_at_s"), created_at_s)
-            expired = now - created_at_s >= _get_outbound_notification_max_age_seconds()
+            max_age_s = (
+                OUTBOUND_NOTIFICATION_PUSHED_MAX_AGE_SECONDS
+                if notification.get("cloud_notified_at_s")
+                else _get_outbound_notification_max_age_seconds()
+            )
+            expired = now - created_at_s >= max_age_s
             should_force = notification_id in normalized_force_ids
             should_process = should_force or next_attempt_at_s <= now
 
@@ -1396,30 +1417,34 @@ async def process_pending_notifications(*, force_ids: Optional[set[str]] = None)
                 continue
 
             attempt_count = int(_normalize_timestamp(notification.get("attempt_count"), 0.0)) + 1
+            pushed = delivery_result.get("status") == "pushed"
             notification["attempt_count"] = attempt_count
             notification["last_attempt_at_s"] = now
             notification["last_error"] = str(delivery_result.get("message") or "Delivery failed.")
             notification["next_attempt_at_s"] = now + _notification_retry_backoff_seconds(attempt_count)
             updated_notifications.append(notification)
             results[notification_id] = {
-                "status": "queued",
+                "status": "pushed" if pushed else "queued",
                 "queued": True,
                 "attempt_count": attempt_count,
                 "message": notification["last_error"],
                 "next_attempt_at_s": notification["next_attempt_at_s"],
             }
-            append_scheduler_activity_log(
-                "notification_retry_scheduled",
-                agent_kind="scheduler",
-                item_id=notification_id,
-                status="queued",
-                message=notification["last_error"],
-                details={
-                    "attempt_count": attempt_count,
-                    "source": str(notification.get("source") or "scheduler"),
-                    "owner_key": str(notification.get("owner_key") or ""),
-                },
-            )
+            # A pushed message can wait days for its device; the log keeps the
+            # push, not every retry while it waits.
+            if not pushed or delivery_result.get("push_sent"):
+                append_scheduler_activity_log(
+                    "notification_pushed" if pushed else "notification_retry_scheduled",
+                    agent_kind="scheduler",
+                    item_id=notification_id,
+                    status="pushed" if pushed else "queued",
+                    message=notification["last_error"],
+                    details={
+                        "attempt_count": attempt_count,
+                        "source": str(notification.get("source") or "scheduler"),
+                        "owner_key": str(notification.get("owner_key") or ""),
+                    },
+                )
             queue_dirty = True
 
         if queue_dirty:
@@ -1508,6 +1533,13 @@ async def _queue_notification_for_delivery(
     result = results.get(str(notification["id"]))
     if result and result.get("status") == "success":
         return result
+    if result and result.get("status") == "pushed":
+        return {
+            "status": "success",
+            "message": str(result.get("message") or "Sent a push notification."),
+            "queued": True,
+            "queue_id": notification["id"],
+        }
 
     queued_message = "Queued message for later delivery."
     if result and result.get("message"):

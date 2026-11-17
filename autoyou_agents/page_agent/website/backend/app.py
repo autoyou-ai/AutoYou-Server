@@ -32,19 +32,22 @@ import secrets
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import urllib.request
+from collections import OrderedDict
 from contextlib import suppress
 from datetime import datetime, timedelta
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-from urllib.parse import parse_qs, quote, urlparse
+from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import parse_qs, quote, urlencode, urljoin, urlparse
 
 import requests
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response, StreamingResponse
+from autoyou_agents.shared_tools.agent_input_ux import AgentHTMLResponse as HTMLResponse
 
 from shared.ui_theme import get_ui_theme, normalize_ui_theme, set_ui_theme
 from shared.url_hosts import host_matches, social_platform
@@ -66,6 +69,7 @@ from shared.url_safety import (
 from shared.secure_storage import (
     FILE_HEADER as SPM_FILE_HEADER,
     read_secure_file,
+    sealed_envelope_kind,
     secure_storage_enabled,
     write_secure_file,
 )
@@ -101,6 +105,7 @@ _ITEM_KINDS: Dict[str, tuple[str, str, str, str]] = {
     "twitter": ("X post", "social", "slate", "chat"),
     "instagram": ("Instagram", "social", "rose", "image"),
     "threads": ("Threads", "social", "slate", "chat"),
+    "bluesky": ("Bluesky", "social", "blue", "chat"),
     "image": ("Photo", "photos", "green", "image"),
     "gif": ("GIF", "photos", "green", "image"),
     "audio": ("Audio", "audio", "purple", "wave"),
@@ -108,23 +113,28 @@ _ITEM_KINDS: Dict[str, tuple[str, str, str, str]] = {
     "text": ("Text", "files", "slate", "doc"),
     "file": ("File", "files", "slate", "doc"),
 }
-_SOCIAL_TILE_LABELS = {"twitter": "X", "instagram": "Instagram", "threads": "Threads", "tiktok": "TikTok"}
+_SOCIAL_TILE_LABELS = {"twitter": "X", "instagram": "Instagram", "threads": "Threads", "tiktok": "TikTok", "bluesky": "Bluesky"}
 # Type tabs on the page and the stored types each one shows.
 FEED_TYPE_TABS: Dict[str, List[str]] = {
     "latest": [],
     "articles": ["article"],
     "videos": ["video", "youtube", "tiktok"],
-    "social": ["twitter", "instagram", "threads", "tiktok"],
+    "social": ["twitter", "instagram", "threads", "tiktok", "bluesky"],
     "photos": ["image", "gif"],
     "audio": ["audio"],
     "files": ["document", "text", "file"],
 }
 
 
-def _canonical_item_type(value: Any) -> str:
+def _canonical_item_type(value: Any, url: Any = None) -> str:
     normalized = str(value or "").strip().lower()
     if normalized == "x":
         return "twitter"
+    # Phones publish every link as an article; show a platform link as its post.
+    if normalized in {"", "article"} and url:
+        platform = social_platform(str(url))
+        if platform:
+            return platform
     return normalized or "article"
 
 
@@ -252,10 +262,18 @@ class PageFeedService:
         candidate = Path(path)
         return read_secure_file(candidate)
 
-    # A video is fetched as many byte ranges in a row. Without this each range
-    # opened (and, when sealed, decrypted) the whole file again.
-    _RECENT_BLOB_SECONDS = 30.0
-    _RECENT_BLOB_MAX_BYTES = 256 * 1024 * 1024
+    # A video is fetched as many byte ranges in a row. Keep a small bounded LRU
+    # of recently opened sealed blobs so consecutive Range requests reuse
+    # plaintext instead of repeatedly decrypting the full file, while plain
+    # unsealed blobs seek directly without caching or full-file RAM reads.
+    _RECENT_BLOB_SECONDS = 60.0
+    _RECENT_BLOB_MAX_BYTES = 64 * 1024 * 1024
+    _RECENT_BLOB_MAX_ITEMS = 8
+
+    @staticmethod
+    def _blob_requires_full_read(path: str | Path) -> bool:
+        candidate = Path(path)
+        return bool(secure_storage_enabled() or sealed_envelope_kind(candidate) is not None)
 
     def _recent_blob_bytes(self, path: str | Path) -> bytes:
         candidate = Path(path)
@@ -264,11 +282,26 @@ class PageFeedService:
             key = (str(candidate), stat.st_mtime_ns, stat.st_size)
         except OSError:
             return self._read_blob_bytes(candidate)
-        recent = getattr(self, "_recent_blob", None)
+        lock = getattr(self, "_recent_blob_lock", None)
+        if lock is None:
+            lock = threading.Lock()
+            self._recent_blob_lock = lock
         now = time.monotonic()
-        if recent and recent[0] == key and now - recent[2] <= self._RECENT_BLOB_SECONDS:
-            self._recent_blob = (key, recent[1], now)
-            return recent[1]
+        with lock:
+            cache: Optional[OrderedDict] = getattr(self, "_recent_blob_cache", None)
+            if cache is None:
+                cache = OrderedDict()
+                self._recent_blob_cache = cache
+            expired = [k for k, entry in cache.items() if now - entry[1] > self._RECENT_BLOB_SECONDS]
+            for k in expired:
+                cache.pop(k, None)
+            hit = cache.get(key)
+            if hit is not None:
+                data, _ = hit
+                cache[key] = (data, now)
+                cache.move_to_end(key)
+                self._recent_blob = (key, data, now)
+                return data
         data = self._read_blob_bytes(candidate)
         # Reading can seal a plain file in place; key on what is there now.
         try:
@@ -276,7 +309,15 @@ class PageFeedService:
             key = (str(candidate), stat.st_mtime_ns, stat.st_size)
         except OSError:
             return data
-        self._recent_blob = (key, data, now) if len(data) <= self._RECENT_BLOB_MAX_BYTES else None
+        if len(data) <= self._RECENT_BLOB_MAX_BYTES:
+            now_after = time.monotonic()
+            with lock:
+                cache = self._recent_blob_cache
+                cache[key] = (data, now_after)
+                cache.move_to_end(key)
+                while len(cache) > self._RECENT_BLOB_MAX_ITEMS or sum(len(v[0]) for v in cache.values()) > self._RECENT_BLOB_MAX_BYTES:
+                    cache.popitem(last=False)
+                self._recent_blob = (key, data, now_after)
         return data
 
     @classmethod
@@ -304,8 +345,13 @@ class PageFeedService:
         return json.dumps(payload).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
 
     @staticmethod
-    def _blob_api_url(blob_id: str, *, preview: bool = False) -> str:
-        suffix = "?preview=1" if preview else ""
+    def _blob_api_url(blob_id: str, *, preview: bool = False, download: bool = False) -> str:
+        params: List[str] = []
+        if preview:
+            params.append("preview=1")
+        if download:
+            params.append("download=1")
+        suffix = f"?{'&'.join(params)}" if params else ""
         return f"./api/blob/{quote(str(blob_id or ''), safe='')}{suffix}"
 
     def _window_days(self) -> int:
@@ -530,15 +576,16 @@ class PageFeedService:
             parsed = urlparse(str(url or "").strip())
             host = (parsed.hostname or "").lower()
             if host_matches(host, "youtu.be"):
-                return parsed.path.lstrip("/")
+                parts = [part for part in parsed.path.split("/") if part]
+                return re.sub(r"[^A-Za-z0-9_-]", "", parts[0]) if parts else ""
             if host_matches(host, "youtube.com", "youtube-nocookie.com"):
                 query = parse_qs(parsed.query or "")
                 video_id = (query.get("v") or [""])[0].strip()
                 if video_id:
-                    return video_id
+                    return re.sub(r"[^A-Za-z0-9_-]", "", video_id)
                 parts = [part for part in parsed.path.split("/") if part]
-                if len(parts) >= 2 and parts[0] in {"embed", "shorts"}:
-                    return parts[1]
+                if len(parts) >= 2 and parts[0] in {"embed", "shorts", "live", "v", "e", "watch"}:
+                    return re.sub(r"[^A-Za-z0-9_-]", "", parts[1])
         except Exception:
             return ""
         return ""
@@ -648,15 +695,45 @@ class PageFeedService:
         return f"https://platform.twitter.com/embed/Tweet.html?id={post_id}&dnt=true&theme={normalized_theme}&conversation=none"
 
     @staticmethod
-    def _instagram_embed_url_from_url(url: str) -> str:
+    def _instagram_post_parts(url: str) -> Optional[Tuple[str, str]]:
         try:
             parsed = urlparse(str(url or "").strip())
             parts = [part for part in parsed.path.split("/") if part]
-            if len(parts) >= 2 and parts[0] in {"p", "reel", "tv"}:
-                return f"https://www.instagram.com/{parts[0]}/{parts[1]}/embed/"
+            if len(parts) >= 2 and parts[0] in {"p", "reel", "reels", "tv"}:
+                kind = "reel" if parts[0] == "reels" else parts[0]
+                code = re.sub(r"[^A-Za-z0-9_-]", "", parts[1])
+                return (kind, code) if code else None
+            if len(parts) >= 3 and parts[1] in {"p", "reel", "reels", "tv"}:
+                kind = "reel" if parts[1] == "reels" else parts[1]
+                code = re.sub(r"[^A-Za-z0-9_-]", "", parts[2])
+                return (kind, code) if code else None
         except Exception:
-            return ""
+            return None
+        return None
+
+    @staticmethod
+    def _instagram_embed_url_from_url(url: str) -> str:
+        extracted = PageFeedService._instagram_post_parts(url)
+        if extracted:
+            kind, code = extracted
+            return f"https://www.instagram.com/{kind}/{code}/embed/"
         return ""
+
+    @staticmethod
+    def _bluesky_post_parts(url: str) -> Optional[Tuple[str, str]]:
+        try:
+            parsed = urlparse(str(url or "").strip())
+            if not host_matches(parsed.hostname or "", "bsky.app"):
+                return None
+            parts = [part for part in parsed.path.split("/") if part]
+            if len(parts) >= 4 and parts[0] == "profile" and parts[2] == "post":
+                actor = re.sub(r"[^A-Za-z0-9._:-]", "", parts[1])
+                rkey = re.sub(r"[^A-Za-z0-9_-]", "", parts[3])
+                if actor and rkey:
+                    return (actor, rkey)
+        except Exception:
+            return None
+        return None
 
     @staticmethod
     def _host_label_from_url(url: str) -> str:
@@ -708,8 +785,11 @@ class PageFeedService:
             "tiktok": "TikTok video",
             "instagram": "Instagram post",
             "youtube": "YouTube video",
+            "bluesky": "Bluesky post",
         }.get(item_type, "")
-        if handle and item_type in {"twitter", "threads", "tiktok"}:
+        if item_type == "bluesky" and len(parts) >= 2 and parts[0] == "profile" and not parts[1].lower().startswith("did:"):
+            handle = re.sub(r"[^A-Za-z0-9_.]", "", parts[1])[:40]
+        if handle and item_type in {"twitter", "threads", "tiktok", "bluesky"}:
             return f"Post by @{handle}" if item_type != "tiktok" else f"TikTok by @{handle}"
         return fallback
 
@@ -724,7 +804,7 @@ class PageFeedService:
         return letters[0].upper() + (letters[1].lower() if len(letters) > 1 else "")
 
     def _present_item(self, item: Dict[str, Any], blob_meta: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        item_type = _canonical_item_type(item.get("type"))
+        item_type = _canonical_item_type(item.get("type"), item.get("url"))
         url = str(item.get("url") or "").strip()
         is_blob = url.startswith("blob://")
         blob_id = url.split("://", 1)[1] if is_blob else ""
@@ -735,7 +815,7 @@ class PageFeedService:
         ext_source = filename or ("" if is_blob else (urlparse(url).path if url else ""))
         ext = os.path.splitext(ext_source)[1].lstrip(".").upper()[:4]
         title = str(item.get("title") or "").strip()
-        platform = item_type in {"youtube", "twitter", "instagram", "threads", "tiktok"}
+        platform = item_type in {"youtube", "twitter", "instagram", "threads", "tiktok", "bluesky"}
         display_title = (
             title
             or filename
@@ -761,6 +841,14 @@ class PageFeedService:
             favicon = self._favicon_url_from_url(url)
             label = self._site_initials(host)
         link = self._normalize_x_url(url) if item_type == "twitter" else url
+        content = str(item.get("content") or "")[:50000]
+        if not content and blob_id and (item_type == "text" or ext in {"TXT", "MD"}) and getattr(self, "db", None) is not None:
+            with suppress(Exception):
+                blob_path, _ = self.db.get_blob_path_and_type(blob_id)
+                if blob_path and os.path.exists(blob_path):
+                    raw_bytes = self._recent_blob_bytes(blob_path)
+                    if raw_bytes:
+                        content = raw_bytes[:100000].decode("utf-8", errors="replace")[:50000]
         return {
             "kind": kind,
             # The platform already names the site, so its host is not repeated.
@@ -770,7 +858,8 @@ class PageFeedService:
             "icon": icon,
             "host": host,
             "title": display_title,
-            "content": str(item.get("content") or "")[:50000],
+            "filename": filename or (display_title if uploaded else ""),
+            "content": content,
             "thumb": thumb,
             "video_thumb": video_thumb,
             "favicon": favicon,
@@ -778,10 +867,13 @@ class PageFeedService:
             "ext": ext,
             "size": int((blob_meta or {}).get("size") or 0),
             "open_url": self._blob_api_url(blob_id) if blob_id else self._safe_link(link),
+            "download_url": self._blob_api_url(blob_id, download=True) if blob_id else "",
             "uploaded": uploaded,
         }
 
     def _present_items(self, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        if getattr(self, "db", None) is not None and hasattr(self.db, "post_details"):
+            items = self.db.post_details(items)
         blob_ids = [
             str(item.get("url") or "")[len("blob://"):]
             for item in items
@@ -797,7 +889,27 @@ class PageFeedService:
                 continue
             url = str(item.get("url") or "")
             meta = metas.get(url[len("blob://"):]) if url.startswith("blob://") else None
-            presented.append({**item, "view": self._present_item(item, meta)})
+            attachments = []
+            for attachment in item.get("attachments", []):
+                mime = str(attachment.get("mime") or "").lower()
+                att_name = str(attachment.get("name") or "")
+                att_ext = os.path.splitext(att_name)[1].lower()
+                family = mime.split("/", 1)[0]
+                if family in {"image", "video", "audio"}:
+                    attachment_type = family
+                elif mime in {
+                    "application/pdf",
+                    "application/msword",
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                } or att_ext in {".pdf", ".doc", ".docx"}:
+                    attachment_type = "document"
+                elif family == "text" or att_ext in {".txt", ".md"}:
+                    attachment_type = "text"
+                else:
+                    attachment_type = "file"
+                attachment_item = {**attachment, "type": attachment_type, "title": attachment.get("name", "Attachment")}
+                attachments.append({**attachment_item, "view": self._present_item(attachment_item, {"filename": attachment.get("name"), "size": attachment.get("size")})})
+            presented.append({**item, "attachments": attachments, "view": self._present_item(item, meta)})
         return presented
 
     @staticmethod
@@ -1096,8 +1208,8 @@ class PageFeedService:
     def _normalize_tiktok_url(self, url: str) -> str:
         """Normalize TikTok URLs.
 
-        - Follow short links like `https://www.tiktok.com/t/…` to the canonical
-          `…/@user/video/<id>/` form.
+        - Follow short links like `https://www.tiktok.com/t/…`, `vm.tiktok.com`,
+          or `vt.tiktok.com` to the canonical `…/@user/video/<id>/` form.
         - Strip query to keep embed stable.
 
         Every redirect hop is re-validated against the SSRF rules so a
@@ -1113,7 +1225,13 @@ class PageFeedService:
             except UnsafeURLError:
                 return url
             low = u.lower()
-            if "tiktok.com/t/" in low:
+            host = (urlparse(u).hostname or "").lower()
+            is_short = (
+                "tiktok.com/t/" in low
+                or host_matches(host, "vm.tiktok.com", "vt.tiktok.com")
+                or (host_matches(host, "tiktok.com") and "/video/" not in low)
+            )
+            if is_short:
                 with suppress(Exception):
                     session = requests.Session()
                     try:
@@ -1165,32 +1283,98 @@ class PageFeedService:
             if any(url.lower().endswith(ext) for ext in direct_exts):
                 return url
 
+            # In-memory LRU/TTL cache to avoid repeated yt-dlp extractions
+            now = time.monotonic()
+            cache = getattr(self, "_media_resolve_cache", None)
+            if cache is None:
+                cache = {}
+                self._media_resolve_cache = cache
+            headers_cache = getattr(self, "_media_headers_cache", None)
+            if headers_cache is None:
+                headers_cache = {}
+                self._media_headers_cache = headers_cache
+            cached = cache.get(url)
+            if cached and (now - cached[1] < 1800.0):
+                return cached[0]
+
             yt_dlp = None
             with suppress(Exception):
                 import yt_dlp  # type: ignore
             if yt_dlp is None:
                 return None
 
-            opts = {
+            opts: Dict[str, Any] = {
                 "quiet": True,
                 "noplaylist": True,
                 "nocheckcertificate": True,
                 "skip_download": True,
-                "format": "best",
+                "format": "b[ext=mp4][protocol^=http]/b[ext=mp4]/b[protocol^=http]/b/best",
+                "js_runtimes": {"node": {}, "deno": {}},
+                "remote_components": ["ejs:github"],
             }
-            with yt_dlp.YoutubeDL(opts) as ydl:  # type: ignore
-                info = ydl.extract_info(url, download=False)
-                # Prefer top-level URL if present, else best format
-                resolved = info.get("url")
+            info = None
+            try:
+                with yt_dlp.YoutubeDL(opts) as ydl:  # type: ignore
+                    info = ydl.extract_info(url, download=False)
+            except Exception:
+                fallback_opts = {
+                    "quiet": True,
+                    "noplaylist": True,
+                    "nocheckcertificate": True,
+                    "skip_download": True,
+                    "format": "best",
+                }
+                with yt_dlp.YoutubeDL(fallback_opts) as ydl:  # type: ignore
+                    info = ydl.extract_info(url, download=False)
+            if not isinstance(info, dict):
+                return None
+
+            resolved = info.get("url")
+            req_headers = info.get("http_headers") if isinstance(info.get("http_headers"), dict) else {}
+            if not resolved:
+                formats = info.get("formats") or []
+                # Prefer muxed HTTP mp4/video formats over storyboard (.mhtml) or audio-only streams
+                preferred = []
+                fallback_formats = []
+                for fmt in formats:
+                    if not isinstance(fmt, dict):
+                        continue
+                    u = fmt.get("url")
+                    if not u:
+                        continue
+                    ext_val = str(fmt.get("ext") or "").lower()
+                    vcodec = str(fmt.get("vcodec") or "").lower()
+                    acodec = str(fmt.get("acodec") or "").lower()
+                    protocol = str(fmt.get("protocol") or "").lower()
+                    if ext_val in {"mhtml", "jpg", "png", "webp"} or vcodec == "none":
+                        continue
+                    fallback_formats.append(fmt)
+                    if acodec != "none" and (not protocol or protocol in {"http", "https"}):
+                        preferred.append(fmt)
+                chosen_list = preferred or fallback_formats
+                if chosen_list:
+                    chosen = chosen_list[-1]
+                    resolved = chosen.get("url")
+                    if isinstance(chosen.get("http_headers"), dict):
+                        req_headers = chosen.get("http_headers")
                 if not resolved:
-                    for fmt in (info.get("formats") or []):
-                        u = fmt.get("url")
-                        if u:
-                            resolved = u
+                    for fmt in formats:
+                        if isinstance(fmt, dict) and fmt.get("url"):
+                            resolved = fmt.get("url")
                             break
-                if resolved and not is_safe_http_url(resolved):
-                    return None
-                return resolved
+            if resolved and not is_safe_http_url(resolved):
+                return None
+            if resolved:
+                if len(cache) > 200:
+                    for k in list(cache.keys())[:50]:
+                        cache.pop(k, None)
+                cache[url] = (resolved, now)
+                if req_headers:
+                    if len(headers_cache) > 200:
+                        for k in list(headers_cache.keys())[:50]:
+                            headers_cache.pop(k, None)
+                    headers_cache[resolved] = {str(k): str(v) for k, v in req_headers.items() if k and v}
+            return resolved
         except Exception:
             return None
 
@@ -1206,10 +1390,11 @@ class PageFeedService:
             if not normalized:
                 return None
             parsed = urlparse(normalized)
-            parts = [part for part in parsed.path.split("/") if part]
-            if len(parts) < 2 or parts[0] not in {"p", "reel", "tv"}:
+            post_parts = self._instagram_post_parts(normalized)
+            if not post_parts:
                 return None
-            preview_url = f"{parsed.scheme or 'https'}://www.instagram.com/{parts[0]}/{parts[1]}/media/?size=l"
+            kind, shortcode = post_parts
+            preview_url = f"{parsed.scheme or 'https'}://www.instagram.com/{kind}/{shortcode}/media/?size=l"
             try:
                 assert_safe_http_url(preview_url)
             except UnsafeURLError:
@@ -1237,6 +1422,235 @@ class PageFeedService:
         except Exception:
             return None
         return None
+
+    def _fetch_youtube_title(self, url: str, timeout: float = 4.0) -> Optional[str]:
+        """Resolve a YouTube video's title via YouTube's public oEmbed endpoint."""
+        try:
+            video_id = self._youtube_id_from_url(url)
+            if not video_id:
+                return None
+            canonical = f"https://www.youtube.com/watch?v={video_id}"
+            oembed_url = f"https://www.youtube.com/oembed?{urlencode({'url': canonical, 'format': 'json'})}"
+            assert_safe_http_url(oembed_url)
+            session = requests.Session()
+            try:
+                resp = safe_follow_redirects(
+                    session,
+                    oembed_url,
+                    method="GET",
+                    max_redirects=3,
+                    timeout=timeout,
+                    headers={"User-Agent": "Mozilla/5.0 (AutoYou)"},
+                )
+            finally:
+                session.close()
+            try:
+                if not resp.ok:
+                    return None
+                payload = json.loads(resp.content[:32768].decode("utf-8", errors="ignore"))
+                title = str(payload.get("title") or "").strip()
+                return title or None
+            finally:
+                resp.close()
+        except Exception:
+            return None
+
+    def _resolve_bluesky_post(self, url: str, timeout: float = 5.0) -> Dict[str, Any]:
+        """Resolve a Bluesky post URL to its canonical DID embed URL and post metadata.
+
+        `embed.bsky.app` requires an ATProto DID (`did:plc:...` or `did:web:...`)
+        in the `/embed/<did>/app.bsky.feed.post/<rkey>` path and returns HTTP 400
+        `Invalid DID` when given a handle like `bsky.app`.
+        """
+        parts = self._bluesky_post_parts(url)
+        if not parts:
+            return {}
+        actor, rkey = parts
+        now = time.monotonic()
+        cache = getattr(self, "_bluesky_resolve_cache", None)
+        if cache is None:
+            cache = {}
+            self._bluesky_resolve_cache = cache
+        cache_key = f"{actor}/{rkey}"
+        cached = cache.get(cache_key)
+        if cached and (now - cached[1] < 3600.0):
+            return dict(cached[0])
+
+        did = actor if actor.lower().startswith("did:") else ""
+        session = requests.Session()
+        try:
+            if not did:
+                resolve_url = (
+                    "https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle?"
+                    + urlencode({"handle": actor})
+                )
+                with suppress(Exception):
+                    assert_safe_http_url(resolve_url)
+                    resp = safe_follow_redirects(
+                        session,
+                        resolve_url,
+                        method="GET",
+                        max_redirects=3,
+                        timeout=timeout,
+                        headers={"User-Agent": "Mozilla/5.0 (AutoYou)"},
+                    )
+                    try:
+                        if resp.ok:
+                            data = json.loads(resp.content[:16384].decode("utf-8", errors="ignore"))
+                            candidate = str(data.get("did") or "").strip()
+                            if candidate.startswith("did:"):
+                                did = candidate
+                    finally:
+                        resp.close()
+
+            result: Dict[str, Any] = {
+                "handle": "" if actor.lower().startswith("did:") else actor,
+                "did": did,
+                "rkey": rkey,
+                "embed_url": (
+                    f"https://embed.bsky.app/embed/{did}/app.bsky.feed.post/{rkey}"
+                    if did
+                    else f"https://embed.bsky.app/embed/{actor}/app.bsky.feed.post/{rkey}"
+                ),
+            }
+
+            at_actor = did or actor
+            thread_url = (
+                "https://public.api.bsky.app/xrpc/app.bsky.feed.getPostThread?"
+                + urlencode({"uri": f"at://{at_actor}/app.bsky.feed.post/{rkey}", "depth": 0})
+            )
+            with suppress(Exception):
+                assert_safe_http_url(thread_url)
+                resp = safe_follow_redirects(
+                    session,
+                    thread_url,
+                    method="GET",
+                    max_redirects=3,
+                    timeout=timeout,
+                    headers={"User-Agent": "Mozilla/5.0 (AutoYou)"},
+                )
+                try:
+                    if resp.ok:
+                        payload = json.loads(resp.content[:131072].decode("utf-8", errors="ignore"))
+                        post = ((payload.get("thread") or {}).get("post")) or {}
+                        author = post.get("author") or {}
+                        author_did = str(author.get("did") or "").strip()
+                        if author_did.startswith("did:") and not result.get("did"):
+                            result["did"] = author_did
+                            result["embed_url"] = f"https://embed.bsky.app/embed/{author_did}/app.bsky.feed.post/{rkey}"
+                        handle = str(author.get("handle") or result.get("handle") or "").strip()
+                        display_name = str(author.get("displayName") or "").strip()
+                        record = post.get("record") or {}
+                        text = str(record.get("text") or "").strip()
+                        if handle:
+                            result["handle"] = handle
+                        if display_name:
+                            result["author_name"] = display_name
+                        if text:
+                            result["text"] = text
+                        if text and handle:
+                            snippet = re.sub(r"\s+", " ", text)[:80]
+                            result["title"] = f"@{handle}: {snippet}"
+                        elif handle:
+                            result["title"] = f"Post by @{handle}"
+                        embed = post.get("embed") or {}
+                        images = embed.get("images") or ((embed.get("media") or {}).get("images")) or []
+                        if isinstance(images, list) and images:
+                            thumb = str(images[0].get("thumb") or images[0].get("fullsize") or "").strip()
+                            if thumb and is_safe_http_url(thumb):
+                                result["image"] = thumb
+                        elif isinstance(embed.get("thumbnail"), str) and is_safe_http_url(embed["thumbnail"]):
+                            result["image"] = embed["thumbnail"]
+                finally:
+                    resp.close()
+        finally:
+            session.close()
+
+        if result.get("did"):
+            if len(cache) > 200:
+                for k in list(cache.keys())[:50]:
+                    cache.pop(k, None)
+            cache[cache_key] = (result, now)
+        return result
+
+    def _resolve_website_preview(self, url: str, timeout: float = 4.0) -> Dict[str, Any]:
+        """Extract OpenGraph / meta preview details for a standard web link."""
+        try:
+            assert_safe_http_url(url)
+        except UnsafeURLError:
+            return {}
+        now = time.monotonic()
+        cache = getattr(self, "_website_preview_cache", None)
+        if cache is None:
+            cache = {}
+            self._website_preview_cache = cache
+        cached = cache.get(url)
+        if cached and (now - cached[1] < 1800.0):
+            return dict(cached[0])
+        try:
+            session = requests.Session()
+            try:
+                resp = safe_follow_redirects(
+                    session,
+                    url,
+                    method="GET",
+                    max_redirects=5,
+                    timeout=timeout,
+                    headers={"User-Agent": "Mozilla/5.0 (AutoYou)"},
+                )
+            finally:
+                session.close()
+            try:
+                content_type = str(resp.headers.get("content-type") or "").lower()
+                final_url = str(resp.url or url)
+                if content_type.startswith("image/") and is_safe_http_url(final_url):
+                    result = {"image": final_url, "url": final_url}
+                    cache[url] = (result, now)
+                    return result
+                raw = resp.content[:98304]
+            finally:
+                resp.close()
+            text = raw.decode("utf-8", errors="ignore")
+
+            def _meta_content(*names: str) -> str:
+                for name in names:
+                    esc_name = re.escape(name)
+                    patterns = (
+                        rf'<meta[^>]+(?:property|name)\s*=\s*["\']{esc_name}["\'][^>]+content\s*=\s*["\']([^"\']+)["\']',
+                        rf'<meta[^>]+content\s*=\s*["\']([^"\']+)["\'][^>]+(?:property|name)\s*=\s*["\']{esc_name}["\']',
+                    )
+                    for pat in patterns:
+                        m = re.search(pat, text, flags=re.IGNORECASE)
+                        if m and m.group(1).strip():
+                            return html.unescape(re.sub(r"\s+", " ", m.group(1).strip()))
+                return ""
+
+            title = _meta_content("og:title", "twitter:title")
+            if not title:
+                m_title = re.search(r"<title[^>]*>(.*?)</title>", text, flags=re.IGNORECASE | re.DOTALL)
+                if m_title:
+                    title = html.unescape(re.sub(r"\s+", " ", m_title.group(1).strip()))
+            description = _meta_content("og:description", "twitter:description", "description")
+            image = _meta_content("og:image", "twitter:image", "twitter:image:src")
+            if image:
+                image = urljoin(final_url, image)
+                if not is_safe_http_url(image):
+                    image = ""
+            site_name = _meta_content("og:site_name")
+            result = {
+                "title": title[:300] if title else "",
+                "description": description[:600] if description else "",
+                "image": image,
+                "site_name": site_name[:120] if site_name else "",
+                "url": final_url if is_safe_http_url(final_url) else url,
+            }
+            if len(cache) > 200:
+                for k in list(cache.keys())[:50]:
+                    cache.pop(k, None)
+            cache[url] = (result, now)
+            return result
+        except Exception:
+            return {}
 
     def _safe_filename(self, name: str) -> str:
         """Sanitize a filename for safe storage on disk.
@@ -1572,6 +1986,7 @@ class PageFeedService:
                 "db_available": getattr(self, "db", None) is not None,
                 "loaded_items": len(self.feed_items),
                 "capabilities": [
+                    "grouped_posts",
                     "feed_query",
                     "blob_upload",
                     "range_blob_streaming",
@@ -1632,9 +2047,14 @@ class PageFeedService:
             """Add a new item to the feed from a link."""
             try:
                 data = await request.json()
+                if "client_post_id" in data:
+                    return await publish_native_post(data)
                 url = str(data.get("url", "")).strip()
                 content = str(data.get("content") or "")[:50000]
                 item_type = str(data.get("type") or (self._classify_url(url) if url else "text"))
+                # Clients that only know "article" still get the platform's post view.
+                if url and not url.lower().startswith("blob://") and item_type.strip().lower() in {"", "article"}:
+                    item_type = social_platform(url) or item_type
                 if not url and not content:
                     raise HTTPException(status_code=400, detail="url or content is required")
                 if not url:
@@ -1651,14 +2071,27 @@ class PageFeedService:
                     with suppress(Exception):
                         url = await asyncio.to_thread(self._normalize_tiktok_url, url)
                         source = self._default_source(url)
-                # Try to enrich title for articles when not provided
-                if (not title or not str(title).strip()) and item_type == "article":
-                    try:
-                        fetched = await asyncio.to_thread(self._get_title_sync, url)
-                        if fetched:
-                            title = fetched
-                    except Exception:
-                        pass
+                # Try to enrich title for articles/youtube/bluesky when not provided
+                if not title or not str(title).strip():
+                    if item_type == "article":
+                        with suppress(Exception):
+                            fetched = await asyncio.to_thread(self._get_title_sync, url)
+                            if fetched:
+                                title = fetched
+                    elif item_type == "youtube":
+                        with suppress(Exception):
+                            fetched = await asyncio.to_thread(self._fetch_youtube_title, url)
+                            if not fetched:
+                                fetched = await asyncio.to_thread(self._get_title_sync, url)
+                            if fetched:
+                                title = fetched
+                    elif item_type == "bluesky":
+                        with suppress(Exception):
+                            bsky = await asyncio.to_thread(self._resolve_bluesky_post, url)
+                            if bsky.get("title"):
+                                title = bsky["title"]
+                            if not content and bsky.get("text"):
+                                content = str(bsky["text"])[:50000]
                 item = self._append_item(item_type, url, title, source, content)
                 try:
                     if getattr(self, "db", None) is not None and url.lower().startswith("blob://") and title:
@@ -1667,8 +2100,11 @@ class PageFeedService:
                         if path:
                             base = os.path.basename(path)
                             ext = os.path.splitext(base)[1] or self._ext_from_mime(mime or "", "")
-                            safe_title = self._safe_filename(str(title))
-                            new_name = f"{safe_title}{ext}" if ext else safe_title
+                            raw_title = str(title).strip()
+                            if ext and raw_title.lower().endswith(ext.lower()):
+                                raw_title = raw_title[: -len(ext)]
+                            safe_title = self._safe_filename(raw_title or str(title))
+                            new_name = f"{safe_title}{ext}" if (ext and not safe_title.lower().endswith(ext.lower())) else safe_title
                             new_path = os.path.join(self.uploads_dir, new_name)
                             if os.path.abspath(new_path) != os.path.abspath(path):
                                 if os.path.exists(new_path):
@@ -1686,6 +2122,71 @@ class PageFeedService:
                 raise
             except Exception as e:
                 raise HTTPException(status_code=500, detail=str(e))
+
+        async def publish_native_post(data: Dict[str, Any]) -> JSONResponse:
+            post_id = str(data.get("client_post_id") or "").strip()
+            if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", post_id):
+                raise HTTPException(400, "A valid client_post_id is required")
+            raw = data.get("attachments", [])
+            if not isinstance(raw, list) or len(raw) > 500:
+                raise HTTPException(400, "Attach up to 500 files")
+            attachments = []
+            for entry in raw:
+                if not isinstance(entry, dict) or not entry.get("blob_id") or not entry.get("client_media_id"):
+                    raise HTTPException(400, "Each attachment needs blob_id and client_media_id")
+                attachments.append({"blob_id": str(entry["blob_id"])[:128], "client_media_id": str(entry["client_media_id"])[:128]})
+            if len({a["client_media_id"] for a in attachments}) != len(attachments) or len({a["blob_id"] for a in attachments}) != len(attachments):
+                raise HTTPException(400, "Attachments must be unique")
+            if self.db is None:
+                raise HTTPException(503, "Post storage is unavailable")
+            url = str(data.get("url") or "").strip()
+            if url and (urlparse(url).scheme not in {"http", "https"} or not self._safe_link(url)):
+                raise HTTPException(400, "Use an http or https link")
+            content = str(data.get("content") or "")[:50000]
+            if not url and not content and not attachments:
+                raise HTTPException(400, "Add text, a link or an attachment")
+            item_type = self._classify_url(url) if url else "text"
+            if not url and attachments:
+                first = self.db.get_blob_meta(attachments[0]["blob_id"])
+                if not first:
+                    raise HTTPException(400, "An attachment is missing")
+                family = str(first.get("mimetype") or "").split("/", 1)[0]
+                item_type = family if family in {"image", "audio", "video"} else "file"
+                url = "blob://" + attachments[0]["blob_id"]
+            try:
+                item = self.db.upsert_post(post_id, item_type, url, str(data.get("title") or "")[:300],
+                                           content, self._default_source(url), attachments)
+            except ValueError as exc:
+                raise HTTPException(400, str(exc)) from exc
+            self.feed_items = [i for i in self.feed_items if i.get("id") != item["id"]] + [item]
+            return JSONResponse({"item": self._present_items([item])[0]})
+
+        @app.post("/api/item/{item_id}/update")
+        async def api_item_update(item_id: int, request: Request) -> JSONResponse:
+            try:
+                data = await request.json()
+            except ValueError as exc:
+                raise HTTPException(400, "Use a JSON object to edit the post") from exc
+            if not isinstance(data, dict):
+                raise HTTPException(400, "Use a JSON object to edit the post")
+            item = self.db.get_item(item_id) if self.db else None
+            if not item:
+                raise HTTPException(404, "Item not found")
+            title = str(data.get("title", item["title"]))[:300].strip()
+            content = str(data.get("content", item.get("content", "")))[:50000]
+            url = str(data.get("url", item["url"])).strip()
+            if item["url"].startswith("blob://"):
+                if url != item["url"]:
+                    raise HTTPException(400, "Uploaded media cannot be replaced by editing its link")
+            elif url and (urlparse(url).scheme not in {"http", "https"} or not self._safe_link(url)):
+                raise HTTPException(400, "Use an http or https link")
+            if not title or (not url and not content):
+                raise HTTPException(400, "Add a title and a link or text")
+            item_type = item["type"] if url.startswith("blob://") else self._classify_url(url) if url else "text"
+            self.db.update_post(item_id, title=title, url=url, content=content, item_type=item_type, source=self._default_source(url))
+            updated = self._present_items([self.db.get_item(item_id)])[0]
+            self.feed_items = [updated if i.get("id") == item_id else i for i in self.feed_items]
+            return JSONResponse({"ok": True, "item": updated})
 
         @app.delete("/api/feed/{item_id}")
         async def api_feed_delete(item_id: int) -> JSONResponse:
@@ -1827,6 +2328,113 @@ class PageFeedService:
             except Exception as e:
                 raise HTTPException(status_code=500, detail=str(e))
 
+        @app.get("/api/feed/catalog")
+        async def api_feed_catalog(request: Request) -> JSONResponse:
+            """Lightweight catalog of feed items without full content for mobile sync."""
+            try:
+                qp = request.query_params
+                order = (qp.get("order") or "desc").lower()
+                cursor = qp.get("cursor")
+                try:
+                    limit = int(qp.get("limit")) if qp.get("limit") is not None else 100
+                except ValueError:
+                    limit = 100
+                if limit <= 0:
+                    limit = 100
+                descending = order != "asc"
+                cursor_added_at, cursor_id = _decode_feed_cursor(cursor)
+
+                if getattr(self, "db", None) is not None:
+                    full_items = list(
+                        self.db.query_items(
+                            order=("desc" if descending else "asc"),
+                            limit=limit + 1,
+                            ignore_date_default=True,
+                            cursor_added_at=cursor_added_at,
+                            cursor_id=cursor_id,
+                        )
+                    )
+                else:
+                    full_items = self._filter_memory_items(
+                        descending=descending,
+                        types=None,
+                        sources=None,
+                        favourites_only=False,
+                        stored_only=False,
+                        search=None,
+                        date_from=None,
+                        date_to=None,
+                        cursor=(cursor_added_at, cursor_id),
+                    )[: limit + 1]
+
+                has_more = len(full_items) > limit
+                page_rows = full_items[:limit]
+                last_row = page_rows[-1] if page_rows else None
+                next_cursor = (
+                    _encode_feed_cursor(last_row.get("added_at"), last_row.get("id"))
+                    if has_more and last_row
+                    else None
+                )
+                catalog = [
+                    {
+                        "id": str(i.get("id")),
+                        "type": str(i.get("type") or "text"),
+                        "title": str(i.get("title") or ""),
+                        "url": str(i.get("url") or ""),
+                        "tags": list(i.get("tags") or []),
+                        "added_at": str(i.get("added_at") or ""),
+                        "source": str(i.get("source") or ""),
+                    }
+                    for i in page_rows
+                ]
+                total_count = (
+                    self.db.count_items()
+                    if getattr(self, "db", None) is not None
+                    else len(self.feed_items)
+                )
+                return JSONResponse(
+                    {
+                        "items": catalog,
+                        "has_more": has_more,
+                        "next_cursor": next_cursor,
+                        "total": total_count,
+                    }
+                )
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @app.get("/api/feed/item/{item_id}")
+        async def api_feed_get_item(item_id: int) -> JSONResponse:
+            """Full feed item details including content for on-demand download."""
+            if getattr(self, "db", None) is not None:
+                item = self.db.get_item(item_id)
+                if item:
+                    presented = self._present_items([dict(item)])[0]
+                    raw_url = str(presented.get("url") or "")
+                    if raw_url.startswith("blob://") and not presented.get("attachments"):
+                        blob_id = raw_url.split("://", 1)[1]
+                        meta = None
+                        with suppress(Exception):
+                            meta = self.db.get_blob_meta(blob_id)
+                        att_name = str((meta or {}).get("filename") or (presented.get("view") or {}).get("title") or blob_id)
+                        att_mime = str((meta or {}).get("mimetype") or "application/octet-stream")
+                        att_size = int((meta or {}).get("size") or 0)
+                        att_entry = {
+                            "blob_id": blob_id,
+                            "url": raw_url,
+                            "name": att_name,
+                            "mime": att_mime,
+                            "size": att_size,
+                            "type": presented.get("type") or "file",
+                            "title": att_name,
+                        }
+                        presented["attachments"] = [{**att_entry, "view": self._present_item(att_entry, {"filename": att_name, "size": att_size})}]
+                    return JSONResponse({"item": presented})
+            for i in self.feed_items:
+                if i.get("id") == item_id:
+                    return JSONResponse({"item": i})
+            return JSONResponse({"error": "Item not found"}, status_code=404)
+
         @app.get("/api/feed/page")
         async def api_feed_page(request: Request) -> JSONResponse:
             """One page of the website feed, with display details, for infinite scroll."""
@@ -1957,28 +2565,42 @@ class PageFeedService:
                     raise HTTPException(status_code=404, detail="Blob not found")
                 mime = self._canonicalize_blob_mimetype(os.path.basename(path), mime)
                 preview_requested = str(request.query_params.get("preview") or "").strip().lower() in {"1", "true", "yes", "on"}
-                if preview_requested:
-                    preview = self._prepare_blob_preview(path, mime)
-                    if preview is not None:
-                        path, mime = preview
-                    elif self._is_previewable_image(os.path.basename(path), mime):
-                        try:
-                            original_size = self._blob_plain_size(path)
-                        except OSError:
-                            original_size = self._blob_preview_passthrough_bytes() + 1
-                        if original_size > self._blob_preview_passthrough_bytes():
-                            raise HTTPException(status_code=415, detail="Blob preview unavailable")
+                preview_passthrough_limit = self._blob_preview_passthrough_bytes()
 
-                blob_bytes: Optional[bytes] = None
-                if str(mime or "").lower().startswith("audio/"):
-                    blob_bytes = self._recent_blob_bytes(path)
-                    if is_adts_aac(blob_bytes):
-                        mime = "audio/aac"
-                elif secure_storage_enabled():
-                    # A sealed blob has to be opened to learn its size; keep
-                    # what was opened instead of opening it again to send it.
-                    blob_bytes = self._recent_blob_bytes(path)
-                file_size = len(blob_bytes) if blob_bytes is not None else self._blob_plain_size(path)
+                def _prepare_blob_stream(target_path: str, target_mime: str):
+                    resolved_path = target_path
+                    resolved_mime = target_mime
+                    if preview_requested:
+                        preview = self._prepare_blob_preview(resolved_path, resolved_mime)
+                        if preview is not None:
+                            resolved_path, resolved_mime = preview
+                        elif self._is_previewable_image(os.path.basename(resolved_path), resolved_mime):
+                            try:
+                                original_size = self._blob_plain_size(resolved_path)
+                            except OSError:
+                                original_size = preview_passthrough_limit + 1
+                            if original_size > preview_passthrough_limit:
+                                raise HTTPException(status_code=415, detail="Blob preview unavailable")
+
+                    requires_sealed = self._blob_requires_full_read(resolved_path)
+                    loaded_bytes: Optional[bytes] = None
+                    if requires_sealed:
+                        loaded_bytes = self._recent_blob_bytes(resolved_path)
+                        if str(resolved_mime or "").lower().startswith("audio/") and is_adts_aac(loaded_bytes[:64]):
+                            resolved_mime = "audio/aac"
+                    else:
+                        if str(resolved_mime or "").lower().startswith("audio/"):
+                            with open(resolved_path, "rb") as head_handle:
+                                if is_adts_aac(head_handle.read(64)):
+                                    resolved_mime = "audio/aac"
+                    resolved_size = len(loaded_bytes) if loaded_bytes is not None else int(os.path.getsize(resolved_path))
+                    return resolved_path, resolved_mime, loaded_bytes, resolved_size, requires_sealed
+
+                path, mime, blob_bytes, file_size, requires_sealed = await asyncio.to_thread(
+                    _prepare_blob_stream,
+                    path,
+                    mime,
+                )
                 range_header = request.headers.get("Range")
                 start = 0
                 end = file_size - 1
@@ -1998,27 +2620,55 @@ class PageFeedService:
                         end = file_size - 1
 
                 def iter_file(p: str, s: int, e: int, chunk: int = 65536):
-                    data = blob_bytes if blob_bytes is not None else self._recent_blob_bytes(p)
-                    position = max(0, int(s))
-                    end_position = min(len(data) - 1, int(e))
-                    while position <= end_position:
-                        next_position = min(end_position + 1, position + chunk)
-                        yield data[position:next_position]
-                        position = next_position
+                    if e < s:
+                        return
+                    if blob_bytes is not None:
+                        position = max(0, int(s))
+                        end_position = min(len(blob_bytes) - 1, int(e))
+                        while position <= end_position:
+                            next_position = min(end_position + 1, position + chunk)
+                            yield blob_bytes[position:next_position]
+                            position = next_position
+                        return
+                    if requires_sealed:
+                        data = self._recent_blob_bytes(p)
+                        position = max(0, int(s))
+                        end_position = min(len(data) - 1, int(e))
+                        while position <= end_position:
+                            next_position = min(end_position + 1, position + chunk)
+                            yield data[position:next_position]
+                            position = next_position
+                        return
+                    remaining = max(0, int(e) - max(0, int(s)) + 1)
+                    with open(p, "rb") as handle:
+                        handle.seek(max(0, int(s)))
+                        while remaining > 0:
+                            piece = handle.read(min(chunk, remaining))
+                            if not piece:
+                                break
+                            remaining -= len(piece)
+                            yield piece
 
-                # Prepare Content-Disposition name using DB post title + original extension
+                # Prepare Content-Disposition name using DB post title / blob filename + original extension
                 try:
-                    # Derive extension from original filename or MIME
                     base_name = os.path.basename(path)
-                    base_root, base_ext = os.path.splitext(base_name)
-                    ext = base_ext or self._ext_from_mime(mime or "", "")
+                    blob_meta = None
+                    if getattr(self, "db", None) is not None and hasattr(self.db, "get_blob_meta"):
+                        with suppress(Exception):
+                            blob_meta = self.db.get_blob_meta(str(blob_id))
+                    meta_filename = str((blob_meta or {}).get("filename") or "").strip()
+                    base_root, base_ext = os.path.splitext(meta_filename or base_name)
+                    ext = base_ext or os.path.splitext(base_name)[1] or self._ext_from_mime(mime or "", "")
                     # Fetch associated post title if any
                     post_title = None
                     if getattr(self, "db", None) is not None:
                         with suppress(Exception):
                             post_title = self.db.get_feed_title_by_blob_id(str(blob_id))
-                    safe_root = self._safe_filename(post_title or base_root)
-                    download_name = f"{safe_root}{ext}" if ext else safe_root
+                    chosen_title = str(post_title or meta_filename or base_root).strip()
+                    if ext and chosen_title.lower().endswith(ext.lower()):
+                        chosen_title = chosen_title[: -len(ext)]
+                    safe_root = self._safe_filename(chosen_title or base_root)
+                    download_name = f"{safe_root}{ext}" if (ext and not safe_root.lower().endswith(ext.lower())) else safe_root
                 except Exception:
                     download_name = os.path.basename(path)
 
@@ -2045,7 +2695,8 @@ class PageFeedService:
                     "text/ecmascript",
                 )
                 force_attachment = any(mime_lc.startswith(t) for t in _RISKY_INLINE_MIMES)
-                disposition_kind = "attachment" if force_attachment else "inline"
+                download_requested = str(request.query_params.get("download") or "").strip().lower() in {"1", "true", "yes", "on"}
+                disposition_kind = "attachment" if (force_attachment or download_requested) else "inline"
                 # Provide a stable filename for downloads using the DB post title
                 resp.headers["Content-Disposition"] = f"{disposition_kind}; filename=\"{download_name}\""
                 resp.headers["X-Content-Type-Options"] = "nosniff"
@@ -2087,16 +2738,35 @@ class PageFeedService:
 
         @app.get("/api/media/preview")
         async def api_media_preview(request: Request) -> JSONResponse:
-            """Resolve a share URL to a client-loadable preview asset URL when possible."""
+            """Resolve a share URL to a client-loadable preview asset URL and metadata when possible."""
             try:
                 url = str(request.query_params.get("url") or "").strip()
                 if not url:
                     raise HTTPException(status_code=400, detail="url is required")
                 item_type = self._classify_url(url)
                 preview_url: Optional[str] = None
+                extra: Dict[str, Any] = {}
                 if item_type == "instagram":
                     preview_url = await asyncio.to_thread(self._resolve_instagram_preview_url, url)
-                return JSONResponse({"ok": bool(preview_url), "url": preview_url})
+                elif item_type == "bluesky":
+                    bsky = await asyncio.to_thread(self._resolve_bluesky_post, url)
+                    preview_url = bsky.get("image") or bsky.get("embed_url")
+                    extra = {k: v for k, v in bsky.items() if v}
+                elif item_type == "youtube":
+                    vid = re.sub(r"[^A-Za-z0-9_-]", "", self._youtube_id_from_url(url))
+                    if vid:
+                        preview_url = f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"
+                        yt_title = await asyncio.to_thread(self._fetch_youtube_title, url)
+                        if yt_title:
+                            extra["title"] = yt_title
+                elif item_type == "article":
+                    meta = await asyncio.to_thread(self._resolve_website_preview, url)
+                    preview_url = meta.get("image") or None
+                    extra = {k: v for k, v in meta.items() if v and k != "url"}
+                    if meta.get("url"):
+                        extra["canonical_url"] = meta["url"]
+                ok = bool(preview_url or extra.get("embed_url") or extra.get("description") or extra.get("title"))
+                return JSONResponse({**extra, "ok": ok, "url": preview_url})
             except HTTPException:
                 raise
             except Exception as e:
@@ -2122,10 +2792,15 @@ class PageFeedService:
                     raise HTTPException(status_code=400, detail=f"Rejected URL: {exc}")
                 # Forward Range header when present
                 fwd_headers: Dict[str, str] = {}
+                cached_headers = (getattr(self, "_media_headers_cache", None) or {}).get(url)
+                if isinstance(cached_headers, dict):
+                    for k, v in cached_headers.items():
+                        if k.lower() in {"user-agent", "referer", "accept", "accept-language"} and v:
+                            fwd_headers[k] = str(v)
                 rng = request.headers.get("Range")
                 if rng:
                     fwd_headers["Range"] = rng
-                fwd_headers["User-Agent"] = "Mozilla/5.0 (AutoYou)"
+                fwd_headers.setdefault("User-Agent", "Mozilla/5.0 (AutoYou)")
                 host = urlparse(url).hostname or ""
                 if host_matches(host, "tiktok.com"):
                     fwd_headers["Referer"] = "https://www.tiktok.com/"
@@ -2172,6 +2847,14 @@ class PageFeedService:
                 if cr:
                     resp.headers["Content-Range"] = cr
                 resp.headers["Accept-Ranges"] = "bytes"
+                etag = upstream.headers.get("ETag")
+                if etag:
+                    resp.headers["ETag"] = etag
+                lm = upstream.headers.get("Last-Modified")
+                if lm:
+                    resp.headers["Last-Modified"] = lm
+                resp.headers["Cache-Control"] = "private, max-age=86400"
+                resp.headers["X-AutoYou-Media-Cache"] = "private, max-age=604800, immutable"
                 # Security hardening (H-11): this handler proxies bytes from
                 # an arbitrary third-party URL. Force the browser to honour
                 # the declared Content-Type (no MIME sniffing) and sandbox

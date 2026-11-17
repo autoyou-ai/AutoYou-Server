@@ -7,6 +7,20 @@
 from tests.scripts.test_patched_runtime_dependencies import probe
 
 
+def test_opentelemetry_parses_long_whitespace_without_quadratic_regex_work(tmp_path):
+    probe(tmp_path, r'''
+from importlib.metadata import version
+from opentelemetry.trace import TraceState
+assert version("opentelemetry-api") == "1.45.2"
+for whitespace in (" ", "\t"):
+    # The old unbounded delimiter regex takes minutes for this input.
+    state = TraceState.from_header(["synthetic=value" + whitespace * 1_000_000])
+    assert dict(state) == {"synthetic": "value"}
+assert dict(TraceState.from_header(["first=one, second=two"])) == {"first": "one", "second": "two"}
+assert not TraceState.from_header(["duplicate=one,duplicate=two"])
+''')
+
+
 def test_setuptools_rejects_namespace_path_escape_and_installs_a_normal_wheel(tmp_path):
     probe(tmp_path, r'''
 from pathlib import Path
@@ -72,6 +86,7 @@ from google.adk.models.lite_llm import LiteLlm
 from google.adk.models.llm_request import LlmRequest
 from google.genai import types
 assert version("litellm") == "1.100.4"
+assert version("google-adk") == "2.14.0"
 seen = []
 
 class Provider(BaseHTTPRequestHandler):

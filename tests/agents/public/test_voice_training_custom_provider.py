@@ -531,8 +531,8 @@ def test_installer_default_target_matches_runtime_lookup(voice_root):
     locked = (installer.REPO_ROOT / "requirements" / "locked.txt").read_text(encoding="utf-8")
     assert f"transformers=={pins['transformers']} " in locked
     assert tuple(int(part) for part in pins["diffusers"].split(".")) >= (0, 38, 0)
-    # The watermarker needs pkg_resources, which setuptools 82 removed.
-    assert int(pins["setuptools"].split(".")[0]) < 82
+    # The installer backports Perth's resource lookup instead of retaining vulnerable setuptools.
+    assert tuple(int(part) for part in pins["setuptools"].split(".")) >= (84, 2, 1)
 
 
 # ── Reference selection ────────────────────────────────────────────────────
