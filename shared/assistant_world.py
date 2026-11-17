@@ -91,6 +91,10 @@ def validate_world(raw: Any) -> dict:
             if not isinstance(glyph, str) or not 1 <= len(glyph.encode()) <= 32:
                 raise ValueError("Invalid world symbol")
             artwork["glyph"] = glyph
+        if "lights_on" in obj and obj.get("lights_on") is not None:
+            if not isinstance(obj.get("lights_on"), bool):
+                raise ValueError("World object lights_on must be true or false")
+            artwork["lights_on"] = obj["lights_on"]
         cleaned.append({
             **artwork, "id": identifier, "shape": _choice(obj.get("shape"), SHAPES, "circle"),
             "x": _number(obj.get("x"), 50, 0, 100), "y": _number(obj.get("y"), 65, 0, 100),
@@ -111,6 +115,204 @@ def validate_world(raw: Any) -> dict:
         "robot_size": _number(source.get("robot_size"), 48, 20, 80),
         "objects": cleaned,
     }
+
+
+WORLD_BIOMES = (
+    {
+        "name": "Sakura Twilight Village",
+        "sky": "#1b1947",
+        "ground": "#2d4c46",
+        "house_color": "#ff8ab5",
+        "tree_color": "#ff9ec7",
+        "sky_body": ("moon", "#fff3b0"),
+        "star_color": "#ffe6a7",
+        "cloud_color": "#d8c7ff",
+        "pond_color": "#4ea8de",
+        "flower_color": "#ff70a6",
+        "mountain_color": "#3d346b",
+    },
+    {
+        "name": "Starlight Meadow",
+        "sky": "#0f2042",
+        "ground": "#1f4e45",
+        "house_color": "#7bdff2",
+        "tree_color": "#57cc99",
+        "sky_body": ("moon", "#fdfcdc"),
+        "star_color": "#ffd166",
+        "cloud_color": "#b8d8fc",
+        "pond_color": "#38a3a5",
+        "flower_color": "#ffbe0b",
+        "mountain_color": "#273c66",
+    },
+    {
+        "name": "Golden Hour Harbor",
+        "sky": "#2c1b4d",
+        "ground": "#2e5244",
+        "house_color": "#ff9f68",
+        "tree_color": "#6bcb77",
+        "sky_body": ("sun", "#ffd166"),
+        "star_color": "#ffe599",
+        "cloud_color": "#ffd6ba",
+        "pond_color": "#48bfe3",
+        "flower_color": "#ff6b6b",
+        "mountain_color": "#4a306d",
+    },
+    {
+        "name": "Emerald Sprout Valley",
+        "sky": "#143048",
+        "ground": "#245749",
+        "house_color": "#f4a261",
+        "tree_color": "#52b788",
+        "sky_body": ("sun", "#ffdd75"),
+        "star_color": "#b7efc5",
+        "cloud_color": "#d8f3dc",
+        "pond_color": "#4cc9f0",
+        "flower_color": "#f72585",
+        "mountain_color": "#2b4c65",
+    },
+    {
+        "name": "Aurora Cozy Ridge",
+        "sky": "#121b3a",
+        "ground": "#21424e",
+        "house_color": "#a78bfa",
+        "tree_color": "#64dfdf",
+        "sky_body": ("moon", "#e0fbfc"),
+        "star_color": "#80ffdb",
+        "cloud_color": "#c4b5fd",
+        "pond_color": "#56cfe1",
+        "flower_color": "#ff85a1",
+        "mountain_color": "#2d3561",
+    },
+)
+
+
+def randomize_world(seed: Any = None) -> dict:
+    """Create a lively, validated 2D world with an interactive house, sky bodies, and nature."""
+    import random
+
+    rng = random.Random(seed)
+    biome = rng.choice(WORLD_BIOMES)
+    sky_shape, sky_color = biome["sky_body"]
+    house_on_left = rng.choice((True, False))
+    house_x = rng.randint(18, 28) if house_on_left else rng.randint(72, 82)
+    pond_x = rng.randint(68, 82) if house_on_left else rng.randint(18, 32)
+    tree_x = rng.randint(74, 86) if house_on_left else rng.randint(14, 26)
+    flower_x = rng.randint(34, 44) if house_on_left else rng.randint(56, 66)
+
+    objects = [
+        {
+            "id": "mountain-bg",
+            "shape": "mountain",
+            "x": rng.randint(25, 75),
+            "y": rng.randint(54, 60),
+            "size": rng.randint(26, 36),
+            "color": biome["mountain_color"],
+            "label": "Peak",
+            "animation": "none",
+            "reaction": "grow",
+            "sound": "none",
+        },
+        {
+            "id": "sky-luminary",
+            "shape": sky_shape,
+            "x": rng.randint(16, 84),
+            "y": rng.randint(16, 26),
+            "size": rng.randint(13, 18),
+            "color": sky_color,
+            "label": "Sky Light",
+            "animation": "pulse",
+            "reaction": "spin",
+            "sound": "bell",
+        },
+        {
+            "id": "cloud-drift",
+            "shape": "cloud",
+            "x": rng.randint(22, 78),
+            "y": rng.randint(20, 32),
+            "size": rng.randint(15, 22),
+            "color": biome["cloud_color"],
+            "label": "Cloud",
+            "animation": "float",
+            "reaction": "bounce",
+            "sound": "pop",
+        },
+        {
+            "id": "star-twinkle",
+            "shape": "star",
+            "x": rng.randint(14, 86),
+            "y": rng.randint(12, 24),
+            "size": rng.randint(8, 12),
+            "color": biome["star_color"],
+            "label": "Wish Star",
+            "animation": "pulse",
+            "reaction": "spin",
+            "sound": "bell",
+        },
+        {
+            "id": "cozy-house",
+            "shape": "house",
+            "x": house_x,
+            "y": rng.randint(64, 70),
+            "size": rng.randint(20, 26),
+            "color": biome["house_color"],
+            "label": "Home",
+            "animation": "none",
+            "reaction": "color",
+            "sound": "bell",
+            "lights_on": True,
+        },
+        {
+            "id": "grove-tree",
+            "shape": "tree",
+            "x": tree_x,
+            "y": rng.randint(64, 72),
+            "size": rng.randint(18, 24),
+            "color": biome["tree_color"],
+            "label": "Grove",
+            "animation": "sway",
+            "reaction": "bounce",
+            "sound": "pop",
+        },
+        {
+            "id": "mirror-pond",
+            "shape": "pond",
+            "x": pond_x,
+            "y": rng.randint(78, 86),
+            "size": rng.randint(16, 22),
+            "color": biome["pond_color"],
+            "label": "Pond",
+            "animation": "pulse",
+            "reaction": "grow",
+            "sound": "water",
+        },
+        {
+            "id": "meadow-flower",
+            "shape": "flower",
+            "x": flower_x,
+            "y": rng.randint(74, 83),
+            "size": rng.randint(10, 14),
+            "color": biome["flower_color"],
+            "label": "Bloom",
+            "animation": "sway",
+            "reaction": "spin",
+            "sound": "bell",
+        },
+    ]
+
+    return validate_world({
+        "version": 1,
+        "enabled": True,
+        "idle_enabled": True,
+        "professional": False,
+        "wander": True,
+        "sound_enabled": False,
+        "name": biome["name"],
+        "sky": biome["sky"],
+        "ground": biome["ground"],
+        "robot_size": rng.randint(44, 54),
+        "objects": objects,
+    })
+
 
 WORLD_INSTRUCTIONS = """Edit the Assistant's 2D world using assistant_update_world. First read it with assistant_get_world.
 Use a complete JSON object: version:1, enabled:true, name, sky and ground (#RRGGBB), idle_enabled,

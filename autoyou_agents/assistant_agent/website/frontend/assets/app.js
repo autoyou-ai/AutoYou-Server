@@ -32,8 +32,11 @@
     askForm: $("ask-form"), askInput: $("ask-input"), askSend: $("ask-send"), signout: $("signout-btn"),
     clear: $("clear-btn"), askAttach: $("ask-attach"), askFileInput: $("ask-file-input"), askAttachments: $("ask-attachments"),
     skinPreset: $("skin-preset"), skinGlow: $("skin-glow"), skinAccent: $("skin-accent"), skinCore: $("skin-core"),
-    skinEyeStyle: $("skin-eye-style"), skinBreath: $("skin-breath"), skinExportBtn: $("skin-export-btn"),
-    skinImportBtn: $("skin-import-btn"), skinFileInput: $("skin-file-input"), skinResetBtn: $("skin-reset-btn")
+    skinHeadAcc: $("skin-head-acc"), skinFaceAcc: $("skin-face-acc"), skinNeckAcc: $("skin-neck-acc"),
+    skinCoreEmblem: $("skin-core-emblem"), skinChassisStyle: $("skin-chassis-style"),
+    skinEyeStyle: $("skin-eye-style"), skinMouthStyle: $("skin-mouth-style"), skinBreath: $("skin-breath"), skinExportBtn: $("skin-export-btn"),
+    skinImportBtn: $("skin-import-btn"), skinFileInput: $("skin-file-input"), skinResetBtn: $("skin-reset-btn"),
+    skinRandomizeBtn: $("skin-randomize-btn"), skinRandomizeAllBtn: $("skin-randomize-all-btn"), worldRandomizeBtn: $("world-randomize")
   };
 
   // The server draws its sign-in screen over this page. While it shows, this
@@ -1113,12 +1116,40 @@
         } else if (eyeStyle === "neon") {
           eyeRings[er].setAttribute("r", "26");
           eyeRings[er].setAttribute("stroke-width", "5.5");
+        } else if (eyeStyle === "anime" || eyeStyle === "starry") {
+          eyeRings[er].setAttribute("r", "27");
+          eyeRings[er].setAttribute("stroke-width", "10.5");
         } else {
           eyeRings[er].setAttribute("r", "25");
           eyeRings[er].setAttribute("stroke-width", "9");
         }
       }
     }
+    var av = skin.avatar || {};
+    var headAcc = av.head_accessory || av.headAccessory || "classic_arc";
+    var faceAcc = av.face_accessory || av.faceAccessory || "none";
+    var neckAcc = av.neck_accessory || av.neckAccessory || "none";
+    var coreEmblem = av.core_emblem || av.coreEmblem || "classic";
+    var chassisStyle = av.chassis_style || av.chassisStyle || "standard";
+    var classicAnt = $("antenna-classic");
+    if (classicAnt) classicAnt.setAttribute("opacity", headAcc === "classic_arc" ? "1" : "0");
+    document.querySelectorAll("#avatar-head [data-head]").forEach(function (el) {
+      el.setAttribute("opacity", el.getAttribute("data-head") === headAcc ? "1" : "0");
+    });
+    document.querySelectorAll("#avatar-face [data-face]").forEach(function (el) {
+      el.setAttribute("opacity", el.getAttribute("data-face") === faceAcc ? "1" : "0");
+    });
+    var normNeck = neckAcc === "bow_ribbon" ? "bowtie" : neckAcc;
+    document.querySelectorAll("#avatar-neck [data-neck]").forEach(function (el) {
+      el.setAttribute("opacity", el.getAttribute("data-neck") === normNeck ? "1" : "0");
+    });
+    var capeEl = $("avatar-cape");
+    if (capeEl) capeEl.setAttribute("opacity", neckAcc === "cape" ? "1" : "0");
+    var coreEl = $("core");
+    if (coreEl) coreEl.setAttribute("opacity", coreEmblem === "classic" ? "1" : "0");
+    document.querySelectorAll("#avatar-core-emblem [data-emblem]").forEach(function (el) {
+      el.setAttribute("opacity", el.getAttribute("data-emblem") === coreEmblem ? "1" : "0");
+    });
     var bands = clamp(Math.round(Number(skin.audio_reactivity && skin.audio_reactivity.mic_equalizer_bands) || 7), 3, 16);
     if (bot.eq && eqBars.length !== bands) {
       while (bot.eq.firstChild) bot.eq.removeChild(bot.eq.firstChild);
@@ -1148,6 +1179,12 @@
     if (ui.skinCore && skin.palette && skin.palette.core_color) ui.skinCore.value = skin.palette.core_color;
     if (ui.skinBreath && skin.physics && skin.physics.breath_speed) ui.skinBreath.value = skin.physics.breath_speed;
     if (ui.skinEyeStyle && skin.emotes && skin.emotes.eye_style) ui.skinEyeStyle.value = skin.emotes.eye_style;
+    if (ui.skinMouthStyle && skin.emotes && skin.emotes.mouth_style) ui.skinMouthStyle.value = skin.emotes.mouth_style;
+    if (ui.skinHeadAcc) ui.skinHeadAcc.value = headAcc;
+    if (ui.skinFaceAcc) ui.skinFaceAcc.value = faceAcc;
+    if (ui.skinNeckAcc) ui.skinNeckAcc.value = normNeck;
+    if (ui.skinCoreEmblem) ui.skinCoreEmblem.value = coreEmblem;
+    if (ui.skinChassisStyle) ui.skinChassisStyle.value = chassisStyle;
   }
 
   function initSkinHandlers() {
@@ -1163,6 +1200,8 @@
       if (!S.activeSkin) return;
       var current = JSON.parse(JSON.stringify(S.activeSkin));
       if (!current.palette) current.palette = {};
+      if (!current.emotes) current.emotes = {};
+      if (!current.avatar) current.avatar = {};
       if (ui.skinGlow) current.palette.glow_primary = ui.skinGlow.value;
       if (ui.skinAccent) {
         var acc = ui.skinAccent.value;
@@ -1170,16 +1209,21 @@
       }
       if (ui.skinCore) current.palette.core_color = ui.skinCore.value;
       if (ui.skinBreath && current.physics) current.physics.breath_speed = parseFloat(ui.skinBreath.value);
-      if (ui.skinEyeStyle && current.emotes) current.emotes.eye_style = ui.skinEyeStyle.value;
+      if (ui.skinEyeStyle) current.emotes.eye_style = ui.skinEyeStyle.value;
+      if (ui.skinMouthStyle) current.emotes.mouth_style = ui.skinMouthStyle.value;
+      if (ui.skinHeadAcc) current.avatar.head_accessory = ui.skinHeadAcc.value;
+      if (ui.skinFaceAcc) current.avatar.face_accessory = ui.skinFaceAcc.value;
+      if (ui.skinNeckAcc) current.avatar.neck_accessory = ui.skinNeckAcc.value;
+      if (ui.skinCoreEmblem) current.avatar.core_emblem = ui.skinCoreEmblem.value;
+      if (ui.skinChassisStyle) current.avatar.chassis_style = ui.skinChassisStyle.value;
       current.id = "custom";
       applySkin(current);
       request("api/assistant/skin", { skin: current }).catch(function () {});
     }
-    if (ui.skinGlow) ui.skinGlow.addEventListener("change", updateCustomColors);
-    if (ui.skinAccent) ui.skinAccent.addEventListener("change", updateCustomColors);
-    if (ui.skinCore) ui.skinCore.addEventListener("change", updateCustomColors);
-    if (ui.skinBreath) ui.skinBreath.addEventListener("change", updateCustomColors);
-    if (ui.skinEyeStyle) ui.skinEyeStyle.addEventListener("change", updateCustomColors);
+    [ui.skinGlow, ui.skinAccent, ui.skinCore, ui.skinBreath, ui.skinEyeStyle, ui.skinMouthStyle,
+     ui.skinHeadAcc, ui.skinFaceAcc, ui.skinNeckAcc, ui.skinCoreEmblem, ui.skinChassisStyle].forEach(function (el) {
+      if (el) el.addEventListener("change", updateCustomColors);
+    });
 
     if (ui.skinExportBtn) {
       ui.skinExportBtn.addEventListener("click", function () {
@@ -1217,6 +1261,30 @@
           }
         }).catch(function (e) { hint("Could not reset skin: " + e.message, "warn"); });
       });
+    }
+    function runRandomize(options) {
+      request("api/assistant/skin/randomize", options || {}).then(function (res) {
+        if (res && res.skin) {
+          applySkin(res.skin);
+          boop(); greet();
+          hint(options && options.world_only ? "World randomized!" : "Avatar randomized!", "ok", 2);
+        }
+      }).catch(function () {
+        var next = options && options.world_only
+          ? Object.assign({}, S.activeSkin || {}, { world: generateRandomWorld() })
+          : generateRandomSkin(Boolean(options && options.include_world));
+        applySkin(next);
+        boop(); greet();
+      });
+    }
+    if (ui.skinRandomizeBtn) {
+      ui.skinRandomizeBtn.addEventListener("click", function () { runRandomize({ include_world: false }); });
+    }
+    if (ui.skinRandomizeAllBtn) {
+      ui.skinRandomizeAllBtn.addEventListener("click", function () { runRandomize({ include_world: true }); });
+    }
+    if (ui.worldRandomizeBtn) {
+      ui.worldRandomizeBtn.addEventListener("click", function () { runRandomize({ world_only: true }); });
     }
   }
 
@@ -1412,9 +1480,31 @@
       if (!eye) return;
       var x = (index ? 245 : 155) + anim.gazeX, y = 168 + anim.gazeY + sad * 6;
       eye.setAttribute("transform", "translate(" + x.toFixed(2) + " " + y.toFixed(2) + ") scale(" + eyeScale.toFixed(3) + " " + (eyeScale * eyeOpen * (1 - sad * 0.35)).toFixed(3) + ")");
-      setOpacity(eye.querySelector(".eye-ring"), ringOp);
-      setOpacity(eye.querySelector(".eye-happy"), happyOp);
+      var eyeStyle = emotes.eye_style || "round";
+      var isWinkR = eyeStyle === "wink" && index === 1 && sleepOp < 0.5;
+      var eRing = ringOp;
+      var eHappy = happyOp;
+      var eHeart = 0;
+      var eStar = 0;
+      var eShine = 0;
+      if (isWinkR) {
+        eRing = 0;
+        eHappy = 1 - sleepOp;
+      } else if (eyeStyle === "heart") {
+        eRing = 0;
+        eHeart = ringOp;
+      } else if (eyeStyle === "starry") {
+        eStar = ringOp;
+        eShine = ringOp;
+      } else if (eyeStyle === "anime" || eyeStyle === "wink") {
+        eShine = ringOp;
+      }
+      setOpacity(eye.querySelector(".eye-ring"), eRing);
+      setOpacity(eye.querySelector(".eye-happy"), eHappy);
       setOpacity(eye.querySelector(".eye-sleep"), sleepOp);
+      setOpacity(eye.querySelector(".eye-heart"), eHeart);
+      setOpacity(eye.querySelector(".eye-star"), eStar);
+      setOpacity(eye.querySelector(".eye-shine"), eShine);
     });
 
     if (bot.browL) {
@@ -1437,7 +1527,14 @@
     var hideSmile = Math.max(anim.eqOn, anim.thinkOn, Math.min(1, anim.open * 3));
     setOpacity(bot.smile, (1 - hideSmile) * (1 - anim.sleep * 0.6));
     if (bot.smile) {
-      var smileD = erroring ? "M184 220Q200 208 216 220" : "M182 212Q200 226 218 212";
+      var mouthStyle = emotes.mouth_style || "dynamic";
+      var smileD = erroring
+        ? "M184 220Q200 208 216 220"
+        : mouthStyle === "cat_mouth"
+          ? "M178 214Q189 225 200 214Q211 225 222 214"
+          : mouthStyle === "happy_open"
+            ? "M180 211Q200 231 220 211Z"
+            : "M182 212Q200 226 218 212";
       if (bot.smile.tagName && bot.smile.tagName.toLowerCase() === "g") {
         var sp = bot.smile.children;
         for (var si = 0; si < sp.length; si++) sp[si].setAttribute("d", smileD);
@@ -1514,12 +1611,30 @@
       target.browLY -= 5 * m; target.browRY -= 5 * m;
       target.browLTilt = -6 * m; target.browRTilt = 6 * m;
     } else if (phase === "speaking") {
-      target.armR = -12 - out * 16 * m; target.foreR = -14 - out * 18 * m + Math.sin(t * 3.1) * 4 * m;
-      target.armL = 9 + Math.sin(t * 2.4) * 4 * m; target.foreL = 10 + Math.sin(t * 2.9) * 5 * m;
+      // Conversational two-arm cadence, expressive head nod, and syllable rhythm.
+      var cadence = Math.sin(t * 3.4), counter = Math.cos(t * 2.7);
+      target.armR = -16 - out * 22 * m + cadence * (5 + out * 7) * m;
+      target.foreR = -18 - out * 24 * m + Math.sin(t * 4.2) * (6 + out * 8) * m;
+      target.armL = 13 + out * 15 * m + counter * (4 + out * 6) * m;
+      target.foreL = 14 + out * 18 * m + Math.sin(t * 3.5) * (5 + out * 6) * m;
+      target.headY += Math.sin(t * 5.2) * out * 3.2 * m;
+      target.tilt += Math.sin(t * 2.5) * (2.2 + out * 3.8) * m;
     } else if (phase === "command") {
-      target.armR = -16; target.foreR = -30;
+      // Attentive listening: lean in slightly, cup/raise right hand near ear, perk head.
+      target.lean += (1.8 + S.level * 2.4) * m;
+      target.headY -= (2.5 + S.level * 3.5) * m;
+      target.tilt = (-4.5 + Math.sin(t * 2.2) * 1.8) * m;
+      target.armR = -38 - S.level * 16 * m;
+      target.foreR = -46 - S.level * 12 * m;
+      target.armL = 12 + S.level * 8 * m;
+      target.foreL = 16 + S.level * 6 * m;
     } else if (phase === "thinking") {
-      target.armL = 22; target.foreL = 48 + Math.sin(t * 1.9) * 4 * m;
+      // Responding / pondering: chin-tap gesture, contemplative head tilt, inquisitive brows.
+      target.armL = 26 + Math.sin(t * 2.1) * 3 * m;
+      target.foreL = 52 + Math.sin(t * 3.8) * 6 * m;
+      target.armR = -10 + Math.cos(t * 1.6) * 3 * m;
+      target.foreR = -12 + Math.sin(t * 1.6) * 3 * m;
+      target.headX += Math.sin(t * 1.2) * 2.5 * m;
       target.browLY -= 5 * m + Math.sin(t * 1.8) * 1.2 * m;
       target.browRY += 1.5 * m - Math.sin(t * 1.8) * 0.8 * m;
       target.browLTilt = -8 * m; target.browRTilt = -5 * m;
@@ -1531,6 +1646,11 @@
       target.armL = 3; target.foreL = 2; target.armR = -3; target.foreR = -2;
       target.browLY += 3.5; target.browRY += 3.5;
       target.browLTilt = -sleep * 1.5; target.browRTilt = sleep * 1.5;
+    } else {
+      // Idle waiting: subtle weight shift and gentle secondary motion.
+      target.headX += Math.sin(t * 0.65) * 1.6 * m;
+      target.armL += Math.sin(t * 1.1) * 2.2 * m;
+      target.armR -= Math.cos(t * 1.1) * 2.2 * m;
     }
     worldFrame(now, dt, phase, target);
     // Inertia: a forearm trails its upper arm when that swings.
@@ -1548,7 +1668,16 @@
     var sx = 1 - J.squash.x * 0.04, sy = 1 + J.squash.x * 0.06;
     if (bot.root) bot.root.setAttribute("transform", "translate(200 512) scale(" + sx.toFixed(4) + " " + sy.toFixed(4) + ") translate(-200 -512)");
     if (bot.upper) bot.upper.setAttribute("transform", "translate(0 " + J.bodyY.x.toFixed(2) + ") rotate(" + J.lean.x.toFixed(2) + " 200 448)");
-    if (bot.head) bot.head.setAttribute("transform", "translate(" + J.headX.x.toFixed(2) + " " + J.headY.x.toFixed(2) + ") rotate(" + J.tilt.x.toFixed(2) + " 200 292)");
+    if (bot.head) {
+      var chassis = (S.activeSkin && S.activeSkin.avatar && S.activeSkin.avatar.chassis_style) || "standard";
+      var hScale = chassis === "chibi" ? " translate(200 292) scale(1.12 1.12) translate(-200 -292)" : chassis === "sleek" ? " translate(200 292) scale(0.96 0.94) translate(-200 -292)" : "";
+      bot.head.setAttribute("transform", "translate(" + J.headX.x.toFixed(2) + " " + J.headY.x.toFixed(2) + ") rotate(" + J.tilt.x.toFixed(2) + " 200 292)" + hScale);
+    }
+    var headAccEl = $("avatar-head");
+    if (headAccEl && !reduceMotion) {
+      var earTwitch = (phase === "command" ? Math.sin(t * 6.5) * 2.4 : Math.sin(t * 1.9) * 1.1) * m;
+      headAccEl.setAttribute("transform", "translate(200 60) rotate(" + earTwitch.toFixed(2) + ") translate(-200 -60)");
+    }
     if (bot.armL) bot.armL.setAttribute("transform", "rotate(" + J.armL.x.toFixed(2) + " 116 322)");
     if (bot.armR) bot.armR.setAttribute("transform", "rotate(" + J.armR.x.toFixed(2) + " 284 322)");
     if (bot.foreL) bot.foreL.setAttribute("transform", "rotate(" + J.foreL.x.toFixed(2) + " 116 388)");
@@ -1585,7 +1714,24 @@
       case "moon": add("path", {d: "M12 -34A35 35 0 1 0 29 24A31 31 0 0 1 12 -34Z"}); break;
       case "rock": add("path", {d: "M-37 20L-23 -15L5 -24L29 -13L39 20Z"}); break;
       case "pond": add("ellipse", {rx: 46, ry: 20, opacity: .8}); add("ellipse", {rx: 29, ry: 11, fill: "none", stroke: "#b6e9ff", "stroke-width": 2}); add("ellipse", {"class":"pond-ripple",rx:12,ry:5,fill:"none",stroke:"#d6f5ff","stroke-width":2,opacity:0}); break;
-      case "house": add("rect", {x: -30, y: -5, width: 60, height: 44, rx: 3}); add("path", {d: "M-39 -5L0 -37L39 -5Z", fill: "#936554"}); add("rect", {x: -7, y: 11, width: 14, height: 28, rx: 2, fill: "#e9d4a7"}); break;
+      case "house":
+        var lightsOn = obj.lights_on !== false;
+        var winFill = lightsOn ? "#ffe680" : "#1e293b";
+        var lanternFill = lightsOn ? "#fde047" : "#475569";
+        add("circle", {"class": "house-light-glow", cx: 0, cy: 8, r: 46, fill: "#ffd166", opacity: lightsOn ? 0.24 : 0});
+        add("rect", {x: 13, y: -33, width: 9, height: 20, rx: 2, fill: "#6e473b"});
+        add("circle", {"class": "house-smoke", cx: 17.5, cy: -39, r: 4.5, fill: "#e2e8f0", opacity: lightsOn ? 0.55 : 0});
+        add("circle", {"class": "house-smoke", cx: 21, cy: -47, r: 6, fill: "#e2e8f0", opacity: lightsOn ? 0.4 : 0});
+        add("rect", {x: -32, y: -6, width: 64, height: 45, rx: 4});
+        add("path", {d: "M-41 -5L0 -38L41 -5Z", fill: "#8c584c"});
+        add("circle", {"class": "house-window", cx: 0, cy: -18, r: 6.2, fill: winFill, stroke: "#f8fafc", "stroke-width": 1.5});
+        add("rect", {"class": "house-window", x: -25, y: 3, width: 13, height: 13, rx: 2, fill: winFill, stroke: "#f8fafc", "stroke-width": 1.4});
+        add("rect", {"class": "house-window", x: 12, y: 3, width: 13, height: 13, rx: 2, fill: winFill, stroke: "#f8fafc", "stroke-width": 1.4});
+        add("path", {d: "M-18.5 3V16M-25 9.5H-12M18.5 3V16M12 9.5H25", stroke: "#64748b", "stroke-width": 1.1, fill: "none"});
+        add("rect", {x: -7, y: 12, width: 14, height: 27, rx: 2.5, fill: "#7c4d3a"});
+        add("circle", {cx: 4, cy: 26, r: 1.6, fill: "#fbbf24"});
+        add("circle", {"class": "house-lantern", cx: -10, cy: 15, r: 2.8, fill: lanternFill});
+        break;
       case "sign": add("rect", {x: -3, y: 0, width: 6, height: 40}); add("rect", {x: -42, y: -27, width: 84, height: 40, rx: 6}); break;
       case "rect": add("rect", {x: -35, y: -25, width: 70, height: 50, rx: 6}); break;
       case "path": if (/^[MmLlHhVvCcSsQqTtAaZz0-9.,+eE\s-]{1,4096}$/.test(obj.path || "")) add("path", {d: obj.path}); break;
@@ -1593,6 +1739,23 @@
     }
     if (obj.label && obj.shape !== "symbol" && obj.shape !== obj.label) { var label = svgNode("text", {y: 48, "text-anchor": "middle", fill: "#ffffff", "font-size": 13, "font-family": "system-ui"}); label.textContent = String(obj.label).slice(0, 80); group.appendChild(label); }
     return group;
+  }
+  function syncHouseLights(item, t) {
+    if (!item || !item.obj || item.obj.shape !== "house") return;
+    var lightsOn = item.obj.lights_on !== false;
+    var winFill = lightsOn ? "#ffe680" : "#1e293b";
+    var windows = item.el.querySelectorAll(".house-window");
+    for (var w = 0; w < windows.length; w++) windows[w].setAttribute("fill", winFill);
+    var lantern = item.el.querySelector(".house-lantern");
+    if (lantern) lantern.setAttribute("fill", lightsOn ? "#fde047" : "#475569");
+    var glow = item.el.querySelector(".house-light-glow");
+    if (glow) glow.setAttribute("opacity", lightsOn ? (0.22 + (reduceMotion ? 0 : Math.sin((t || 0) * 4) * 0.05)).toFixed(3) : "0");
+    var smokes = item.el.querySelectorAll(".house-smoke");
+    for (var s = 0; s < smokes.length; s++) {
+      var drift = reduceMotion ? 0 : Math.sin((t || 0) * 2.2 + s * 1.4) * 2.5;
+      smokes[s].setAttribute("opacity", lightsOn ? (0.5 - s * 0.12).toFixed(2) : "0");
+      smokes[s].setAttribute("transform", "translate(" + drift.toFixed(1) + " " + (-Math.abs(drift) * 0.8).toFixed(1) + ")");
+    }
   }
   var worldSizeObserver;
   function walkLimit() { return Math.max(12, worldMotion.halfWidth + 2); }
@@ -1644,7 +1807,8 @@
         if (!source || typeof source !== "object") return;
         var obj = {id: String(source.id || "object-" + i).slice(0, 48), shape: source.shape, color: color(source.color, "#57b894"),
           x: clamp(Number(source.x) || 0, 0, 100), y: clamp(Number(source.y) || 0, 0, 100), size: clamp(Number(source.size) || 12, 2, 45),
-          label: source.label, path: source.path, glyph: source.glyph, photo: source.photo, animation: source.animation, reaction: source.reaction, sound: source.sound};
+          label: source.label, path: source.path, glyph: source.glyph, photo: source.photo, animation: source.animation, reaction: source.reaction, sound: source.sound,
+          lights_on: source.lights_on !== false};
         var node = svgNode("g"); node.appendChild(worldShape(obj)); node.setAttribute("data-world-object", obj.id); node.setAttribute("role", "img"); node.setAttribute("aria-label", obj.label || obj.shape || "World object");
         worldLayer.appendChild(node); worldNodes.push({el: node, obj: obj, ripple: node.querySelector(".pond-ripple"), touched: -10000}); world.objects.push(obj);
       });
@@ -1700,7 +1864,21 @@
       }
       if (!worldMotion.robotPressed) for (var i = worldNodes.length - 1; i >= 0; i--) {
         var item = worldNodes[i];
-        if (contains(item.el.getBoundingClientRect())) { item.touched = now; worldSound(item.obj.sound); break; }
+        if (contains(item.el.getBoundingClientRect())) {
+          item.touched = now;
+          if (item.obj.shape === "house") {
+            item.obj.lights_on = item.obj.lights_on === false;
+            syncHouseLights(item, now / 1000);
+            S.perk = 0.85;
+            if (S.activeSkin && S.activeSkin.world && Array.isArray(S.activeSkin.world.objects)) {
+              var matchObj = S.activeSkin.world.objects.find(function (cand) { return cand && cand.id === item.obj.id; });
+              if (matchObj) matchObj.lights_on = item.obj.lights_on;
+              worldKey = JSON.stringify(S.activeSkin.world);
+            }
+          }
+          worldSound(item.obj.sound || (item.obj.shape === "house" ? "bell" : "none"));
+          break;
+        }
       }
     }
     worldMotion.pressed = pressed;
@@ -1732,20 +1910,38 @@
       var delta = worldMotion.target - worldMotion.x;
       walking = play && idle && world.wander && Math.abs(delta) > .2;
       if (walking) {
-        worldMotion.x += Math.sign(delta) * Math.min(Math.abs(delta), dt * 6);
-        if (Math.abs(worldMotion.target - worldMotion.x) <= .2) worldMotion.next = Math.max(worldMotion.next, now + 2500);
-        target.bodyY += Math.abs(Math.sin(t * 8)) * 3;
+        var dir = Math.sign(delta);
+        worldMotion.x += dir * Math.min(Math.abs(delta), dt * 6.5);
+        var stride = t * 8.5;
+        target.bodyY += Math.abs(Math.sin(stride)) * 4.2 - 1.4;
+        target.lean += dir * 3.0 + Math.cos(stride) * 1.4;
+        target.headX += dir * 3.2;
+        target.armL += Math.sin(stride) * 20;
+        target.foreL += Math.max(0, Math.sin(stride)) * 16 + 6;
+        target.armR += Math.sin(stride) * 20;
+        target.foreR -= Math.max(0, -Math.sin(stride)) * 16 + 6;
+        if (Math.abs(worldMotion.target - worldMotion.x) <= .2) {
+          worldMotion.next = Math.max(worldMotion.next, now + 2500);
+          worldNodes.forEach(function (item) {
+            if (Math.abs(item.obj.x - worldMotion.x) < 12) {
+              item.touched = now;
+              worldMotion.emote = 1;
+              worldMotion.emoteUntil = now + 1600;
+            }
+          });
+        }
         positionRobot();
       }
     }
     if (bot.legL && bot.legR) {
-      var step = walking ? Math.sin(t * 8) * 12 : emote === 0 || emote === 2 || emote === 10 ? Math.sin(t * 3) * 6 : 0;
+      var step = walking ? Math.sin(t * 8.5) * 14 : emote === 0 || emote === 2 || emote === 10 ? Math.sin(t * 3) * 6 : 0;
       bot.legL.setAttribute("transform", "rotate(" + step.toFixed(2) + " 171 437)");
       bot.legR.setAttribute("transform", "rotate(" + (-step).toFixed(2) + " 229 437)");
     }
     worldNodes.forEach(function (item, i) {
       var o = item.obj, age = (now - item.touched) / 1000, hit = age >= 0 && age < 1 ? Math.sin(age * Math.PI) : 0;
       var angle = 0, dy = 0, scale = o.size / 8;
+      if (o.shape === "house") syncHouseLights(item, t);
       if (!reduceMotion) {
         if (o.animation === "sway") angle = Math.sin(t * 1.2 + i) * 5;
         if (o.animation === "spin") angle = t * 20;
@@ -1771,6 +1967,63 @@
         item.ripple.setAttribute("opacity", hit > 0 ? (1 - age).toFixed(2) : 0); item.rippling = hit > 0;
       }
     });
+  }
+
+  function pickRandom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+  function randInt(low, high) { return low + Math.floor(Math.random() * (high - low + 1)); }
+  function generateRandomWorld() {
+    var biomes = [
+      { name: "Sakura Twilight Village", sky: "#1b1947", ground: "#2d4c46", house: "#ff8ab5", tree: "#ff9ec7", lumShape: "moon", lum: "#fff3b0", star: "#ffe6a7", cloud: "#d8c7ff", pond: "#4ea8de", flower: "#ff70a6", mountain: "#3d346b" },
+      { name: "Starlight Meadow", sky: "#0f2042", ground: "#1f4e45", house: "#7bdff2", tree: "#57cc99", lumShape: "moon", lum: "#fdfcdc", star: "#ffd166", cloud: "#b8d8fc", pond: "#38a3a5", flower: "#ffbe0b", mountain: "#273c66" },
+      { name: "Golden Hour Harbor", sky: "#2c1b4d", ground: "#2e5244", house: "#ff9f68", tree: "#6bcb77", lumShape: "sun", lum: "#ffd166", star: "#ffe599", cloud: "#ffd6ba", pond: "#48bfe3", flower: "#ff6b6b", mountain: "#4a306d" },
+      { name: "Emerald Sprout Valley", sky: "#143048", ground: "#245749", house: "#f4a261", tree: "#52b788", lumShape: "sun", lum: "#ffdd75", star: "#b7efc5", cloud: "#d8f3dc", pond: "#4cc9f0", flower: "#f72585", mountain: "#2b4c65" }
+    ];
+    var b = pickRandom(biomes), left = Math.random() < 0.5;
+    return {
+      version: 1, enabled: true, idle_enabled: true, professional: false, wander: true, sound_enabled: false,
+      name: b.name, sky: b.sky, ground: b.ground, robot_size: randInt(44, 52),
+      objects: [
+        { id: "mountain-bg", shape: "mountain", x: randInt(28, 72), y: randInt(54, 59), size: randInt(26, 34), color: b.mountain, label: "Peak", animation: "none", reaction: "grow", sound: "none" },
+        { id: "sky-lum", shape: b.lumShape, x: randInt(16, 84), y: randInt(16, 25), size: randInt(14, 18), color: b.lum, label: "Sky Light", animation: "pulse", reaction: "spin", sound: "bell" },
+        { id: "cloud-1", shape: "cloud", x: randInt(22, 78), y: randInt(20, 32), size: randInt(15, 21), color: b.cloud, label: "Cloud", animation: "float", reaction: "bounce", sound: "pop" },
+        { id: "star-1", shape: "star", x: randInt(15, 85), y: randInt(12, 24), size: randInt(8, 12), color: b.star, label: "Wish Star", animation: "pulse", reaction: "spin", sound: "bell" },
+        { id: "cozy-house", shape: "house", x: left ? randInt(18, 28) : randInt(72, 82), y: randInt(64, 69), size: randInt(20, 25), color: b.house, label: "Home", animation: "none", reaction: "color", sound: "bell", lights_on: true },
+        { id: "grove-tree", shape: "tree", x: left ? randInt(72, 84) : randInt(16, 28), y: randInt(64, 71), size: randInt(18, 23), color: b.tree, label: "Grove", animation: "sway", reaction: "bounce", sound: "pop" },
+        { id: "pond-1", shape: "pond", x: left ? randInt(64, 78) : randInt(22, 36), y: randInt(79, 85), size: randInt(16, 21), color: b.pond, label: "Pond", animation: "pulse", reaction: "grow", sound: "water" },
+        { id: "flower-1", shape: "flower", x: left ? randInt(34, 44) : randInt(56, 66), y: randInt(74, 82), size: randInt(10, 14), color: b.flower, label: "Bloom", animation: "sway", reaction: "spin", sound: "bell" }
+      ]
+    };
+  }
+  function generateRandomSkin(includeWorld) {
+    var base = JSON.parse(JSON.stringify(S.activeSkin || {}));
+    var palettes = [
+      { glow: "#ff66b2", accent: ["#ff85c2", "#ff4da6", "#b82973"], shell: ["#fff5f9", "#ffd9ec", "#f2b8d6"] },
+      { glow: "#c084fc", accent: ["#c084fc", "#9333ea", "#581c87"], shell: ["#f8f7ff", "#e5deff", "#c7b8f5"] },
+      { glow: "#34d399", accent: ["#34d399", "#059669", "#064e3b"], shell: ["#f2fbf6", "#d2f4e2", "#a8dfC4"] },
+      { glow: "#fb923c", accent: ["#fb923c", "#ea580c", "#9a3412"], shell: ["#fff8f3", "#fde2ce", "#f5be9b"] },
+      { glow: "#38bdf8", accent: ["#38bdf8", "#818cf8", "#4338ca"], shell: ["#eef6ff", "#d4e4ff", "#9eb9ec"] },
+      { glow: "#fbbf24", accent: ["#fbbf24", "#d97706", "#78350f"], shell: ["#fffdf7", "#fef3c7", "#fde68a"] }
+    ];
+    var p = pickRandom(palettes);
+    base.id = "custom";
+    base.palette = Object.assign({}, base.palette || {}, {
+      glow_primary: p.glow,
+      accent_gradient: p.accent,
+      shell_gradient: p.shell
+    });
+    base.avatar = {
+      head_accessory: pickRandom(["cat_ears", "bunny_ears", "fox_ears", "crown", "halo_ring", "sprout", "wizard_hat", "headphones", "twin_antennas", "bow_ribbon"]),
+      face_accessory: pickRandom(["blush", "star_cheeks", "whiskers", "whiskers_blush", "glasses_round", "glasses_cyber", "monocle", "freckles"]),
+      neck_accessory: pickRandom(["bowtie", "scarf", "collar_bell", "cape", "wings_mini"]),
+      core_emblem: pickRandom(["classic", "heart", "star", "music", "sparkle", "paw", "lightning"]),
+      chassis_style: pickRandom(["standard", "chibi", "sleek"])
+    };
+    base.emotes = Object.assign({}, base.emotes || {}, {
+      eye_style: pickRandom(["ring", "neon", "happy", "starry", "anime", "heart", "wink"]),
+      mouth_style: pickRandom(["glow_line", "classic_curve", "cat_mouth", "happy_open", "equalizer_only"])
+    });
+    if (includeWorld) base.world = generateRandomWorld();
+    return base;
   }
 
   if (!nativeRenderer) {
@@ -1931,6 +2184,19 @@
           window.AutoYouAssistantRenderer.editorResult=function(error){if(error)reject(Error(error));else resolve();};
           send(value);
         });}, function(){send(null);});
+      },
+      randomizeSkin: function (includeWorld) {
+        var next = generateRandomSkin(Boolean(includeWorld));
+        applySkin(next);
+        boop(); greet();
+        return next;
+      },
+      randomizeWorld: function () {
+        var nextWorld = generateRandomWorld();
+        var next = Object.assign({}, S.activeSkin || {}, { world: nextWorld });
+        applySkin(next);
+        boop();
+        return nextWorld;
       },
       boop: boop,
       get phase() { return S.phase; }

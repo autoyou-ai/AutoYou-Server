@@ -151,6 +151,13 @@ A skin pack is a portable JSON document (file extension `.ayskin` or `.ayskin.js
       "blink_interval_seconds": 3.8,
       "greeting_wave_enabled": true
     },
+    "avatar": {
+      "head_accessory": "classic_arc",
+      "face_accessory": "none",
+      "neck_accessory": "none",
+      "core_emblem": "classic",
+      "chassis_style": "standard"
+    },
     "audio_reactivity": {
       "mic_equalizer_bands": 7,
       "speaker_mouth_tracking": true,
@@ -165,6 +172,14 @@ A skin pack is a portable JSON document (file extension `.ayskin` or `.ayskin.js
 }
 ```
 
+### Avatar Customization Fields (`skin.avatar`)
+
+- `head_accessory`: `classic_arc`, `antenna`, `none`, `cat_ears`, `bunny_ears`, `fox_ears`, `crown`, `halo_ring` / `halo`, `sprout`, `wizard_hat`, `headphones`, `twin_antennas`, `bow_ribbon`
+- `face_accessory`: `none`, `blush`, `star_cheeks`, `whiskers`, `whiskers_blush`, `glasses_round`, `glasses_cyber`, `monocle`, `freckles`
+- `neck_accessory`: `none`, `bowtie`, `scarf`, `collar_bell`, `cape`, `wings_mini`
+- `core_emblem`: `classic`, `heart`, `star`, `music`, `sparkle`, `paw`, `lightning`
+- `chassis_style`: `standard`, `chibi`, `sleek`
+
 ---
 
 ## 5. Built-in Preset Catalog
@@ -177,6 +192,14 @@ A skin pack is a portable JSON document (file extension `.ayskin` or `.ayskin.js
 | `emerald_tech` | Emerald Tech | Brushed titanium shell, glowing matrix emerald optics | `#34d399` | `#10b981` → `#047857` |
 | `cosmic_violet` | Cosmic Violet | Astral violet chassis, luminous ultraviolet core energy | `#c084fc` | `#a855f7` → `#581c87` |
 | `stealth_dark` | Stealth Dark | Matte graphite composite, tactical crimson optics | `#f87171` | `#ef4444` → `#991b1b` |
+| `sakura_neko` | Sakura Neko | Pastel sakura chibi buddy, cat ears, blush, bell & paw core | `#ff85c8` | `#ff66b2` → `#be185d` |
+| `starlight_bunny` | Starlight Bunny | Lavender & pearl bunny avatar, starry cheeks & anime optics | `#7dd3fc` | `#a855f7` → `#5b21b6` |
+| `matcha_sprout` | Matcha Sprout | Mint-cream botanical buddy with leaf sprout, scarf & heart core | `#6ee7b7` | `#34d399` → `#047857` |
+| `kitsune_fox` | Kitsune Spirit | Warm ivory & coral fox spirit with whiskers, bowtie & sparkle core | `#fbbf24` | `#fb923c` → `#c2410c` |
+| `beat_bot_dj` | Beat Bot DJ | Sleek studio DJ with headphones, cyber shades & music core | `#22d3ee` | `#06b6d4` → `#1d4ed8` |
+| `stargazer_mage` | Stargazer Mage | Astral mage with wizard hat, round glasses & starry optics | `#fde047` | `#6366f1` → `#312e81` |
+| `seraph_halo` | Seraph Halo | Pearl & sky-gold guardian with halo ring, blush & heart core | `#7dd3fc` | `#38bdf8` → `#0369a1` |
+| `little_monarch` | Little Monarch | Pearl & royal-gold buddy with crown, cape & sparkle core | `#facc15` | `#eab308` → `#854d0e` |
 
 ---
 
@@ -188,6 +211,7 @@ The AutoYou-Server `assistant_agent` website backend provides the following endp
 - `POST /api/assistant/skin`: Update active skin configuration (JSON body).
 - `GET /api/assistant/skin/presets`: Return list of all preset skins with preview swatches.
 - `POST /api/assistant/skin/preset/{preset_id}`: Apply one of the preset skins.
+- `POST /api/assistant/skin/randomize`: Randomize avatar skin (`include_world` or `world_only`) via `assistant_skin.randomize_skin` / `assistant_world.randomize_world`.
 - `GET /api/assistant/skin/export`: Download active skin pack as JSON attachment.
 - `POST /api/assistant/skin/import`: Upload and apply skin pack JSON.
 - `POST /api/assistant/skin/reset`: Reset active skin to `autoyou_classic`.
@@ -204,12 +228,11 @@ and Android `AssistantWorld.kt`. A world has sky/ground colors, robot size, opti
 professional, wandering and sound switches, and up to 96 objects. Objects use
 built-in shapes, system symbols, locally embedded JPEG photos or bounded SVG path coordinates, named animations/reactions and
 locally synthesized sounds. Packs contain no executable scripts or remote assets.
-A world is limited to 128 KiB; a skin pack remains limited to 256 KiB. Changing an
-appearance preset preserves the current world; importing a pack replaces it.
+A world is limited to 128 KiB; a skin pack remains limited to 256 KiB. Interactive `house` objects also support optional `lights_on` state (toggling window/porch lantern lighting and chimney puffs when tapped or visited during wandering). Changing an appearance preset preserves the current world; importing a pack replaces it.
 
 The canonical web renderer supplies all native graphics through
 `scripts/sync_assistant_renderer.py`. It follows touch or pointer position, supports
-11 idle gestures (0–10), walks between bounded positions and debounces repeated
+11 idle gestures (0–10), walks between bounded positions (with step gait, speech/command posture shifts, and proximity reactions near world objects), and debounces repeated
 presses. Professional mode reduces movement; it does not change authentication.
 Animation suspends when hidden and runs at a lower rate while idle. Desktop v2
 views use this same Assistant website. Native full screen respects orientation: chat sits below the scene on narrow screens or beside it on wide screens. The manual editor works on a draft, accepts local photos, and stores normalized object positions and sizes in the pack.

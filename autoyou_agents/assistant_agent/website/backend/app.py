@@ -831,6 +831,35 @@ def _extra_routes(app: FastAPI, agent_name: str) -> None:
         reset_val = await asyncio.to_thread(assistant_skin.reset_active_skin)
         return _json({"success": True, "skin": reset_val})
 
+    @app.post("/api/assistant/skin/randomize")
+    async def randomize_skin_endpoint(request: Request):
+        """Randomize the assistant avatar skin and/or 2D world."""
+        refused = _require_skin_or_session(request, write=True)
+        if refused is not None:
+            return refused
+        body, error = await _json_body(request)
+        if error is not None:
+            return error
+        body = body or {}
+        world_only = bool(body.get("world_only"))
+        include_world = bool(body.get("include_world"))
+        from shared import assistant_skin, assistant_world
+        try:
+            if world_only:
+                active = await asyncio.to_thread(assistant_skin.get_active_skin)
+                active["world"] = await asyncio.to_thread(assistant_world.randomize_world)
+                saved = await asyncio.to_thread(assistant_skin.save_active_skin, active)
+            else:
+                saved = await asyncio.to_thread(
+                    assistant_skin.randomize_skin,
+                    include_world=include_world,
+                    save=True,
+                )
+        except Exception as exc:
+            return _error(400, str(exc))
+        return _json({"success": True, "skin": saved, "world": saved.get("world")})
+
+
     @app.get("/api/assistant/model")
     async def model(request: Request):
         """The trained wake word for the in-page or on-device detector (acoustic templates only)."""

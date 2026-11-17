@@ -315,3 +315,79 @@ def test_paired_device_skin_and_settings_commute(tmp_path: Path, monkeypatch: py
     assert client.post("/api/assistant/model", headers=device_headers, json={"model": {"templates": []}}).status_code == 400
 
 
+def test_cute_avatar_presets_and_avatar_accessories(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path))
+    monkeypatch.setenv("AUTOYOU_ASSISTANT_MODE_DIR", str(tmp_path / "assistant_mode"))
+
+    presets = assistant_skin.list_presets()
+    preset_ids = {p["id"] for p in presets}
+    expected_new = {
+        "sakura_neko",
+        "starlight_bunny",
+        "matcha_sprout",
+        "kitsune_fox",
+        "beat_bot_dj",
+        "stargazer_mage",
+        "seraph_halo",
+        "little_monarch",
+    }
+    assert expected_new.issubset(preset_ids)
+
+    neko = assistant_skin.apply_preset("sakura_neko")
+    assert neko["avatar"]["head_accessory"] == "cat_ears"
+    assert neko["avatar"]["face_accessory"] == "blush"
+    assert neko["avatar"]["core_emblem"] == "paw"
+    assert neko["avatar"]["chassis_style"] == "chibi"
+    assert neko["emotes"]["eye_style"] == "starry"
+    assert neko["emotes"]["mouth_style"] == "cat_mouth"
+
+    custom = assistant_skin.validate_skin({
+        "id": "custom_avatar_bot",
+        "name": "Custom Avatar Bot",
+        "emotes": {"eyeStyle": "heart", "mouthStyle": "happy_open"},
+        "avatar": {
+            "headAccessory": "wizard_hat",
+            "faceAccessory": "monocle",
+            "neckAccessory": "cape",
+            "coreEmblem": "star",
+            "chassisStyle": "sleek",
+        },
+    })
+    assert custom["emotes"]["eye_style"] == "heart"
+    assert custom["emotes"]["mouth_style"] == "happy_open"
+    assert custom["avatar"]["head_accessory"] == "wizard_hat"
+    assert custom["avatar"]["face_accessory"] == "monocle"
+    assert custom["avatar"]["neck_accessory"] == "cape"
+    assert custom["avatar"]["core_emblem"] == "star"
+    assert custom["avatar"]["chassis_style"] == "sleek"
+
+
+def test_randomize_skin_and_world_with_interactive_house_lights(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path))
+    monkeypatch.setenv("AUTOYOU_ASSISTANT_MODE_DIR", str(tmp_path / "assistant_mode"))
+
+    from shared.assistant_world import randomize_world, validate_world
+
+    world = randomize_world(seed=42)
+    assert world["enabled"] is True
+    assert world["wander"] is True
+    houses = [obj for obj in world["objects"] if obj["shape"] == "house"]
+    assert len(houses) == 1
+    assert houses[0]["lights_on"] is True
+
+    # Toggling lights_on to False round-trips through validate_world
+    houses[0]["lights_on"] = False
+    revalidated = validate_world(world)
+    revalidated_house = next(obj for obj in revalidated["objects"] if obj["shape"] == "house")
+    assert revalidated_house["lights_on"] is False
+
+    # Randomize skin with world included and persist
+    randomized = assistant_skin.randomize_skin(seed=99, include_world=True, save=True)
+    assert randomized["avatar"]["head_accessory"] in assistant_skin.VALID_HEAD_ACCESSORIES
+    assert randomized["avatar"]["face_accessory"] in assistant_skin.VALID_FACE_ACCESSORIES
+    assert randomized["avatar"]["neck_accessory"] in assistant_skin.VALID_NECK_ACCESSORIES
+    assert randomized["avatar"]["core_emblem"] in assistant_skin.VALID_CORE_EMBLEMS
+    assert randomized["avatar"]["chassis_style"] in assistant_skin.VALID_CHASSIS_STYLES
+    assert randomized["world"]["enabled"] is True
+    assert assistant_skin.get_active_skin()["id"] == randomized["id"]
+

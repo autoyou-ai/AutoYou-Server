@@ -69,6 +69,68 @@ DEFAULT_EMOTES: Dict[str, Any] = {
     "greeting_wave_enabled": True,
 }
 
+DEFAULT_AVATAR: Dict[str, Any] = {
+    "head_accessory": "classic_arc",
+    "face_accessory": "none",
+    "neck_accessory": "none",
+    "core_emblem": "classic",
+    "chassis_style": "standard",
+}
+
+VALID_HEAD_ACCESSORIES = {
+    "classic_arc",
+    "antenna",
+    "none",
+    "cat_ears",
+    "bunny_ears",
+    "fox_ears",
+    "crown",
+    "halo_ring",
+    "halo",
+    "sprout",
+    "wizard_hat",
+    "headphones",
+    "twin_antennas",
+    "bow_ribbon",
+}
+
+VALID_FACE_ACCESSORIES = {
+    "none",
+    "blush",
+    "star_cheeks",
+    "whiskers",
+    "whiskers_blush",
+    "glasses_round",
+    "glasses_cyber",
+    "monocle",
+    "freckles",
+}
+
+VALID_NECK_ACCESSORIES = {
+    "none",
+    "bowtie",
+    "scarf",
+    "collar_bell",
+    "cape",
+    "wings_mini",
+}
+
+VALID_CORE_EMBLEMS = {
+    "classic",
+    "heart",
+    "star",
+    "music",
+    "sparkle",
+    "paw",
+    "lightning",
+}
+
+VALID_CHASSIS_STYLES = {
+    "standard",
+    "chibi",
+    "sleek",
+}
+
 DEFAULT_AUDIO_REACTIVITY: Dict[str, Any] = {
     "mic_equalizer_bands": 7,
     "speaker_mouth_tracking": True,
@@ -84,6 +146,7 @@ DEFAULT_SKIN: Dict[str, Any] = {
     "palette": DEFAULT_PALETTE,
     "physics": DEFAULT_PHYSICS,
     "emotes": DEFAULT_EMOTES,
+    "avatar": DEFAULT_AVATAR,
     "audio_reactivity": DEFAULT_AUDIO_REACTIVITY,
     "assets": {
         "custom_svg_paths": {},
@@ -217,6 +280,299 @@ PRESET_SKINS: Dict[str, Dict[str, Any]] = {
             "breath_amplitude": 1.8,
         },
         "emotes": DEFAULT_EMOTES,
+        "avatar": DEFAULT_AVATAR,
+        "audio_reactivity": DEFAULT_AUDIO_REACTIVITY,
+        "assets": {"custom_svg_paths": {}},
+    },
+    "sakura_neko": {
+        "id": "sakura_neko",
+        "name": "Sakura Neko",
+        "author": "AutoYou",
+        "version": "1.0.0",
+        "description": "Adorable pastel sakura chibi companion with glowing cat ears, rosy cheeks, and starry eyes.",
+        "palette": {
+            "shell_gradient": ["#fff5f8", "#ffe4ef", "#ffc2dc"],
+            "shell_head_gradient": ["#fff7fa", "#ffe8f1", "#ffc9e0"],
+            "visor_gradient": ["#2d0c24", "#1a0514", "#0a0108"],
+            "accent_gradient": ["#ff66b2", "#ec4899", "#be185d"],
+            "glow_primary": "#ff85c8",
+            "glow_secondary": "#f472b6",
+            "core_color": "#fff0f7",
+            "halo_color": "#ff66b2",
+        },
+        "physics": {
+            **DEFAULT_PHYSICS,
+            "breath_speed": 1.8,
+            "breath_amplitude": 2.4,
+        },
+        "emotes": {
+            **DEFAULT_EMOTES,
+            "eye_style": "starry",
+            "mouth_style": "cat_mouth",
+        },
+        "avatar": {
+            "head_accessory": "cat_ears",
+            "face_accessory": "blush",
+            "neck_accessory": "collar_bell",
+            "core_emblem": "paw",
+            "chassis_style": "chibi",
+        },
+        "audio_reactivity": DEFAULT_AUDIO_REACTIVITY,
+        "assets": {"custom_svg_paths": {}},
+    },
+    "starlight_bunny": {
+        "id": "starlight_bunny",
+        "name": "Starlight Bunny",
+        "author": "AutoYou",
+        "version": "1.0.0",
+        "description": "Dreamy lavender & pearl bunny avatar with starry cheeks and luminous anime optics.",
+        "palette": {
+            "shell_gradient": ["#fbf8ff", "#efe5ff", "#d8c2ff"],
+            "shell_head_gradient": ["#fcfaff", "#f1e8ff", "#dcc7ff"],
+            "visor_gradient": ["#1a103c", "#0e0724", "#050210"],
+            "accent_gradient": ["#a855f7", "#8b5cf6", "#5b21b6"],
+            "glow_primary": "#7dd3fc",
+            "glow_secondary": "#c084fc",
+            "core_color": "#f0f9ff",
+            "halo_color": "#a855f7",
+        },
+        "physics": {
+            **DEFAULT_PHYSICS,
+            "breath_speed": 1.7,
+            "breath_amplitude": 2.6,
+        },
+        "emotes": {
+            **DEFAULT_EMOTES,
+            "eye_style": "anime",
+            "mouth_style": "happy_open",
+        },
+        "avatar": {
+            "head_accessory": "bunny_ears",
+            "face_accessory": "star_cheeks",
+            "neck_accessory": "bowtie",
+            "core_emblem": "star",
+            "chassis_style": "chibi",
+        },
+        "audio_reactivity": DEFAULT_AUDIO_REACTIVITY,
+        "assets": {"custom_svg_paths": {}},
+    },
+    "matcha_sprout": {
+        "id": "matcha_sprout",
+        "name": "Matcha Sprout",
+        "author": "AutoYou",
+        "version": "1.0.0",
+        "description": "Cozy mint-cream botanical buddy topped with a fresh green leaf sprout and warm smile.",
+        "palette": {
+            "shell_gradient": ["#f4fbf7", "#dff5e8", "#bce3cc"],
+            "shell_head_gradient": ["#f6fcf8", "#e2f7eb", "#c1e6d0"],
+            "visor_gradient": ["#0d291e", "#061710", "#020906"],
+            "accent_gradient": ["#34d399", "#10b981", "#047857"],
+            "glow_primary": "#6ee7b7",
+            "glow_secondary": "#34d399",
+            "core_color": "#ecfdf5",
+            "halo_color": "#10b981",
+        },
+        "physics": {
+            **DEFAULT_PHYSICS,
+            "breath_speed": 1.4,
+            "breath_amplitude": 2.0,
+        },
+        "emotes": {
+            **DEFAULT_EMOTES,
+            "eye_style": "happy",
+            "mouth_style": "glow_line",
+        },
+        "avatar": {
+            "head_accessory": "sprout",
+            "face_accessory": "blush",
+            "neck_accessory": "scarf",
+            "core_emblem": "heart",
+            "chassis_style": "chibi",
+        },
+        "audio_reactivity": DEFAULT_AUDIO_REACTIVITY,
+        "assets": {"custom_svg_paths": {}},
+    },
+    "kitsune_fox": {
+        "id": "kitsune_fox",
+        "name": "Kitsune Spirit",
+        "author": "AutoYou",
+        "version": "1.0.0",
+        "description": "Warm ivory and sunset-coral fox spirit with pointed ears, whiskers, and golden sparkle core.",
+        "palette": {
+            "shell_gradient": ["#fffaf0", "#ffedd5", "#fed7aa"],
+            "shell_head_gradient": ["#fffbf2", "#ffefd9", "#fdba74"],
+            "visor_gradient": ["#2b1206", "#180802", "#090200"],
+            "accent_gradient": ["#fb923c", "#f97316", "#c2410c"],
+            "glow_primary": "#fbbf24",
+            "glow_secondary": "#fb923c",
+            "core_color": "#fffbeb",
+            "halo_color": "#f97316",
+        },
+        "physics": {
+            **DEFAULT_PHYSICS,
+            "breath_speed": 1.6,
+            "breath_amplitude": 2.2,
+        },
+        "emotes": {
+            **DEFAULT_EMOTES,
+            "eye_style": "wink",
+            "mouth_style": "cat_mouth",
+        },
+        "avatar": {
+            "head_accessory": "fox_ears",
+            "face_accessory": "whiskers",
+            "neck_accessory": "bowtie",
+            "core_emblem": "sparkle",
+            "chassis_style": "standard",
+        },
+        "audio_reactivity": DEFAULT_AUDIO_REACTIVITY,
+        "assets": {"custom_svg_paths": {}},
+    },
+    "beat_bot_dj": {
+        "id": "beat_bot_dj",
+        "name": "Beat Bot DJ",
+        "author": "AutoYou",
+        "version": "1.0.0",
+        "description": "Sleek studio DJ robot wearing over-ear headphones, cyber visor shades, and a music reactor core.",
+        "palette": {
+            "shell_gradient": ["#eef6ff", "#dbeafe", "#bfdbfe"],
+            "shell_head_gradient": ["#f0f7ff", "#e0effe", "#c3ddfd"],
+            "visor_gradient": ["#091936", "#040d21", "#01050e"],
+            "accent_gradient": ["#06b6d4", "#0284c7", "#1d4ed8"],
+            "glow_primary": "#22d3ee",
+            "glow_secondary": "#38bdf8",
+            "core_color": "#ecfeff",
+            "halo_color": "#06b6d4",
+        },
+        "physics": {
+            **DEFAULT_PHYSICS,
+            "breath_speed": 2.1,
+            "breath_amplitude": 2.6,
+        },
+        "emotes": {
+            **DEFAULT_EMOTES,
+            "eye_style": "neon",
+            "mouth_style": "equalizer_only",
+        },
+        "avatar": {
+            "head_accessory": "headphones",
+            "face_accessory": "glasses_cyber",
+            "neck_accessory": "none",
+            "core_emblem": "music",
+            "chassis_style": "sleek",
+        },
+        "audio_reactivity": {
+            "mic_equalizer_bands": 11,
+            "speaker_mouth_tracking": True,
+            "ear_glow_enabled": True,
+        },
+        "assets": {"custom_svg_paths": {}},
+    },
+    "stargazer_mage": {
+        "id": "stargazer_mage",
+        "name": "Stargazer Mage",
+        "author": "AutoYou",
+        "version": "1.0.0",
+        "description": "Scholarly astral mage wearing a starry wizard hat, round spectacles, and a cozy scarf.",
+        "palette": {
+            "shell_gradient": ["#f5f3ff", "#ede9fe", "#ddd6fe"],
+            "shell_head_gradient": ["#f7f5ff", "#efeafe", "#e0d7fe"],
+            "visor_gradient": ["#170f2e", "#0c071c", "#04020a"],
+            "accent_gradient": ["#6366f1", "#4f46e5", "#312e81"],
+            "glow_primary": "#fde047",
+            "glow_secondary": "#818cf8",
+            "core_color": "#fefce8",
+            "halo_color": "#6366f1",
+        },
+        "physics": {
+            **DEFAULT_PHYSICS,
+            "breath_speed": 1.4,
+            "breath_amplitude": 2.0,
+        },
+        "emotes": {
+            **DEFAULT_EMOTES,
+            "eye_style": "starry",
+            "mouth_style": "glow_line",
+        },
+        "avatar": {
+            "head_accessory": "wizard_hat",
+            "face_accessory": "glasses_round",
+            "neck_accessory": "scarf",
+            "core_emblem": "star",
+            "chassis_style": "chibi",
+        },
+        "audio_reactivity": DEFAULT_AUDIO_REACTIVITY,
+        "assets": {"custom_svg_paths": {}},
+    },
+    "seraph_halo": {
+        "id": "seraph_halo",
+        "name": "Seraph Halo",
+        "author": "AutoYou",
+        "version": "1.0.0",
+        "description": "Radiant pearl and sky-gold guardian with a floating halo ring, heart eyes, and heart reactor.",
+        "palette": {
+            "shell_gradient": ["#ffffff", "#f0f9ff", "#e0f2fe"],
+            "shell_head_gradient": ["#ffffff", "#f2faff", "#e3f4fe"],
+            "visor_gradient": ["#0c2340", "#061529", "#020812"],
+            "accent_gradient": ["#38bdf8", "#0284c7", "#0369a1"],
+            "glow_primary": "#7dd3fc",
+            "glow_secondary": "#fde047",
+            "core_color": "#ffffff",
+            "halo_color": "#38bdf8",
+        },
+        "physics": {
+            **DEFAULT_PHYSICS,
+            "breath_speed": 1.5,
+            "breath_amplitude": 2.2,
+        },
+        "emotes": {
+            **DEFAULT_EMOTES,
+            "eye_style": "heart",
+            "mouth_style": "glow_line",
+        },
+        "avatar": {
+            "head_accessory": "halo_ring",
+            "face_accessory": "blush",
+            "neck_accessory": "bow_ribbon",
+            "core_emblem": "heart",
+            "chassis_style": "chibi",
+        },
+        "audio_reactivity": DEFAULT_AUDIO_REACTIVITY,
+        "assets": {"custom_svg_paths": {}},
+    },
+    "little_monarch": {
+        "id": "little_monarch",
+        "name": "Little Monarch",
+        "author": "AutoYou",
+        "version": "1.0.0",
+        "description": "Regal pearl and royal-gold companion wearing a gleaming crown, dapper bowtie, and cape.",
+        "palette": {
+            "shell_gradient": ["#fefce8", "#fef3c7", "#fde68a"],
+            "shell_head_gradient": ["#fffef0", "#fef5cf", "#fde894"],
+            "visor_gradient": ["#261029", "#150717", "#070208"],
+            "accent_gradient": ["#eab308", "#ca8a04", "#854d0e"],
+            "glow_primary": "#facc15",
+            "glow_secondary": "#f59e0b",
+            "core_color": "#fef9c3",
+            "halo_color": "#eab308",
+        },
+        "physics": {
+            **DEFAULT_PHYSICS,
+            "breath_speed": 1.5,
+            "breath_amplitude": 2.1,
+        },
+        "emotes": {
+            **DEFAULT_EMOTES,
+            "eye_style": "anime",
+            "mouth_style": "classic_curve",
+        },
+        "avatar": {
+            "head_accessory": "crown",
+            "face_accessory": "star_cheeks",
+            "neck_accessory": "cape",
+            "core_emblem": "sparkle",
+            "chassis_style": "chibi",
+        },
         "audio_reactivity": DEFAULT_AUDIO_REACTIVITY,
         "assets": {"custom_svg_paths": {}},
     },
@@ -354,11 +710,11 @@ def validate_skin(raw: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
     }
     eye_style = str(raw_eye or DEFAULT_EMOTES["eye_style"]).strip().lower()
     eye_style = eye_style_map.get(eye_style, eye_style)
-    if eye_style not in {"ring", "neon", "happy", "sleep", "visor_bar"}:
+    if eye_style not in {"ring", "neon", "happy", "sleep", "visor_bar", "starry", "heart", "wink", "anime"}:
         eye_style = "ring"
     raw_mouth = _first_present(raw_emo, "mouth_style", "mouthStyle")
     mouth_style = str(raw_mouth or DEFAULT_EMOTES["mouth_style"]).strip().lower()
-    if mouth_style not in {"glow_line", "classic_curve", "equalizer_only"}:
+    if mouth_style not in {"glow_line", "classic_curve", "equalizer_only", "cat_mouth", "happy_open"}:
         mouth_style = "glow_line"
 
     raw_blink = _first_present(raw_emo, "blink_interval_seconds", "blinkIntervalSeconds")
@@ -368,6 +724,55 @@ def validate_skin(raw: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
         "mouth_style": mouth_style,
         "blink_interval_seconds": _clean_float(raw_blink, DEFAULT_EMOTES["blink_interval_seconds"], 1.0, 15.0),
         "greeting_wave_enabled": bool(True if raw_wave is None else raw_wave),
+    }
+
+    raw_avatar_obj = source.get("avatar") if isinstance(source.get("avatar"), Mapping) else {}
+    head_acc = str(
+        _first_present(raw_avatar_obj, "head_accessory", "headAccessory")
+        or _first_present(source, "head_accessory", "headAccessory")
+        or DEFAULT_AVATAR["head_accessory"]
+    ).strip().lower()
+    if head_acc not in VALID_HEAD_ACCESSORIES:
+        head_acc = DEFAULT_AVATAR["head_accessory"]
+
+    face_acc = str(
+        _first_present(raw_avatar_obj, "face_accessory", "faceAccessory")
+        or _first_present(source, "face_accessory", "faceAccessory")
+        or DEFAULT_AVATAR["face_accessory"]
+    ).strip().lower()
+    if face_acc not in VALID_FACE_ACCESSORIES:
+        face_acc = DEFAULT_AVATAR["face_accessory"]
+
+    neck_acc = str(
+        _first_present(raw_avatar_obj, "neck_accessory", "neckAccessory")
+        or _first_present(source, "neck_accessory", "neckAccessory")
+        or DEFAULT_AVATAR["neck_accessory"]
+    ).strip().lower()
+    if neck_acc not in VALID_NECK_ACCESSORIES:
+        neck_acc = DEFAULT_AVATAR["neck_accessory"]
+
+    core_emblem = str(
+        _first_present(raw_avatar_obj, "core_emblem", "coreEmblem")
+        or _first_present(source, "core_emblem", "coreEmblem")
+        or DEFAULT_AVATAR["core_emblem"]
+    ).strip().lower()
+    if core_emblem not in VALID_CORE_EMBLEMS:
+        core_emblem = DEFAULT_AVATAR["core_emblem"]
+
+    chassis_style = str(
+        _first_present(raw_avatar_obj, "chassis_style", "chassisStyle")
+        or _first_present(source, "chassis_style", "chassisStyle")
+        or DEFAULT_AVATAR["chassis_style"]
+    ).strip().lower()
+    if chassis_style not in VALID_CHASSIS_STYLES:
+        chassis_style = DEFAULT_AVATAR["chassis_style"]
+
+    avatar = {
+        "head_accessory": head_acc,
+        "face_accessory": face_acc,
+        "neck_accessory": neck_acc,
+        "core_emblem": core_emblem,
+        "chassis_style": chassis_style,
     }
 
     raw_aud_obj = _first_present(source, "audio_reactivity", "audioReactivity")
@@ -403,6 +808,7 @@ def validate_skin(raw: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
         "palette": palette,
         "physics": physics,
         "emotes": emotes,
+        "avatar": avatar,
         "audio_reactivity": audio_reactivity,
         "assets": {
             "custom_svg_paths": custom_paths,
@@ -464,6 +870,8 @@ def list_presets() -> List[Dict[str, Any]]:
             "name": skin["name"],
             "author": skin.get("author", "AutoYou"),
             "description": skin.get("description", ""),
+            "avatar": copy.deepcopy(skin.get("avatar", DEFAULT_AVATAR)),
+            "emotes": copy.deepcopy(skin.get("emotes", DEFAULT_EMOTES)),
             "preview": {
                 "shell": skin["palette"]["shell_gradient"],
                 "accent": skin["palette"]["accent_gradient"],
@@ -480,6 +888,84 @@ def apply_preset(preset_id: str) -> Dict[str, Any]:
     if not preset:
         raise ValueError(f"Unknown preset: {preset_id}")
     return save_active_skin({**preset, "world": get_active_skin().get("world")})
+
+
+def randomize_skin(
+    seed: Any = None,
+    *,
+    include_world: bool = False,
+    save: bool = False,
+) -> Dict[str, Any]:
+    """Generate a cohesive, animation-optimized randomized avatar skin (and optional world)."""
+    import random
+    from shared.assistant_world import randomize_world
+
+    rng = random.Random(seed)
+    base_presets = list(PRESET_SKINS.values())
+    palette_donor = rng.choice(base_presets)
+    accent_donor = rng.choice(base_presets)
+
+    head_choices = [x for x in sorted(VALID_HEAD_ACCESSORIES) if x != "none"]
+    face_choices = sorted(VALID_FACE_ACCESSORIES)
+    neck_choices = sorted(VALID_NECK_ACCESSORIES)
+    emblem_choices = sorted(VALID_CORE_EMBLEMS)
+    chassis_choices = sorted(VALID_CHASSIS_STYLES)
+    eye_choices = ["ring", "neon", "happy", "visor_bar", "starry", "heart", "wink", "anime"]
+    mouth_choices = ["glow_line", "classic_curve", "equalizer_only", "cat_mouth", "happy_open"]
+
+    adjectives = ("Cosmic", "Sakura", "Starlight", "Matcha", "Velvet", "Solar", "Crystal", "Chibi")
+    nouns = ("Neko", "Fox", "Sprout", "Mage", "Pilot", "Seraph", "Bunny", "Monarch")
+    random_name = f"{rng.choice(adjectives)} {rng.choice(nouns)}"
+    random_id = f"custom_{rng.randrange(100000, 999999)}"
+
+    palette = copy.deepcopy(palette_donor["palette"])
+    palette["accent_gradient"] = copy.deepcopy(accent_donor["palette"]["accent_gradient"])
+    palette["glow_primary"] = accent_donor["palette"]["glow_primary"]
+    palette["glow_secondary"] = palette_donor["palette"]["glow_secondary"]
+
+    world_payload = (
+        randomize_world(rng.randrange(1, 10_000_000))
+        if include_world
+        else get_active_skin().get("world")
+    )
+
+    draft = {
+        "id": random_id,
+        "name": random_name,
+        "author": "AutoYou Randomizer",
+        "version": "1.0.0",
+        "description": "Randomized cute avatar with physics and animation tuning.",
+        "palette": palette,
+        "physics": {
+            "squash_impulse": round(rng.uniform(-3.6, -2.0), 2),
+            "gaze_sensitivity": round(rng.uniform(0.95, 1.4), 2),
+            "breath_speed": round(rng.uniform(1.3, 2.2), 2),
+            "breath_amplitude": round(rng.uniform(2.0, 3.2), 2),
+        },
+        "emotes": {
+            "eye_style": rng.choice(eye_choices),
+            "mouth_style": rng.choice(mouth_choices),
+            "blink_interval_seconds": round(rng.uniform(2.8, 4.5), 1),
+            "greeting_wave_enabled": True,
+        },
+        "avatar": {
+            "head_accessory": rng.choice(head_choices),
+            "face_accessory": rng.choice(face_choices),
+            "neck_accessory": rng.choice(neck_choices),
+            "core_emblem": rng.choice(emblem_choices),
+            "chassis_style": rng.choice(chassis_choices),
+        },
+        "audio_reactivity": {
+            "mic_equalizer_bands": rng.choice((7, 9, 11)),
+            "speaker_mouth_tracking": True,
+            "ear_glow_enabled": True,
+        },
+        "world": world_payload,
+    }
+    if save:
+        return save_active_skin(draft)
+    return validate_skin(draft)
+
 
 
 def export_skin_pack(skin_data: Optional[Mapping[str, Any]] = None) -> str:

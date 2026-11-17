@@ -109,6 +109,9 @@
             </g>
 
             <g id="torso">
+              <g id="avatar-cape" opacity="0">
+                <path d="M126 318 C96 368, 86 436, 98 486 L302 486 C314 436, 304 368, 274 318 Z" fill="url(#g-blue)" opacity="0.85" stroke="#3fd8ff" stroke-width="2"/>
+              </g>
               <circle cx="116" cy="322" r="17" fill="url(#g-blue)"/>
               <circle cx="284" cy="322" r="17" fill="url(#g-blue)"/>
               <ellipse cx="200" cy="378" rx="82" ry="86" fill="url(#g-shell)" stroke="#aeb7cf" stroke-width="2"/>
@@ -144,15 +147,113 @@
                   <circle cx="-25" cy="43.5" r="5.8" fill="#0b1538" stroke="#ffffff" stroke-width="2.2"/>
                   <circle cx="25" cy="43.5" r="5.8" fill="#0b1538" stroke="#ffffff" stroke-width="2.2"/>
                 </g>
+                <g id="avatar-core-emblem" fill="none" stroke-linecap="round" stroke-linejoin="round" filter="url(#f-glow)">
+                  <path data-emblem="heart" opacity="0" d="M0 13 C-16 2, -19 -10, -9 -14 C-3 -16, 0 -11, 0 -7 C0 -11, 3 -16, 9 -14 C19 -10, 16 2, 0 13 Z" fill="#3fd8ff" fill-opacity="0.35" stroke="#ffffff" stroke-width="2.6"/>
+                  <polygon data-emblem="star" opacity="0" points="0,-16 4.5,-5 16,-4 7,4 9.5,15 0,9 -9.5,15 -7,4 -16,-4 -4.5,-5" fill="#3fd8ff" fill-opacity="0.35" stroke="#ffffff" stroke-width="2.4"/>
+                  <g data-emblem="music" opacity="0" stroke="#ffffff" stroke-width="2.6">
+                    <path d="M-5 8 V-11 L10 -14 V5" fill="none"/>
+                    <circle cx="-8" cy="9" r="4.2" fill="#3fd8ff"/>
+                    <circle cx="7" cy="6" r="4.2" fill="#3fd8ff"/>
+                  </g>
+                  <path data-emblem="sparkle" opacity="0" d="M0 -17 Q2 -3 17 0 Q2 3 0 17 Q-2 3 -17 0 Q-2 -3 0 -17 Z" fill="#3fd8ff" fill-opacity="0.4" stroke="#ffffff" stroke-width="2.2"/>
+                  <g data-emblem="paw" opacity="0" fill="#3fd8ff" stroke="#ffffff" stroke-width="1.8">
+                    <ellipse cx="0" cy="5" rx="8" ry="6.5"/>
+                    <circle cx="-9" cy="-4" r="3.2"/>
+                    <circle cx="-3" cy="-8" r="3.2"/>
+                    <circle cx="3" cy="-8" r="3.2"/>
+                    <circle cx="9" cy="-4" r="3.2"/>
+                  </g>
+                  <polygon data-emblem="lightning" opacity="0" points="3,-16 -10,2 -1,2 -4,16 11,-2 1,-2" fill="#3fd8ff" stroke="#ffffff" stroke-width="2"/>
+                </g>
               </g>
               <!-- The neck the head rests on: it stays put while the head bobs. -->
               <ellipse cx="200" cy="297" rx="34" ry="9" fill="#1a2350"/>
+              <g id="avatar-neck">
+                <g data-neck="bowtie" opacity="0">
+                  <polygon points="200,302 170,288 170,316" fill="url(#g-blue)" stroke="#ffffff" stroke-width="1.5"/>
+                  <polygon points="200,302 230,288 230,316" fill="url(#g-blue)" stroke="#ffffff" stroke-width="1.5"/>
+                  <circle cx="200" cy="302" r="7" fill="#3fd8ff" stroke="#ffffff" stroke-width="1.5"/>
+                </g>
+                <g data-neck="scarf" opacity="0">
+                  <rect x="148" y="288" width="104" height="24" rx="12" fill="url(#g-blue)" stroke="#aeb7cf" stroke-width="1.5"/>
+                  <path d="M216 306 L236 306 L242 356 C232 360, 220 360, 212 356 Z" fill="url(#g-blue)" stroke="#aeb7cf" stroke-width="1.5"/>
+                  <line x1="162" y1="300" x2="238" y2="300" stroke="#3fd8ff" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
+                </g>
+                <g data-neck="collar_bell" opacity="0">
+                  <rect x="156" y="291" width="88" height="14" rx="7" fill="url(#g-blue)" stroke="#ffffff" stroke-width="1.2"/>
+                  <circle cx="200" cy="309" r="9.5" fill="#fbbf24" stroke="#ffffff" stroke-width="1.5"/>
+                  <circle cx="200" cy="311" r="2.2" fill="#78350f"/>
+                </g>
+                <g data-neck="wings_mini" opacity="0">
+                  <path d="M126 318 C78 286, 58 318, 92 344 C70 352, 76 374, 122 362 Z" fill="url(#g-blue)" stroke="#ffffff" stroke-width="1.8" opacity="0.92"/>
+                  <path d="M274 318 C322 286, 342 318, 308 344 C330 352, 324 374, 278 362 Z" fill="url(#g-blue)" stroke="#ffffff" stroke-width="1.8" opacity="0.92"/>
+                </g>
+              </g>
             </g>
 
             <g id="head">
               <ellipse cx="200" cy="294" rx="40" ry="12" fill="#1a2350"/>
-              <path d="M140 84C132-8 268-8 260 84" fill="none" stroke="url(#g-blue)" stroke-width="10" stroke-linecap="round"/>
-              <path id="antenna-glow" d="M140 84C132-8 268-8 260 84" fill="none" stroke="#6fe6ff" stroke-width="4" stroke-linecap="round" opacity="0.15" filter="url(#f-glow)"/>
+              <g id="antenna-classic">
+                <path d="M140 84C132-8 268-8 260 84" fill="none" stroke="url(#g-blue)" stroke-width="10" stroke-linecap="round"/>
+                <path id="antenna-glow" d="M140 84C132-8 268-8 260 84" fill="none" stroke="#6fe6ff" stroke-width="4" stroke-linecap="round" opacity="0.15" filter="url(#f-glow)"/>
+              </g>
+              <g id="avatar-head" stroke-linecap="round" stroke-linejoin="round">
+                <g data-head="cat_ears" opacity="0">
+                  <path d="M92 98 L74 22 L152 62 Z" fill="url(#g-shell-head)" stroke="#aeb7cf" stroke-width="2.5"/>
+                  <path d="M100 88 L88 38 L138 64 Z" fill="url(#g-blue)" stroke="#3fd8ff" stroke-width="2" opacity="0.9"/>
+                  <path d="M308 98 L326 22 L248 62 Z" fill="url(#g-shell-head)" stroke="#aeb7cf" stroke-width="2.5"/>
+                  <path d="M300 88 L312 38 L262 64 Z" fill="url(#g-blue)" stroke="#3fd8ff" stroke-width="2" opacity="0.9"/>
+                </g>
+                <g data-head="bunny_ears" opacity="0">
+                  <path d="M132 68 C116 -14, 168 -14, 162 64 Z" fill="url(#g-shell-head)" stroke="#aeb7cf" stroke-width="2.5"/>
+                  <path d="M139 58 C129 4, 157 4, 154 56 Z" fill="url(#g-blue)" stroke="#3fd8ff" stroke-width="1.8" opacity="0.85"/>
+                  <path d="M268 68 C284 -14, 232 -14, 238 64 Z" fill="url(#g-shell-head)" stroke="#aeb7cf" stroke-width="2.5"/>
+                  <path d="M261 58 C271 4, 243 4, 246 56 Z" fill="url(#g-blue)" stroke="#3fd8ff" stroke-width="1.8" opacity="0.85"/>
+                </g>
+                <g data-head="fox_ears" opacity="0">
+                  <path d="M88 104 L58 10 L156 60 Z" fill="url(#g-blue)" stroke="#aeb7cf" stroke-width="2.2"/>
+                  <path d="M96 90 L76 30 L140 62 Z" fill="#ffffff" stroke="#3fd8ff" stroke-width="1.8" opacity="0.9"/>
+                  <path d="M312 104 L342 10 L244 60 Z" fill="url(#g-blue)" stroke="#aeb7cf" stroke-width="2.2"/>
+                  <path d="M304 90 L324 30 L260 62 Z" fill="#ffffff" stroke="#3fd8ff" stroke-width="1.8" opacity="0.9"/>
+                </g>
+                <g data-head="crown" opacity="0">
+                  <polygon points="146,56 154,14 180,36 200,4 220,36 246,14 254,56" fill="#fbbf24" stroke="#fef08a" stroke-width="2.5"/>
+                  <circle cx="154" cy="12" r="4.5" fill="#3fd8ff" filter="url(#f-glow)"/>
+                  <circle cx="200" cy="3" r="5.5" fill="#3fd8ff" filter="url(#f-glow)"/>
+                  <circle cx="246" cy="12" r="4.5" fill="#3fd8ff" filter="url(#f-glow)"/>
+                </g>
+                <g data-head="halo_ring" opacity="0" filter="url(#f-glow)">
+                  <ellipse cx="200" cy="20" rx="64" ry="14" fill="none" stroke="#3fd8ff" stroke-width="7" opacity="0.55"/>
+                  <ellipse cx="200" cy="20" rx="64" ry="14" fill="none" stroke="#ffffff" stroke-width="3"/>
+                </g>
+                <g data-head="sprout" opacity="0">
+                  <path d="M200 50 Q200 22 204 12" fill="none" stroke="#34d399" stroke-width="5" stroke-linecap="round"/>
+                  <path d="M202 22 C170 4, 162 34, 200 32 Z" fill="#34d399" stroke="#a7f3d0" stroke-width="1.8"/>
+                  <path d="M204 18 C236 0, 244 30, 204 28 Z" fill="#10b981" stroke="#a7f3d0" stroke-width="1.8"/>
+                </g>
+                <g data-head="wizard_hat" opacity="0">
+                  <path d="M132 58 L206 -8 L238 14 L268 58 Z" fill="url(#g-blue)" stroke="#3fd8ff" stroke-width="2"/>
+                  <ellipse cx="200" cy="58" rx="92" ry="14" fill="url(#g-blue)" stroke="#3fd8ff" stroke-width="2.2"/>
+                  <polygon points="200,18 203,26 211,26 205,31 207,39 200,34 193,39 195,31 189,26 197,26" fill="#fde047"/>
+                </g>
+                <g data-head="headphones" opacity="0">
+                  <path d="M56 154 C56 8, 344 8, 344 154" fill="none" stroke="url(#g-blue)" stroke-width="16" stroke-linecap="round"/>
+                  <path d="M62 146 C62 18, 338 18, 338 146" fill="none" stroke="#3fd8ff" stroke-width="3.5" stroke-linecap="round" filter="url(#f-glow)"/>
+                  <rect x="34" y="132" width="32" height="88" rx="16" fill="url(#g-blue)" stroke="#3fd8ff" stroke-width="2.5"/>
+                  <rect x="334" y="132" width="32" height="88" rx="16" fill="url(#g-blue)" stroke="#3fd8ff" stroke-width="2.5"/>
+                </g>
+                <g data-head="twin_antennas" opacity="0">
+                  <path d="M162 56 Q146 18 134 14" fill="none" stroke="url(#g-blue)" stroke-width="6"/>
+                  <circle cx="134" cy="14" r="9" fill="#3fd8ff" stroke="#ffffff" stroke-width="2" filter="url(#f-glow)"/>
+                  <path d="M238 56 Q254 18 266 14" fill="none" stroke="url(#g-blue)" stroke-width="6"/>
+                  <circle cx="266" cy="14" r="9" fill="#3fd8ff" stroke="#ffffff" stroke-width="2" filter="url(#f-glow)"/>
+                </g>
+                <g data-head="bow_ribbon" opacity="0">
+                  <path d="M200 44 L148 18 C134 32, 134 58, 148 66 Z" fill="url(#g-blue)" stroke="#ffffff" stroke-width="2"/>
+                  <path d="M200 44 L252 18 C266 32, 266 58, 252 66 Z" fill="url(#g-blue)" stroke="#ffffff" stroke-width="2"/>
+                  <circle cx="200" cy="44" r="11" fill="#3fd8ff" stroke="#ffffff" stroke-width="2"/>
+                </g>
+              </g>
               <ellipse cx="62" cy="176" rx="25" ry="46" fill="url(#g-blue)"/>
               <ellipse cx="338" cy="176" rx="25" ry="46" fill="url(#g-blue)"/>
               <ellipse id="ear-l" cx="57" cy="176" rx="11" ry="29" fill="none" stroke="#6fe6ff" stroke-width="4" opacity="0.5" filter="url(#f-glow)"/>
@@ -177,11 +278,68 @@
                     <circle class="eye-ring" r="25" fill="none" stroke="#3fd8ff" stroke-width="9" filter="url(#f-glow)"/>
                     <path class="eye-happy" d="M-24 8Q0-22 24 8" fill="none" stroke="#3fd8ff" stroke-width="9" stroke-linecap="round" filter="url(#f-glow)" opacity="0"/>
                     <path class="eye-sleep" d="M-22 2Q0 16 22 2" fill="none" stroke="#3fd8ff" stroke-width="9" stroke-linecap="round" filter="url(#f-glow)" opacity="0"/>
+                    <path class="eye-heart" d="M0 18 C-24 2, -28 -16, -13 -22 C-5 -25, 0 -17, 0 -11 C0 -17, 5 -25, 13 -22 C28 -16, 24 2, 0 18 Z" fill="#3fd8ff" fill-opacity="0.3" stroke="#3fd8ff" stroke-width="5" filter="url(#f-glow)" opacity="0"/>
+                    <path class="eye-star" d="M0 -17 Q2.5 -2.5 17 0 Q2.5 2.5 0 17 Q-2.5 2.5 -17 0 Q-2.5 -2.5 0 -17 Z" fill="#ffffff" stroke="#3fd8ff" stroke-width="2" opacity="0"/>
+                    <g class="eye-shine" opacity="0">
+                      <circle cx="-8" cy="-8" r="6" fill="#ffffff"/>
+                      <circle cx="9" cy="8" r="3.2" fill="#ffffff" opacity="0.85"/>
+                    </g>
                   </g>
                   <g id="eye-r" transform="translate(245 168)">
                     <circle class="eye-ring" r="25" fill="none" stroke="#3fd8ff" stroke-width="9" filter="url(#f-glow)"/>
                     <path class="eye-happy" d="M-24 8Q0-22 24 8" fill="none" stroke="#3fd8ff" stroke-width="9" stroke-linecap="round" filter="url(#f-glow)" opacity="0"/>
                     <path class="eye-sleep" d="M-22 2Q0 16 22 2" fill="none" stroke="#3fd8ff" stroke-width="9" stroke-linecap="round" filter="url(#f-glow)" opacity="0"/>
+                    <path class="eye-heart" d="M0 18 C-24 2, -28 -16, -13 -22 C-5 -25, 0 -17, 0 -11 C0 -17, 5 -25, 13 -22 C28 -16, 24 2, 0 18 Z" fill="#3fd8ff" fill-opacity="0.3" stroke="#3fd8ff" stroke-width="5" filter="url(#f-glow)" opacity="0"/>
+                    <path class="eye-star" d="M0 -17 Q2.5 -2.5 17 0 Q2.5 2.5 0 17 Q-2.5 2.5 -17 0 Q-2.5 -2.5 0 -17 Z" fill="#ffffff" stroke="#3fd8ff" stroke-width="2" opacity="0"/>
+                    <g class="eye-shine" opacity="0">
+                      <circle cx="-8" cy="-8" r="6" fill="#ffffff"/>
+                      <circle cx="9" cy="8" r="3.2" fill="#ffffff" opacity="0.85"/>
+                    </g>
+                  </g>
+                  <g id="avatar-face">
+                    <g data-face="blush" opacity="0">
+                      <ellipse cx="116" cy="200" rx="18" ry="9" fill="#ff66b2" opacity="0.55" filter="url(#f-glow)"/>
+                      <ellipse cx="284" cy="200" rx="18" ry="9" fill="#ff66b2" opacity="0.55" filter="url(#f-glow)"/>
+                      <path d="M110 202 L114 196 M118 203 L122 197 M278 203 L282 197 M286 202 L290 196" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" opacity="0.7"/>
+                    </g>
+                    <g data-face="star_cheeks" opacity="0" fill="#fde047" filter="url(#f-glow)">
+                      <path d="M116 190 Q118 198 126 200 Q118 202 116 210 Q114 202 106 200 Q114 198 116 190 Z"/>
+                      <path d="M284 190 Q286 198 294 200 Q286 202 284 210 Q282 202 274 200 Q282 198 284 190 Z"/>
+                    </g>
+                    <g data-face="whiskers" opacity="0" stroke="#3fd8ff" stroke-width="3" stroke-linecap="round" opacity="0.85">
+                      <line x1="94" y1="192" x2="122" y2="196"/>
+                      <line x1="96" y1="206" x2="122" y2="204"/>
+                      <line x1="306" y1="192" x2="278" y2="196"/>
+                      <line x1="304" y1="206" x2="278" y2="204"/>
+                    </g>
+                    <g data-face="glasses_round" opacity="0" fill="none" stroke="#ffffff" stroke-width="3.5">
+                      <circle cx="155" cy="168" r="35"/>
+                      <circle cx="245" cy="168" r="35"/>
+                      <path d="M190 168 Q200 158 210 168"/>
+                    </g>
+                    <g data-face="glasses_cyber" opacity="0">
+                      <polygon points="104,148 194,154 188,186 112,182" fill="#3fd8ff" fill-opacity="0.22" stroke="#ffffff" stroke-width="3"/>
+                      <polygon points="206,154 296,148 288,182 212,186" fill="#3fd8ff" fill-opacity="0.22" stroke="#ffffff" stroke-width="3"/>
+                      <line x1="194" y1="158" x2="206" y2="158" stroke="#ffffff" stroke-width="3.5"/>
+                    </g>
+                    <g data-face="freckles" opacity="0" fill="#ffffff" opacity="0.75">
+                      <circle cx="112" cy="196" r="2.4"/><circle cx="122" cy="201" r="2.4"/><circle cx="114" cy="205" r="2.4"/>
+                      <circle cx="288" cy="196" r="2.4"/><circle cx="278" cy="201" r="2.4"/><circle cx="286" cy="205" r="2.4"/>
+                    </g>
+                    <g data-face="whiskers_blush" opacity="0">
+                      <ellipse cx="116" cy="200" rx="17" ry="8.5" fill="#ff66b2" opacity="0.52" filter="url(#f-glow)"/>
+                      <ellipse cx="284" cy="200" rx="17" ry="8.5" fill="#ff66b2" opacity="0.52" filter="url(#f-glow)"/>
+                      <g stroke="#3fd8ff" stroke-width="2.8" stroke-linecap="round" opacity="0.9">
+                        <line x1="94" y1="192" x2="122" y2="196"/>
+                        <line x1="96" y1="206" x2="122" y2="204"/>
+                        <line x1="306" y1="192" x2="278" y2="196"/>
+                        <line x1="304" y1="206" x2="278" y2="204"/>
+                      </g>
+                    </g>
+                    <g data-face="monocle" opacity="0" fill="none">
+                      <circle cx="245" cy="168" r="34" stroke="#fbbf24" stroke-width="3.5"/>
+                      <path d="M279 168 Q288 202 276 232" stroke="#fbbf24" stroke-width="2" stroke-dasharray="3 3"/>
+                    </g>
                   </g>
                   <g id="mouth-smile">
                     <path d="M182 212Q200 226 218 212" fill="none" stroke="#25b0ff" stroke-width="13" stroke-linecap="round" opacity="0.2"/>
@@ -260,15 +418,22 @@
     <section class="drawer-section">
       <h3>World &amp; interaction</h3>
       <label class="field">Robot interaction<select id="world-interaction"><option value="tap">Tap to talk</option><option value="wake_word">Wake word</option><option value="hold">Hold to talk</option><option value="off">Off (microphone button only)</option></select></label>
-      <button type="button" id="world-edit">Edit world · photos and objects</button>
+      <div class="btn-row">
+        <button type="button" id="world-edit">Edit world · photos and objects</button>
+        <button type="button" class="action-btn" id="world-randomize">Randomize world</button>
+      </div>
       <label class="switch"><input type="checkbox" id="world-idle">Idle movements</label>
       <label class="switch"><input type="checkbox" id="world-professional">Professional (calm) movements</label>
       <label class="switch"><input type="checkbox" id="world-sounds">Interaction sounds</label>
-      <p class="note">Ask the assistant to build or edit your world. Backgrounds, objects and reactions travel with your skin pack. Use number keys to preview idle gestures.</p>
+      <p class="note">Tap a house in the world to toggle its windows and porch lights on or off. Ask the assistant to build or edit your world.</p>
     </section>
     <section class="drawer-section">
       <h3>Design your agent</h3>
-      <label class="field"><span>Preset theme</span>
+      <div class="btn-row">
+        <button type="button" class="action-btn" id="skin-randomize-btn">Randomize avatar</button>
+        <button type="button" class="action-btn" id="skin-randomize-all-btn">Randomize avatar + world</button>
+      </div>
+      <label class="field"><span>Preset avatar &amp; theme</span>
         <select id="skin-preset">
           <option value="autoyou_classic">AutoYou Classic</option>
           <option value="neon_cyber">Neon Cyber</option>
@@ -276,6 +441,14 @@
           <option value="emerald_tech">Emerald Tech</option>
           <option value="cosmic_violet">Cosmic Violet</option>
           <option value="stealth_dark">Stealth Dark</option>
+          <option value="sakura_neko">Sakura Neko</option>
+          <option value="starlight_bunny">Starlight Bunny</option>
+          <option value="matcha_sprout">Matcha Sprout</option>
+          <option value="kitsune_fox">Kitsune Spirit</option>
+          <option value="beat_bot_dj">Beat Bot DJ</option>
+          <option value="stargazer_mage">Stargazer Mage</option>
+          <option value="seraph_halo">Seraph Halo</option>
+          <option value="little_monarch">Little Monarch</option>
         </select>
       </label>
       <div class="color-row">
@@ -283,14 +456,86 @@
         <label class="field-compact"><span>Accent</span><input type="color" id="skin-accent" value="#5b86ff"></label>
         <label class="field-compact"><span>Core</span><input type="color" id="skin-core" value="#ffffff"></label>
       </div>
+      <label class="field"><span>Headgear &amp; ears</span>
+        <select id="skin-head-acc">
+          <option value="classic_arc">Classic Antenna Arc</option>
+          <option value="cat_ears">Neko Cat Ears</option>
+          <option value="bunny_ears">Bunny Ears</option>
+          <option value="fox_ears">Kitsune Fox Ears</option>
+          <option value="crown">Royal Crown</option>
+          <option value="halo_ring">Angel Halo Ring</option>
+          <option value="sprout">Botanical Sprout</option>
+          <option value="wizard_hat">Stargazer Wizard Hat</option>
+          <option value="headphones">DJ Studio Headphones</option>
+          <option value="twin_antennas">Twin Orb Antennas</option>
+          <option value="bow_ribbon">Cute Ribbon Bow</option>
+          <option value="none">None</option>
+        </select>
+      </label>
+      <label class="field"><span>Face &amp; cheeks</span>
+        <select id="skin-face-acc">
+          <option value="none">None</option>
+          <option value="blush">Rosy Kawaii Blush</option>
+          <option value="star_cheeks">Starlight Cheeks</option>
+          <option value="whiskers">Cute Whiskers</option>
+          <option value="whiskers_blush">Whiskers &amp; Blush</option>
+          <option value="glasses_round">Round Spectacles</option>
+          <option value="glasses_cyber">Cyber Visor Shades</option>
+          <option value="monocle">Dapper Monocle</option>
+          <option value="freckles">Glowing Freckles</option>
+        </select>
+      </label>
+      <label class="field"><span>Neck &amp; outfit</span>
+        <select id="skin-neck-acc">
+          <option value="none">None</option>
+          <option value="bowtie">Dapper Bowtie</option>
+          <option value="scarf">Cozy Scarf</option>
+          <option value="collar_bell">Collar &amp; Bell</option>
+          <option value="cape">Royal Cape</option>
+          <option value="wings_mini">Mini Seraph Wings</option>
+        </select>
+      </label>
+      <label class="field"><span>Chest core emblem</span>
+        <select id="skin-core-emblem">
+          <option value="classic">AutoYou Core</option>
+          <option value="heart">Glowing Heart</option>
+          <option value="star">Radiant Star</option>
+          <option value="music">Music Note</option>
+          <option value="sparkle">Astral Sparkle</option>
+          <option value="paw">Cute Paw Print</option>
+          <option value="lightning">Lightning Bolt</option>
+        </select>
+      </label>
+      <label class="field"><span>Chassis proportion</span>
+        <select id="skin-chassis-style">
+          <option value="standard">Standard Balanced</option>
+          <option value="chibi">Cute Chibi</option>
+          <option value="sleek">Sleek Agile</option>
+        </select>
+      </label>
       <label class="field"><span>Eye optics</span>
         <select id="skin-eye-style">
           <option value="ring">Classic Ring</option>
           <option value="neon">Neon Lens</option>
           <option value="visor_bar">Visor Bar</option>
+          <option value="happy">Happy Arcs</option>
+          <option value="starry">Starry Sparkle</option>
+          <option value="anime">Luminous Anime</option>
+          <option value="heart">Heart Eyes</option>
+          <option value="wink">Playful Wink</option>
+          <option value="sleep">Sleepy</option>
         </select>
       </label>
-      <label class="field"><span>Breathing & physics speed</span>
+      <label class="field"><span>Mouth style</span>
+        <select id="skin-mouth-style">
+          <option value="glow_line">Glowing Smile</option>
+          <option value="classic_curve">Classic Curve</option>
+          <option value="cat_mouth">Cute Cat Smile (:3)</option>
+          <option value="happy_open">Cheerful Grin</option>
+          <option value="equalizer_only">Visor Equalizer</option>
+        </select>
+      </label>
+      <label class="field"><span>Breathing &amp; physics speed</span>
         <input type="range" id="skin-breath" min="0.5" max="3.0" step="0.1" value="1.6">
       </label>
       <div class="btn-row">
