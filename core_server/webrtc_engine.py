@@ -4430,16 +4430,23 @@ class WebRTCManager:
         position = await _runtime.asyncio.to_thread(_runtime.remote_desktop_cursor_position)
         if position is None or position == last_position:
           continue
-        last_position = position
+        # Remember a position only once every viewer was sent it. A report
+        # skipped for a busy channel used to be marked as sent, so when the
+        # pointer stopped right there the viewer never learned its final
+        # position and drew it short of the real cursor.
+        delivered = True
         for session_id, control_id in targets:
           if self._remote_desktop_control_lease_for_session(session_id, control_id) is None:
             continue
           manager = self._datachannel_manager_for_session(session_id, require_send_message=True)
           if manager is not None and manager._current_buffered_amount() > 64 * 1024:
+            delivered = False
             continue
           await self._send_remote_desktop_control_status(
             session_id, control_id=control_id, active=True, cursor_position=position,
           )
+        if delivered:
+          last_position = position
 
     def _remote_desktop_control_state(
       self,
