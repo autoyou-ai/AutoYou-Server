@@ -1582,6 +1582,8 @@ from shared.remote_desktop_keyboard import (
     remote_desktop_host_key,
 )
 from shared.remote_desktop_input import (
+    DEFAULT_REMOTE_DESKTOP_TOUCH_MODE,
+    REMOTE_DESKTOP_TOUCH_MODES,
     execute_remote_desktop_input,
     normalize_remote_desktop_control_payload,
     normalize_remote_desktop_input_payload,
@@ -11006,7 +11008,8 @@ def _build_webrtc_capabilities(
             "game_enabled": _get_game_mode_available(cfg=effective_cfg),
             "game_protocol": "autoyou_game_v1",
             "game_buttons": _normalize_game_buttons(_get_video_remote_desktop_config(cfg=effective_cfg).get("game_buttons")),
-            "touch_modes": ["direct", "relative"],
+            "touch_modes": list(REMOTE_DESKTOP_TOUCH_MODES),
+            "default_touch_mode": DEFAULT_REMOTE_DESKTOP_TOUCH_MODE,
             "keep_awake": REMOTE_DESKTOP_KEEP_AWAKE.status(),
             "secure_desktop": secure_desktop_status(),
             "agent_installed": remote_agent_installed,

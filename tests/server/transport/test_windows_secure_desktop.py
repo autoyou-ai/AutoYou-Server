@@ -254,7 +254,9 @@ def test_regular_windows_input_requires_the_active_desktop(monkeypatch):
     monkeypatch.setattr(keyboard, "load_pyautogui", lambda: local)
     monkeypatch.setattr(sd, "secure_input_backend_if_needed", lambda: None)
     monkeypatch.setattr(sd, "attach_thread_to_input_desktop", lambda: "Default")
-    assert keyboard.load_remote_input_backend() is local
+    # Pointer calls may be wrapped for SendInput; keys still reach pyautogui.
+    backend = keyboard.load_remote_input_backend()
+    assert getattr(backend, "_base", backend) is local
     monkeypatch.setattr(sd, "attach_thread_to_input_desktop", lambda: None)
     with pytest.raises(RuntimeError, match="Windows input desktop"):
         keyboard.load_remote_input_backend()

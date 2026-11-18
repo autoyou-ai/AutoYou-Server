@@ -77,9 +77,20 @@ def ensure_x11_authority_exists() -> None:
         pass
 
 
-def load_pyautogui() -> Any:
-    """Import PyAutoGUI without letting an incomplete OpenCV install block input."""
+_PYAUTOGUI_MODULE: Any = None
 
+
+def load_pyautogui() -> Any:
+    """Import PyAutoGUI without letting an incomplete OpenCV install block input.
+
+    Every pointer move resolves the backend, so the module is cached after
+    the first successful import. Without the cache a host lacking OpenCV
+    repeated a failing ``import cv2`` path search on every move event.
+    """
+
+    global _PYAUTOGUI_MODULE
+    if _PYAUTOGUI_MODULE is not None:
+        return _PYAUTOGUI_MODULE
     hide_macos_dock_icon()
     ensure_x11_authority_exists()
     try:
@@ -92,6 +103,7 @@ def load_pyautogui() -> Any:
         pass
     import pyautogui  # type: ignore[import-not-found]
 
+    _PYAUTOGUI_MODULE = pyautogui
     return pyautogui
 
 
@@ -179,6 +191,12 @@ def load_remote_input_backend() -> Any:
         # Windows is showing; SetCursorPos can silently fail on another desktop.
         if (attach_thread_to_input_desktop() or "").lower() != "default":
             raise RuntimeError("Could not attach to the Windows input desktop")
+        # SetCursorPos (pyautogui's move) never enters the input stream, so
+        # remote viewers such as TeamViewer running on this computer ignored
+        # it. Pointer calls go through SendInput instead; keys stay as-is.
+        from .windows_pointer_input import windows_pointer_backend
+
+        return windows_pointer_backend(load_pyautogui())
     return load_pyautogui()
 
 

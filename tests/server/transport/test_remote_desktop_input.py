@@ -219,6 +219,7 @@ def test_pyautogui_loader_tolerates_a_namespace_only_cv2(monkeypatch):
     fake_pyautogui = ModuleType("pyautogui")
     monkeypatch.setattr(module, "ensure_x11_authority_exists", lambda: None)
     monkeypatch.setattr(module, "hide_macos_dock_icon", lambda: None)
+    monkeypatch.setattr(module, "_PYAUTOGUI_MODULE", None)
     monkeypatch.setitem(sys.modules, "cv2", namespace_only_cv2)
     monkeypatch.setitem(sys.modules, "pyautogui", fake_pyautogui)
 

@@ -43,6 +43,12 @@ ALLOWED_INPUT_TYPES = frozenset({"move", "button", "scroll"})
 ALLOWED_COORDINATE_MODES = frozenset({"absolute", "relative"})
 ALLOWED_BUTTONS = frozenset({"left", "right", "middle"})
 ALLOWED_BUTTON_PHASES = frozenset({"click", "double_click", "down", "up"})
+# Trackpad control ("relative" on the wire) is the default for phones: the
+# finger moves the host pointer like a laptop trackpad and taps click where
+# the pointer is. "direct" taps the matching screen point and suits mice.
+DEFAULT_REMOTE_DESKTOP_TOUCH_MODE = "relative"
+REMOTE_DESKTOP_TOUCH_MODES = ("relative", "direct")
+_TOUCH_PLATFORMS = frozenset({"ios", "android"})
 
 
 def _bounded_string(value: Any, limit: int) -> str:
@@ -88,8 +94,10 @@ def normalize_remote_desktop_control_payload(payload: Any) -> Optional[Dict[str,
         if mode == "game":
             normalized["mode"] = mode
     touch_mode = _bounded_string(payload.get("touch_mode"), 32).lower()
-    if touch_mode in {"direct", "relative"}:
+    if touch_mode in REMOTE_DESKTOP_TOUCH_MODES:
         normalized["touch_mode"] = touch_mode
+    elif action == "start" and platform.lower() in _TOUCH_PLATFORMS:
+        normalized["touch_mode"] = DEFAULT_REMOTE_DESKTOP_TOUCH_MODE
     return normalized
 
 
