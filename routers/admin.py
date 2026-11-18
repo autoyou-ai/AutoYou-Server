@@ -50,6 +50,8 @@ def register_routes(
     auth_app: FastAPI,
     server: Any,
 ) -> Dict[str, Callable[..., Any]]:
+    from shared.content_library_api import register_content_routes
+    register_content_routes(admin_app, lambda request: server._require_api_login(request))
     chat_jobs = AdminChatJobs()
     previous_lifespan = admin_app.router.lifespan_context
 

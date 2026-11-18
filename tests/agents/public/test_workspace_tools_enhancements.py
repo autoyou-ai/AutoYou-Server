@@ -66,6 +66,9 @@ def test_read_file_offset_continues_from_given_line(tmp_path, monkeypatch):
     assert result["start_line"] == 11
     assert "line 11" in result["content"]
     assert result["content"].startswith("line 11")
+    assert result["end_line"] == 20
+    assert len(result["content"].splitlines()) == 10
+    assert result["has_more"] is False
 
 
 def test_read_file_last_page_has_more_false(tmp_path, monkeypatch):

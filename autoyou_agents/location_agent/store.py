@@ -145,6 +145,9 @@ class LocationStore:
                 """,
                 normalized,
             )
+        from shared.content_library import publish_content
+        for day in {str(row[3])[:10] for row in normalized}:
+            publish_content("location_agent", day, "Location history " + day, "location", href="/agent/location_agent/", force_revision=True)
         return len(normalized)
 
     def timeline(

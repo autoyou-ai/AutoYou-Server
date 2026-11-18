@@ -1,4 +1,5 @@
 import type { Item } from './types';
+import { relativePath } from '../../../../../assets/content-drop.js';
 
 const base = new URL('./', window.location.href);
 const tokenKey = `autoyou-tv-session:${base.pathname}`;
@@ -58,7 +59,7 @@ export function uploadFile(file: File, folderId: string, title: string, kind: st
   const controller = new AbortController();
   let xhr: XMLHttpRequest | null = null;
   let uploadId = '';
-  const resumeKey = `${tokenKey}:upload:${JSON.stringify([file.name, file.size, file.lastModified, folderId, title, kind])}`;
+  const resumeKey = `${tokenKey}:upload:${JSON.stringify([relativePath(file), file.size, file.lastModified, folderId, title, kind])}`;
   function forget() { try { sessionStorage.removeItem(resumeKey); } catch { /* Storage is optional. */ } }
   function sendChunk(upload: Upload) {
     return new Promise<Upload>((resolve, reject) => {

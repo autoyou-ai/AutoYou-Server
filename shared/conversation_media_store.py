@@ -60,13 +60,21 @@ def _repo_anchor() -> Path:
 
 def conversation_media_dir() -> Path:
     override = str(os.getenv(CONVERSATION_MEDIA_DIR_ENV, "") or "").strip()
-    if override:
+    test_root = os.getenv("AUTOYOU_TEST_ROOT")
+    if override and (not test_root or Path(override).resolve().is_relative_to(Path(test_root).resolve())):
         path = Path(override).expanduser().resolve()
         path.mkdir(parents=True, exist_ok=True)
         return path
-    from shared.platform_runtime import get_service_data_dir
+    from shared.content_library import output_dir
+    return output_dir("conversation_media")
 
-    return get_service_data_dir("conversation_media", anchor=_repo_anchor())
+
+def conversation_media_roots():
+    from shared.content_library import managed_roots
+    from shared.platform_runtime import get_mutable_data_dir
+    return [conversation_media_dir().resolve(),
+            get_mutable_data_dir("AutoYou", anchor=_repo_anchor()) / "conversation_media",
+            *(root / "conversation_media" for root in managed_roots())]
 
 
 def media_archive_enabled(cfg: Optional[Dict[str, Any]] = None) -> bool:
@@ -160,6 +168,8 @@ def store_media_bytes(
     extension = os.path.splitext(safe_name)[1][:16]
     target = target_dir / f"{media_id}{extension}"
     write_secure_file(target, data)
+    from shared.content_library import publish_content
+    publish_content("conversation", media_id, safe_name, media_kind(mimetype, safe_name), path=str(target))
     return {
         "media_id": media_id,
         "filename": safe_name,
@@ -217,6 +227,9 @@ def archive_attachment(
         if not session_manager.record_conversation_media(record):
             delete_media_file(record["storage_path"])
             return None
+        if record["kind"] == "audio" and ("voice" in str(source).lower() or str(source).lower() == "tts"):
+            from shared.content_library import publish_content
+            publish_content("conversation", record["media_id"], record["filename"], "voice", path=record["storage_path"])
         return record
     except Exception as exc:
         logger.warning("Could not keep a server copy of conversation media: %s", exc)
@@ -247,7 +260,7 @@ def is_servable_media_path(path_value: Any) -> bool:
         return False
     roots = [_temp_media_root()]
     try:
-        roots.append(conversation_media_dir().resolve())
+        roots.extend(conversation_media_roots())
     except Exception:
         pass
     return any(root in resolved.parents for root in roots)
@@ -264,9 +277,8 @@ def read_media_bytes(storage_path: str) -> bytes:
     from shared.secure_storage import read_secure_file
 
     path = Path(str(storage_path or ""))
-    root = conversation_media_dir().resolve()
     resolved = path.resolve()
-    if root not in resolved.parents:
+    if not any(root in resolved.parents for root in conversation_media_roots()):
         raise FileNotFoundError("Media is outside the conversation media store")
     return read_secure_file(resolved, migrate_plaintext=False)
 
@@ -274,8 +286,9 @@ def read_media_bytes(storage_path: str) -> bytes:
 def delete_media_file(storage_path: Any) -> None:
     try:
         path = Path(str(storage_path or "")).resolve()
-        root = conversation_media_dir().resolve()
-        if root in path.parents and path.is_file():
+        if any(root in path.parents for root in conversation_media_roots()) and path.is_file():
             path.unlink()
+            from shared.content_library import forget_content
+            forget_content("conversation", path.stem)
     except Exception as exc:
         logger.debug("Could not remove conversation media file: %s", exc)

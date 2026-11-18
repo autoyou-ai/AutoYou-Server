@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from contextlib import suppress
+from contextlib import suppress, ExitStack
 from functools import partial
 import hashlib
 import json
@@ -16,6 +16,8 @@ import time
 from urllib.parse import urlencode, urlsplit
 
 from fastapi import HTTPException
+from shared import content_files
+from shared.secure_storage import write_secure_file
 
 from .media import MEDIA_EXTENSIONS, VIDEO_EXTENSIONS, fetch_response, http_session, media_kind, parse_name, permitted_path, public_url, subtitles, subtitle_content
 from . import playback
@@ -124,13 +126,14 @@ def executable(name: str) -> str | None:
 
 
 def probe(path: Path) -> dict:
-    info = {"size": path.stat().st_size, "extension": path.suffix.lower(), "file_name": path.name}
+    info = {"size": content_files.size(path), "extension": path.suffix.lower(), "file_name": path.name}
     ffprobe = executable("ffprobe")
     if not ffprobe:
         return info
     try:
-        result = subprocess.run([ffprobe, "-v", "error", "-show_format", "-show_streams", "-of", "json", str(path)],
-                                capture_output=True, timeout=15, check=True)
+        with content_files.materialized(path) as readable:
+            result = subprocess.run([ffprobe, "-v", "error", "-show_format", "-show_streams", "-of", "json", str(readable)],
+                                    capture_output=True, timeout=15, check=True)
         media = json.loads(result.stdout)
         info["duration"] = float(media.get("format", {}).get("duration", 0))
         video = next((s for s in media.get("streams", []) if s.get("codec_type") == "video"), {})
@@ -152,9 +155,11 @@ def make_artwork(store: Store, item: dict) -> bool:
     try:
         source = permitted_path(store, item["file_path"])
         timestamp = min(float(item["technical"].get("duration", 0)) * .1, 60)
-        subprocess.run([ffmpeg, "-nostdin", "-v", "error", "-y", "-ss", str(timestamp), "-i", str(source),
-                        "-frames:v", "1", "-vf", "scale=1280:720:force_original_aspect_ratio=decrease",
-                        "-q:v", "3", str(destination)], capture_output=True, timeout=20, check=True)
+        with content_files.materialized(source) as readable:
+            result = subprocess.run([ffmpeg, "-nostdin", "-v", "error", "-y", "-ss", str(timestamp), "-i", str(readable),
+                            "-frames:v", "1", "-vf", "scale=1280:720:force_original_aspect_ratio=decrease",
+                            "-q:v", "3", "-f", "image2pipe", "-vcodec", "mjpeg", "pipe:1"], capture_output=True, timeout=20, check=True)
+        write_secure_file(destination, result.stdout)
         return destination.is_file()
     except (OSError, subprocess.SubprocessError, HTTPException, ValueError):
         destination.unlink(missing_ok=True)
@@ -313,7 +318,7 @@ class Jobs:
         item = self.store.item(job["payload"]["item_id"])
         source = permitted_path(self.store, item["file_path"])
         if item["kind"] in {"photo", "audio", "document"}:
-            self.store.update_item(item["id"], {"technical": {"extension": source.suffix.lower().lstrip("."), "size": source.stat().st_size, "file_name": source.name}})
+            self.store.update_item(item["id"], {"technical": {"extension": source.suffix.lower().lstrip("."), "size": content_files.size(source), "file_name": source.name}})
             return {"item_id": item["id"]}
         technical = await asyncio.to_thread(probe, source)
         item = self.store.update_item(item["id"], {"technical": {**item["technical"], **technical}})
@@ -384,6 +389,15 @@ class Jobs:
         return {"indexed": matched, "added": added, "skipped": skipped, "folder_id": folder["id"]}
 
     async def run_process(self, job: dict, args: list[str], *, duration: float = 0):
+        with ExitStack() as inputs:
+            args = list(args)
+            for index, value in enumerate(args[:-1]):
+                if value == "-i" and Path(args[index + 1]).is_file():
+                    readable = inputs.enter_context(content_files.materialized(Path(args[index + 1])))
+                    args[index + 1] = str(readable)
+            return await self._run_process(job, args, duration=duration)
+
+    async def _run_process(self, job: dict, args: list[str], *, duration: float = 0):
         process = await asyncio.create_subprocess_exec(*args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
         self.processes[job["id"]] = process
         try:
@@ -455,6 +469,9 @@ class Jobs:
         if isinstance(year, int) and 1880 <= year <= 2200:
             info["year"] = year
         info["kind"] = payload.get("kind") or info["kind"]
+        for output in job_dir.iterdir():
+            if output.is_file():
+                await asyncio.to_thread(content_files.seal, output)
         item, _ = self.store.add_item(source_key="download:" + job["id"], file_path=str(path),
                                       folder_id=payload.get("folder_id"), technical=await asyncio.to_thread(probe, path), **info)
         if await asyncio.to_thread(make_artwork, self.store, item):
@@ -521,7 +538,10 @@ class Jobs:
                 if (self.cancelled(job["id"]) or current["status"] == "deleted"
                         or playback.fingerprint(permitted_path(self.store, current["file_path"])) != source_version):
                     raise ValueError("Source changed while preparing streaming. Retry this title.")
-                (root / "published.json").write_text(json.dumps({"source": source_version}), encoding="utf-8")
+                for output in list(root.rglob("*")):
+                    if output.is_file():
+                        await asyncio.to_thread(content_files.seal, output)
+                write_secure_file(root / "published.json", json.dumps({"source": source_version}).encode())
                 self.store.update_item(item["id"], {"technical": {**current["technical"], **info,
                     "hls_version": job["id"], "hls_source": source_version,
                     "streaming_ready": True, "streaming_qualities": [actual_height or height for height, _, _, actual_height in variants]}})
@@ -540,7 +560,7 @@ class Jobs:
         if not item.get("file_path"):
             raise ValueError("Download remote media before creating a browser rendition")
         source = permitted_path(self.store, item["file_path"])
-        destination = self.store.media_dir / (item["id"] + "-browser.mp4")
+        destination = self.store.media_dir / (item["id"] + "-" + job["id"] + "-browser.mp4")
         partial_path = self.store.media_dir / (job["id"] + ".partial.mp4")
         source_version = playback.fingerprint(source)
         info = await asyncio.to_thread(probe, source)
@@ -553,9 +573,11 @@ class Jobs:
                                         "-movflags", "+faststart", "-progress", "pipe:1", str(partial_path)], duration=duration)
             if playback.fingerprint(source) != source_version:
                 raise ValueError("The source changed during video preparation. Retry from Studio.")
-            partial_path.replace(destination)
+            await asyncio.to_thread(content_files.seal, partial_path)
+            content_files.promote(partial_path, destination)
         finally:
-            partial_path.unlink(missing_ok=True)
+            if partial_path.exists():
+                content_files.discard(partial_path)
         technical = {**item["technical"], "browser_path": str(destination), "browser_ready": True, "browser_source": source_version}
         self.store.update_item(item["id"], {"technical": technical})
         return {"item_id": item["id"]}

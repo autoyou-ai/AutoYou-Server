@@ -3,11 +3,13 @@ import { Check, Clapperboard, Download, Link, Plus, RefreshCw, Upload, X } from 
 import { api, apiUrl, authHeaders, errorMessage, navigate, rememberSession, uploadFile } from './api';
 import { Empty, Loading } from './components';
 import type { Config, Folder, Item, Job, Notify } from './types';
+import './content-motion.css';
+import { collectDroppedFiles, relativePath } from '../../../../../assets/content-drop.js';
 
 export default function Studio({ config, folders, onChanged, onAuthenticated, onFolder, notify }: {
   config: Config; folders: Folder[]; onChanged: () => void; onAuthenticated: () => void; onFolder: () => void; notify: Notify;
 }) {
-  const [tab, setTab] = useState('link');
+  const [tab, setTab] = useState('upload');
   if (config.auth.role === 'viewer') return <div className="page-content"><div className="page-heading"><p className="eyebrow">Behind the scenes</p><h1>Studio</h1></div>
     <InviteGate onAuthenticated={onAuthenticated} notify={notify} /></div>;
   return <div className="page-content studio-page">
@@ -60,28 +62,102 @@ function LinkImport({ folders, canDownload, onChanged, notify }: { folders: Fold
 }
 
 function UploadImport({ folders, onChanged, notify }: { folders: Folder[]; onChanged: () => void; notify: Notify }) {
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [status, setStatus] = useState('');
   const [error, setError] = useState('');
+  const [over, setOver] = useState(false);
+  const [reading, setReading] = useState(false);
+  const [completedFiles, setCompletedFiles] = useState(0);
+  const readingDrop = useRef(false);
   const cancel = useRef<(() => void) | null>(null);
-  useEffect(() => () => cancel.current?.(), []);
+  const stopped = useRef(false);
+  const folderInput = useRef<HTMLInputElement>(null);
+  useEffect(() => { folderInput.current?.setAttribute('webkitdirectory', ''); }, []);
+  useEffect(() => () => { stopped.current = true; cancel.current?.(); }, []);
+  function choose(input: FileList | File[] | null) {
+    if (busy) return;
+    const selected = Array.from(input || []);
+    const supported = /\.(mp4|m4v|mkv|avi|webm|mov|ts|mpg|mpeg|ogv|jpg|jpeg|png|gif|webp|heic|heif|avif|aac|aiff|flac|m4a|mp3|ogg|opus|wav|wma|pdf|epub)$/i;
+    setFiles(selected.filter(file => supported.test(file.name)));
+    setCompletedFiles(0); setStatus('');
+    setError(selected.some(file => !supported.test(file.name)) ? 'Unsupported files were skipped. Your selected media is ready below.' : '');
+  }
+  useEffect(() => {
+    function dragOver(event: DragEvent) {
+      if (event.dataTransfer && Array.from(event.dataTransfer.types).includes('Files')) { event.preventDefault(); setOver(true); }
+    }
+    function dragLeave(event: DragEvent) { if (!event.relatedTarget) setOver(false); }
+    async function drop(event: DragEvent) {
+      if (!event.dataTransfer || !Array.from(event.dataTransfer.types).includes('Files')) return;
+      event.preventDefault(); setOver(false);
+      if (busy || readingDrop.current) return;
+      readingDrop.current = true; setReading(true); setError(''); setStatus('Reading your folders...');
+      try {
+        const selected = await collectDroppedFiles(event.dataTransfer, count => setStatus(`Found ${count} files...`));
+        choose(selected);
+        if (!selected.length) setStatus('No files found. Choose a folder containing media.');
+      } catch (error) { setStatus(''); setError(errorMessage(error)); }
+      finally { readingDrop.current = false; setReading(false); }
+    }
+    document.addEventListener('dragover', dragOver); document.addEventListener('dragleave', dragLeave); document.addEventListener('drop', drop);
+    return () => { document.removeEventListener('dragover', dragOver); document.removeEventListener('dragleave', dragLeave); document.removeEventListener('drop', drop); };
+  }, [busy]);
   async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); if (!file) return;
+    event.preventDefault(); if (!files.length || busy || readingDrop.current) return;
     const node = event.currentTarget, form = new FormData(node);
-    setBusy(true); setError(''); setProgress(0);
-    const task = uploadFile(file, String(form.get('folder') || ''), String(form.get('title') || ''), String(form.get('kind')), setProgress);
-    cancel.current = task.cancel;
-    try { await task.promise; notify('File uploaded and added to your library.'); setFile(null); node.reset(); onChanged(); }
-    catch (error) { setError(errorMessage(error)); } finally { cancel.current = null; setBusy(false); }
+    setBusy(true); setError(''); setProgress(0); setCompletedFiles(0); stopped.current = false;
+    const destinations = new Map<string, string>();
+    const failures: File[] = []; let completed = 0, attempted = 0;
+    try {
+      for (let index = 0; index < files.length && !stopped.current; index++) {
+        const file = files[index];
+        setStatus(`Adding ${file.name} (${index + 1}/${files.length})`);
+        try {
+          let folder = String(form.get('folder') || '');
+          const segments = relativePath(file).split('/').slice(0, -1);
+          let key = folder;
+          for (const name of segments) {
+            key += '/' + name;
+            if (!destinations.has(key)) {
+              const existing = folders.find(row => row.name === name && (row.parent_id || '') === folder);
+              const created = existing || await api<Folder>('folders', {method: 'POST', json: {name: name.slice(0, 100), parent_id: folder || null}});
+              destinations.set(key, created.id);
+            }
+            folder = destinations.get(key)!;
+          }
+          if (stopped.current) break;
+          const task = uploadFile(file, folder, files.length === 1 ? String(form.get('title') || '') : '', String(form.get('kind')), value => setProgress((index + value) / files.length));
+          cancel.current = task.cancel;
+          await task.promise; completed++; setCompletedFiles(completed);
+        } catch (error) {
+          failures.push(file); setError(errorMessage(error));
+        }
+        attempted = index + 1;
+      }
+      if (stopped.current) setFiles([...failures, ...files.slice(attempted)]);
+      else setFiles(failures);
+      setStatus(`${completed} ${completed === 1 ? 'file' : 'files'} added. ${stopped.current ? 'Stopped. Unfinished files remain selected.' : failures.length ? 'Select Upload to retry unfinished files.' : 'Ready to enjoy.'}`);
+      if (completed) { notify(`${completed} ${completed === 1 ? 'file' : 'files'} added to your library.`); onChanged(); }
+    } finally { cancel.current = null; setBusy(false); }
   }
   return <form className="form" onSubmit={submit}>
-    <label className="upload-drop"><Upload size={29} /><strong>{file?.name || 'Choose media or a book'}</strong><span>{file ? `${(file.size / 1024 / 1024).toFixed(1)} MB . Ready to upload` : 'Photos, video, audio, PDF and EPUB . Up to 20 GB'}</span>
-      <input aria-label="Media file" type="file" accept="image/jpeg,image/png,image/gif,image/webp,image/avif,video/*,audio/*,application/pdf,application/epub+zip,.epub,.mkv,.m4v,.avi,.ts,.mpg,.mpeg,.ogv" disabled={busy} onChange={event => { setFile(event.target.files?.[0] || null); setError(''); }} /></label>
-    <label>Title<input name="title" placeholder="Uses the file name if left blank" maxLength={300} disabled={busy} /></label><div className="form-grid"><TypeSelect /><FolderSelect folders={folders} /></div>
-    {busy && <div className="upload-progress" role="status"><progress value={progress} max={1} /><span>{progress < 1 ? `Uploading . ${Math.round(progress * 100)}%` : 'Finishing your upload...'} </span><button type="button" className="text-button" onClick={() => cancel.current?.()}>Cancel</button></div>}
+    <ol className="import-steps" aria-label="Import steps"><li className="active">1. Your files</li><li className={files.length || completedFiles ? 'active' : ''}>2. Their place</li><li className={!busy && completedFiles && !files.length ? 'active' : ''}>3. Ready to play</li></ol>
+    <label className={`upload-drop ${over ? 'drag-over' : ''}`}>
+      <Upload size={29} /><strong>{files.length ? `${files.length} ${files.length === 1 ? 'file' : 'files'} selected` : 'Drop files or folders here.'}</strong><span>Photos, videos, music and books. Up to 20 GB per file. Click to choose files.</span>
+      <input aria-label="Choose media files" type="file" multiple disabled={busy || reading} onChange={event => { choose(event.target.files); event.target.value = ''; }} />
+    </label>
+    <label className="button primary folder-upload">Choose a whole folder<input ref={folderInput} type="file" multiple disabled={busy || reading} onChange={event => { choose(event.target.files); event.target.value = ''; }} /></label>
+    {files.length > 0 && <p className="small muted">{files.slice(0, 3).map(file => file.name).join(', ')}{files.length > 3 ? ` and ${files.length - 3} more` : ''}. Folder structure is kept.</p>}
+    {files.length === 1 && <label>Title<input name="title" placeholder="Uses the file name if left blank" maxLength={300} disabled={busy} /></label>}
+    <div className="form-grid"><TypeSelect /><FolderSelect folders={folders} /></div>
+    <p className="small muted">New uploads also appear in your private content library. Existing source files stay where they are.</p>
+    <p role="status" aria-live="polite">{status}</p>
+    {busy && <div className="upload-progress"><p>{completedFiles} of {files.length} files added</p><button type="button" className="text-button" onClick={() => { stopped.current = true; cancel.current?.(); }}>Stop uploads</button><progress value={progress} max={1} aria-label="Upload progress" /></div>}
+    {!busy && completedFiles > 0 && <button type="button" className="button" onClick={() => navigate('library')}><Check size={18} />View your library</button>}
     {error && <p className="inline-error" role="alert">{error}</p>}
-    <button className="button primary" disabled={!file || busy || file.size > 20 * 1024 ** 3}><Upload size={18} />{busy ? 'Uploading...' : 'Upload to library'}</button>
+    <button className="button primary" disabled={!files.length || busy || reading || files.some(file => file.size > 20 * 1024 ** 3)}><Upload size={18} />{busy ? 'Adding your content...' : reading ? 'Reading your folders...' : `Upload ${files.length || ''} ${files.length === 1 ? 'file' : 'files'}`}</button>
   </form>;
 }
 

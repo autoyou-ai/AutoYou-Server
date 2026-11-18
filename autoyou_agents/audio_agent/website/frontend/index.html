@@ -13,7 +13,9 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>AutoYou Audio</title>
-    <link rel="stylesheet" href="assets/styles.css?v=20260817a">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23191922'/%3E%3Ccircle cx='16' cy='16' r='10' fill='%23d8c3fc'/%3E%3Ccircle cx='16' cy='16' r='3' fill='%23191922'/%3E%3C/svg%3E">
+    <link rel="stylesheet" href="assets/content-motion.css">
+    <link rel="stylesheet" href="assets/styles.css?v=20261117-listening-room">
     <script>(function(){try{var t=localStorage.getItem('ay-audio-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(_){}})()</script>
     <script>(()=>{let queued=false;const sync=()=>{queued=false;const h=Math.round((window.visualViewport&&window.visualViewport.height)||window.innerHeight||0);if(h>0)document.documentElement.style.setProperty('--autoyou-viewport-height',h+'px');};const queue=()=>{if(!queued){queued=true;requestAnimationFrame(sync);}};sync();addEventListener('resize',queue);window.visualViewport?.addEventListener('resize',queue);})();</script>
 </head>
@@ -24,9 +26,12 @@
     <!-- Top Bar -->
     <header class="topbar">
         <div class="topbar-left">
-            <span class="app-brand">&#9835; AutoYou Audio</span>
+            <span class="app-brand">AutoYou <span>Audio</span></span>
         </div>
         <div class="topbar-right">
+            <button id="library-manager-btn" class="library-manager-btn" type="button" aria-label="Manage library" title="Manage library">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7V5a2 2 0 0 1 2-2h5l3 4h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg><span>Manage library</span>
+            </button>
             <button id="theme-toggle-btn" class="icon-btn" title="Toggle theme" aria-label="Toggle theme">
                 <svg class="theme-icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
                 <svg class="theme-icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a7 7 0 1 0 9 9 9 9 0 1 1-9-9z"/></svg>
@@ -48,12 +53,14 @@
 
     <!-- Player (revealed after library loads) -->
     <div id="player" class="player hidden">
+        <div class="playback-panel">
+        <p class="listening-label">NOW PLAYING</p>
 
         <!-- Now Playing Hero -->
         <section class="now-playing">
             <div class="art-wrap">
                 <img id="album-art-img" class="album-art" data-amplitude-song-info="cover_art_url" alt="">
-                <div class="art-fallback" id="art-fallback" aria-hidden="true">&#9835;</div>
+                <div class="art-fallback" id="art-fallback" aria-hidden="true"><span class="record-center"></span></div>
             </div>
             <div class="track-info">
                 <p class="track-name" data-amplitude-song-info="name">Select a track</p>
@@ -68,7 +75,7 @@
 
         <!-- Progress / Seek -->
         <div class="progress-section">
-            <input type="range" class="amplitude-song-slider seek-slider" step="0.1" aria-label="Seek playback">
+            <input type="range" class="amplitude-song-slider seek-slider" min="0" max="100" value="0" step="0.1" aria-label="Seek playback">
             <div class="time-row">
                 <span class="amplitude-current-time time-label">0:00</span>
                 <span class="amplitude-duration-time time-label">0:00</span>
@@ -104,8 +111,10 @@
             <svg class="vol-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
         </div>
 
+        </div><!-- /playback-panel -->
         <!-- Playlist -->
         <div class="playlist-wrap">
+            <div class="library-intro"><p class="listening-label">YOUR PERSONAL SOUNDTRACK</p><h1>A little more listening.</h1><p>Music, voices and everything worth replaying.</p></div>
             <div class="playlist-header">
                 <span id="lib-count" class="lib-count"></span>
                 <div class="playlist-tabs">
@@ -131,6 +140,23 @@
 
     </div><!-- /player -->
 </div><!-- /app -->
+
+<dialog id="library-manager" class="library-manager" aria-labelledby="library-manager-title">
+    <header class="manager-heading"><div><p class="listening-label">YOUR MUSIC, TOGETHER</p><h2 id="library-manager-title">Manage your library</h2></div><button id="library-manager-close" class="icon-btn" type="button" aria-label="Close library manager"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 6 12 12M18 6 6 18"/></svg></button></header>
+    <p class="manager-copy">Bring in files or a whole folder. Your originals stay where they are.</p>
+    <div class="manager-import">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M12 16V3m-5 5 5-5 5 5M4 15v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5"/></svg>
+        <h3>Drop your music here</h3><p>Folders and nested folders are welcome.</p>
+        <div class="manager-actions"><button id="audio-folder-btn" class="solid-btn" type="button">Choose a folder</button><button id="audio-upload-btn" class="music-folder-button" type="button">Choose files</button></div>
+        <input id="audio-upload-input" type="file" accept="audio/*,.aac,.aiff,.flac,.m4a,.mp3,.ogg,.opus,.wav,.wma" multiple hidden>
+        <input id="audio-folder-input" type="file" multiple webkitdirectory hidden>
+    </div>
+    <p id="audio-upload-status" class="music-import-status" role="status" aria-live="polite"></p>
+    <progress id="audio-upload-progress" max="1" hidden aria-label="Music import progress"></progress>
+    <button id="library-manager-unlock" class="text-btn" type="button" hidden>Unlock Audio to import music</button>
+    <div class="manager-source"><div><h3>Already on this computer?</h3><p>Connect a server folder in Settings to listen without another copy.</p></div><button id="library-manager-sources" class="text-btn" type="button">Open settings</button></div>
+    <footer class="manager-footer"><span>Supported audio files, up to 1 GiB each.</span><button id="library-manager-done" class="text-btn" type="button">Back to listening</button></footer>
+</dialog>
 
 <!-- Settings Overlay + Drawer -->
 <div id="settings-overlay" class="settings-overlay" aria-hidden="true">
@@ -187,13 +213,11 @@
                     <ul id="audio-path-list" class="audio-path-list" aria-live="polite"></ul>
                 </section>
 
-                <!-- Import through the existing Page Agent blob/datachannel upload -->
+                <!-- Resumable, encrypted imports into the Audio library -->
                 <section class="drawer-section">
                     <h3 class="section-heading">Import audio</h3>
-                    <p class="section-copy">Upload audio from this device into the Page Agent feed and Audio library.</p>
-                    <input id="audio-upload-input" type="file" class="field-input" accept="audio/*,.aac,.aiff,.flac,.m4a,.mp3,.ogg,.opus,.wav,.wma" multiple>
-                    <button id="audio-upload-btn" class="solid-btn wide-btn secondary-btn" type="button">Upload to Page Feed</button>
-                    <p id="audio-upload-status" class="settings-msg"></p>
+                    <p class="section-copy">Files, folders and import progress have their own place in Manage library.</p>
+                    <button id="settings-library-manager" class="solid-btn wide-btn secondary-btn" type="button">Manage library</button>
                 </section>
 
                 <!-- Phone Playback Target -->
@@ -255,6 +279,7 @@
 </div><!-- /settings-overlay -->
 
 <script src="assets/amplitude.min.js?v=20260629a"></script>
-<script src="assets/app.js?v=20260815b"></script>
+<script type="module" src="assets/content-drop.js"></script>
+<script src="assets/app.js?v=20261117-listening-room"></script>
 </body>
 </html>

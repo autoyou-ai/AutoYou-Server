@@ -43,6 +43,7 @@ from autoyou_agents.media_generation_agent.media_generation_tool import (
     _external_python_subprocess_env,
     OUTPUT_DIR
 )
+from autoyou_agents.media_generation_agent.media_generation_tool import MEDIA_DATA_DIR
 from autoyou_agents.shared_tools.agent_install_registry import load_agent_install_registry
 from autoyou_agents.shared_tools.scheduler_mission_control import install_agent_website_auth
 from shared.secure_storage import read_secure_file
@@ -562,6 +563,15 @@ def serve_media_file(media_type: str, filename: str, request: Request):
         # Check parent folder as fallback
         file_path = contained_path(MEDIA_DIR, filename)
 
+    if file_path is None or not file_path.is_file():
+        file_path = contained_path(MEDIA_DATA_DIR / "output" / folder, filename)
+    if file_path is None or not file_path.is_file():
+        from shared.content_library import managed_roots
+        for root in managed_roots():
+            candidate = contained_path(root / "media_generation_agent" / folder, filename)
+            if candidate is not None and candidate.is_file():
+                file_path = candidate
+                break
     if file_path is None or not file_path.is_file():
         return HTMLResponse("Media file not found", status_code=404)
         

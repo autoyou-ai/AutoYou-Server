@@ -797,6 +797,8 @@ class NotesTool:
                     (title, content, tags_json, category, meta_json, now, now),
                 )
                 note_id = cur.lastrowid
+            from shared.content_library import publish_content
+            publish_content("notes_agent", str(note_id), title, "note", href="/agent/notes_agent/")
             return {"success": True, "note_id": int(note_id), "title": title}
         except Exception as exc:
             return {"success": False, "error": internal_error_message(exc)}
@@ -906,7 +908,12 @@ class NotesTool:
         sql = f"UPDATE notes SET {', '.join(sets)} WHERE id = ?"
         with sqlite3.connect(self._db_path) as conn:
             cur = conn.execute(sql, params)
-            return cur.rowcount > 0
+            changed = cur.rowcount > 0
+            saved_title = conn.execute("SELECT title FROM notes WHERE id=?", (int(note_id),)).fetchone() if changed else None
+        if changed:
+            from shared.content_library import publish_content
+            publish_content("notes_agent", str(note_id), saved_title[0], "note", href="/agent/notes_agent/", force_revision=True)
+        return changed
 
     def append_media_attachment_to_note(
         self,
@@ -955,13 +962,19 @@ class NotesTool:
             if cur.rowcount <= 0:
                 return {"success": False, "error": f"note {note_id} not found"}
 
+        from shared.content_library import publish_content
+        publish_content("notes_agent", str(note_id), note.get("title") or "Untitled note", "note", href="/agent/notes_agent/", force_revision=True)
         return {"success": True, "note_id": int(note_id), "media_id": attachment.get("id")}
 
     def delete_note(self, note_id: int) -> bool:
         """Delete a note by its identifier."""
         with sqlite3.connect(self._db_path) as conn:
             cur = conn.execute("DELETE FROM notes WHERE id = ?", (int(note_id),))
-            return cur.rowcount > 0
+            changed = cur.rowcount > 0
+        if changed:
+            from shared.content_library import forget_content
+            forget_content("notes_agent", str(note_id))
+        return changed
 
     # ----------------------------
     # Internal helpers

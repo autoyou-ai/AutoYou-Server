@@ -123,6 +123,9 @@ var elAudioPathList = document.getElementById('audio-path-list');
 var elAudioUploadInput = document.getElementById('audio-upload-input');
 var elAudioUploadBtn = document.getElementById('audio-upload-btn');
 var elAudioUploadStatus = document.getElementById('audio-upload-status');
+var elLibraryManager = document.getElementById('library-manager');
+var elAudioFolderBtn = document.getElementById('audio-folder-btn');
+var elAudioUploadProgress = document.getElementById('audio-upload-progress');
 var elAlbumArtImg   = document.getElementById('album-art-img');
 var elArtFallback   = document.getElementById('art-fallback');
 var elBufferingIndicator = document.getElementById('buffering-indicator');
@@ -713,6 +716,9 @@ function bindAudioRecoveryHandlers() {
     });
 
     audioEl.addEventListener('error', function () {
+        // A queue rebuild can dispatch a late event from the cleared player.
+        // Only treat an error on the current media source as a failed track.
+        if (audioEl !== getAmplitudeAudioElement() || !audioEl.error || !audioEl.currentSrc) return;
         handleCurrentTrackLoadFailure('Skipped unavailable audio.');
     });
 }
@@ -820,7 +826,7 @@ function apiFetch(path, opts) {
 function apiJson(path, opts) {
     return apiFetch(path, opts).then(function (res) {
         if (!res.ok || (res.data && res.data.success === false)) {
-            var msg = (res.data && res.data.error) || ('HTTP ' + res.status);
+            var msg = (res.data && (res.data.error || res.data.detail)) || ('HTTP ' + res.status);
             throw new Error(msg);
         }
         return res.data || {};
@@ -1148,6 +1154,17 @@ function renderPlaylistView(tracksToRender) {
     } else {
         var list = tracksToRender || (state.searchQuery ? [] : state.tracks);
         appendPlaylistTracks(list, 'library');
+        if (!list.length && !state.searchQuery) {
+            var welcome = document.createElement('li');
+            welcome.className = 'music-welcome';
+            var heading = document.createElement('h2');
+            heading.textContent = 'Your library starts here.';
+            var description = document.createElement('p');
+            description.textContent = 'Open Manage library to bring in your music. Then choose a track and settle in.';
+            welcome.appendChild(heading);
+            welcome.appendChild(description);
+            elPlaylist.appendChild(welcome);
+        }
     }
     if (window.Amplitude) {
         window.Amplitude.bindNewElements();
@@ -1255,7 +1272,8 @@ function appendPlaylistTracks(tracks, type, startIndex) {
 
         var metaP = document.createElement('p');
         metaP.className = 'pl-meta';
-        metaP.textContent = (track.artist || 'Local Library') + (track.relative_path ? ' \u00b7 ' + track.relative_path : '');
+        var displayPath = track.display_path || track.relative_path;
+        metaP.textContent = (track.artist || 'Local Library') + (displayPath ? ' / ' + displayPath : '');
 
         textDiv.appendChild(nameP);
         textDiv.appendChild(metaP);
@@ -1400,7 +1418,7 @@ function initAmplitude(tracks) {
         try { window.Amplitude.stop(); } catch (_) {}
         var oldAudio = getAmplitudeAudioElement();
         if (oldAudio) {
-            try { oldAudio.pause(); oldAudio.src = ''; oldAudio.load(); } catch (_) {}
+            try { oldAudio.pause(); oldAudio.removeAttribute('src'); oldAudio.load(); } catch (_) {}
         }
         try { window.Amplitude.init({ songs: [] }); } catch (_) {}
         state.initialized = false;
@@ -1448,6 +1466,10 @@ function initAmplitude(tracks) {
             },
         },
     });
+    if (!songs.length) {
+        document.querySelector('.track-name').textContent = 'Nothing playing yet';
+        document.querySelector('.track-artist').textContent = 'A little space for your soundtrack.';
+    }
     setBufferingIndicator(false);
     state.initialized = true;
     bindAudioRecoveryHandlers();
@@ -1908,63 +1930,68 @@ function setAudioUploadStatus(message) {
     if (elAudioUploadStatus) elAudioUploadStatus.textContent = String(message || '');
 }
 
-function uploadAudioFiles() {
-    var files = elAudioUploadInput && elAudioUploadInput.files
-        ? Array.prototype.slice.call(elAudioUploadInput.files)
-        : [];
-    if (!files.length) {
-        setAudioUploadStatus('Choose one or more audio files first.');
-        return Promise.resolve(false);
+var audioUploadBusy = false;
+var audioDropReading = false;
+function syncImportControls() {
+    var disabled = audioUploadBusy || audioDropReading || !state.authenticated;
+    elAudioUploadBtn.disabled = disabled;
+    elAudioFolderBtn.disabled = disabled;
+    document.getElementById('library-manager-unlock').hidden = state.authenticated;
+}
+function openLibraryManager() {
+    if (!elLibraryManager.open) elLibraryManager.showModal();
+    syncImportControls();
+    checkAuthStatus().then(syncImportControls);
+}
+async function uploadAudioFiles(selected) {
+    if (audioUploadBusy || audioDropReading) return false;
+    var files = Array.from(selected || (elAudioUploadInput && elAudioUploadInput.files) || []);
+    var allowed = /\.(aac|aiff|flac|m4a|mp3|ogg|opus|wav|wma)$/i;
+    var skipped = files.filter(function (file) { return !allowed.test(file.name); }).length;
+    files = files.filter(function (file) { return allowed.test(file.name); });
+    if (!files.length) { setAudioUploadStatus('Choose audio files or a music folder.'); return false; }
+    audioUploadBusy = true;
+    syncImportControls();
+    elAudioUploadProgress.hidden = false; elAudioUploadProgress.value = 0;
+    var failures = [], imported = 0;
+    for (var index = 0; index < files.length; index++) {
+        var file = files[index], resumeKey = 'autoyou-audio-upload:' + JSON.stringify([window.AutoYouFileDrop ? window.AutoYouFileDrop.relativePath(file) : file.webkitRelativePath || file.name, file.size, file.lastModified]);
+        var session = null;
+        try {
+            if (file.size > 1024 ** 3) throw new Error('Choose a file up to 1 GiB');
+            var saved = ''; try { saved = sessionStorage.getItem(resumeKey) || ''; } catch (_) {}
+            if (saved) {
+                var old = await apiFetch('api/upload-sessions/' + encodeURIComponent(saved));
+                if (old.ok) session = old.data;
+                else if (old.status !== 404) throw new Error(old.data.error || old.data.detail || 'Unlock Audio in Settings to import');
+            }
+            if (!session) session = await apiJson('api/upload-sessions', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({filename: file.name, title: file.name.replace(/\.[^.]+$/, ''), size: file.size})});
+            try { sessionStorage.setItem(resumeKey, session.id); } catch (_) {}
+            var retries = 0;
+            while (session.received < file.size) {
+                setAudioUploadStatus('Adding ' + file.name + ' - ' + (index + 1) + '/' + files.length + ' - ' + Math.round(session.received / file.size * 100) + '%');
+                elAudioUploadProgress.value = (index + session.received / file.size) / files.length;
+                try {
+                    session = await apiJson('api/upload-sessions/' + session.id + '?offset=' + session.received, {method: 'PUT', headers: {'Content-Type': 'application/octet-stream'}, body: file.slice(session.received, session.received + session.chunk_bytes)});
+                    retries = 0;
+                } catch (error) {
+                    if (++retries > 3) throw error;
+                    session = await apiJson('api/upload-sessions/' + session.id);
+                }
+            }
+            await apiJson('api/upload-sessions/' + session.id + '/complete', {method: 'POST'});
+            try { sessionStorage.removeItem(resumeKey); } catch (_) {}
+            imported++;
+        } catch (error) { failures.push(file.name + ': ' + error.message); }
     }
-
-    if (elAudioUploadBtn) elAudioUploadBtn.disabled = true;
-    setAudioUploadStatus('Uploading 0 of ' + files.length + '...');
-    var uploaded = 0;
-    var blobPath = resolveAgentApiPath('page_agent', 'api/blob');
-    var feedPath = resolveAgentApiPath('page_agent', 'api/feed');
-
-    return files.reduce(function (chain, file) {
-        return chain.then(function () {
-            var form = new FormData();
-            form.append('file', file, file.name);
-            return apiFetch(blobPath, { method: 'POST', body: form }).then(function (response) {
-                var data = response.data || {};
-                if (!response.ok || !data.id) {
-                    throw new Error(data.error || data.detail || ('Upload failed for ' + file.name));
-                }
-                return apiFetch(feedPath, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        url: 'blob://' + data.id,
-                        type: 'audio',
-                        title: file.name,
-                        source: 'Audio Agent',
-                    }),
-                });
-            }).then(function (response) {
-                if (!response.ok) {
-                    var data = response.data || {};
-                    throw new Error(data.error || data.detail || ('Feed import failed for ' + file.name));
-                }
-                uploaded += 1;
-                setAudioUploadStatus('Uploading ' + uploaded + ' of ' + files.length + '...');
-            });
-        });
-    }, Promise.resolve()).then(function () {
-        if (elAudioUploadInput) elAudioUploadInput.value = '';
-        setAudioUploadStatus('Imported ' + uploaded + ' file' + (uploaded === 1 ? '' : 's') + '. Refreshing library...');
-        return loadLibrary(true).then(function () {
-            setAudioUploadStatus('Imported ' + uploaded + ' file' + (uploaded === 1 ? '' : 's') + '.');
-            return true;
-        });
-    }).catch(function (error) {
-        setAudioUploadStatus('Upload failed: ' + (error && error.message || 'unknown error'));
-        return false;
-    }).then(function (result) {
-        if (elAudioUploadBtn) elAudioUploadBtn.disabled = false;
-        return result;
-    });
+    audioUploadBusy = false;
+    syncImportControls();
+    elAudioUploadProgress.hidden = true;
+    if (elAudioUploadInput) elAudioUploadInput.value = '';
+    document.getElementById('audio-folder-input').value = '';
+    await loadLibrary(true);
+    setAudioUploadStatus('Added ' + imported + (imported === 1 ? ' track. ' : ' tracks. ') + (skipped ? skipped + ' non-audio files skipped. ' : '') + failures.join(' / '));
+    return !failures.length;
 }
 
 function applySettingsToForm() {
@@ -2235,7 +2262,7 @@ elOtpInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') doL
 elSaveSettings.addEventListener('click', function () { saveSettings(); });
 elLogoutBtn.addEventListener('click', doLogout);
 elPrefetchBtn.addEventListener('click', doPrefetch);
-if (elAudioUploadBtn) elAudioUploadBtn.addEventListener('click', function () { uploadAudioFiles(); });
+if (elAudioUploadBtn) elAudioUploadBtn.addEventListener('click', function () { elAudioUploadInput.click(); });
 
 if (elSearchToggleBtn) {
     elSearchToggleBtn.addEventListener('click', toggleSearch);
@@ -2296,4 +2323,34 @@ window.addEventListener('load', function () {
         // Start persistent poller to parent
         setInterval(syncStateToParent, 450);
     });
+});
+
+// Import controls live in their own dialog. Dropping music opens that same flow.
+document.getElementById('library-manager-btn').addEventListener('click', openLibraryManager);
+document.getElementById('library-manager-close').addEventListener('click', function () { elLibraryManager.close(); });
+document.getElementById('library-manager-done').addEventListener('click', function () { elLibraryManager.close(); });
+document.getElementById('settings-library-manager').addEventListener('click', function () { closeSettings(); openLibraryManager(); });
+['library-manager-unlock', 'library-manager-sources'].forEach(function (id) {
+    document.getElementById(id).addEventListener('click', function () { elLibraryManager.close(); openSettings(); });
+});
+elAudioFolderBtn.addEventListener('click', function () { document.getElementById('audio-folder-input').click(); });
+document.getElementById('audio-folder-input').addEventListener('change', function (event) { uploadAudioFiles(event.target.files); });
+elAudioUploadInput.addEventListener('change', function (event) { uploadAudioFiles(event.target.files); });
+document.addEventListener('dragover', function (event) {
+    if (Array.from(event.dataTransfer.types).includes('Files')) { event.preventDefault(); document.body.classList.add('import-dragging'); }
+});
+document.addEventListener('dragleave', function (event) { if (!event.relatedTarget) document.body.classList.remove('import-dragging'); });
+document.addEventListener('drop', async function (event) {
+    if (!Array.from(event.dataTransfer.types).includes('Files')) return;
+    event.preventDefault(); document.body.classList.remove('import-dragging');
+    if (audioUploadBusy || audioDropReading) return;
+    openLibraryManager();
+    if (!window.AutoYouFileDrop) { setAudioUploadStatus('The folder importer is loading. Please try again.'); return; }
+    audioDropReading = true; syncImportControls(); setAudioUploadStatus('Reading your music folders...');
+    try {
+        var selected = await window.AutoYouFileDrop.collectDroppedFiles(event.dataTransfer, function (count) { setAudioUploadStatus('Found ' + count + ' files...'); });
+        audioDropReading = false;
+        await uploadAudioFiles(selected);
+    } catch (error) { setAudioUploadStatus(error.message); }
+    finally { audioDropReading = false; syncImportControls(); }
 });

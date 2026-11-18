@@ -595,6 +595,10 @@ def _discover_protected_paths(
         else Path(tempfile.gettempdir()) / "autoyou_media"
     )
     roots: List[Path] = [context.root, temp_media_root]
+    # Managed agent outputs can live on another drive and must remain readable
+    # after key rotation, including destinations used before a restart.
+    from shared.content_library import managed_roots
+    roots.extend(managed_roots())
     roots.extend(Path(root).expanduser() for root in scan_roots if root)
     seen_roots: Set[Path] = set()
     for raw_root in roots:

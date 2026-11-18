@@ -48,7 +48,7 @@ from shared.audio_agent_library import (
 )
 from shared.audio_playback_settings import MUSIC_LIBRARY_DIRS_ENV
 from autoyou_agents.shared_tools.scheduler_mission_control import install_agent_website_auth
-from .uploads import Uploads, import_root, upload_owner
+from .uploads import Uploads, import_root, legacy_import_root, upload_owner
 
 _AGENT_NAME = "audio_agent"
 _SESSION_TTL_DAYS = 7
@@ -205,6 +205,11 @@ install_agent_website_auth(
     is_authenticated=lambda request: _check_auth(request),
 )
 app.add_middleware(GZipMiddleware, minimum_size=500)
+
+@app.get("/assets/content-drop.js")
+def content_drop_script():
+    return FileResponse(Path(__file__).resolve().parents[4] / "assets" / "content-drop.js", media_type="text/javascript")
+
 app.mount("/assets", StaticFiles(directory=FRONTEND_DIR), name="assets")
 
 
@@ -379,6 +384,10 @@ def _normalize_roots(explicit_roots: Optional[str] = None) -> List[str]:
         roots = resolve_audio_library_roots(_current_settings(), anchor=__file__)
     if explicit_roots in (None, "") and import_root().is_dir():
         roots = list(roots) + [str(import_root())]
+        if legacy_import_root().is_dir():
+            roots.append(str(legacy_import_root()))
+        from shared.content_library import managed_roots
+        roots.extend(str(root / "audio_agent") for root in managed_roots() if (root / "audio_agent").is_dir())
     normalized: List[str] = []
     seen: set[str] = set()
     for root in roots:
@@ -426,9 +435,10 @@ def _audio_content_type(file_path: Path) -> str:
 
 
 def _build_track_payload(path_value: Path, root_value: Path) -> Dict[str, Any]:
+    from shared import content_files
     absolute_path = str(path_value.resolve())
     metadata = _parse_display_metadata(path_value)
-    imported = Uploads().metadata(path_value) if path_value.parent == import_root() else {}
+    imported = Uploads(path_value.parent).metadata(path_value) if (path_value.parent / ".pending" / "uploads.sqlite").is_file() else {}
     if imported:
         metadata["title"] = imported["title"] or Path(imported["filename"]).stem
     track_id = hashlib.sha1(os.path.normcase(absolute_path).encode("utf-8")).hexdigest()[:16]
@@ -443,10 +453,11 @@ def _build_track_payload(path_value: Path, root_value: Path) -> Dict[str, Any]:
         "artist": metadata["artist"],
         "file_name": imported.get("filename", path_value.name),
         "relative_path": relative_path,
+        "display_path": imported.get("filename", relative_path),
         "directory": str(path_value.parent),
         "stream_url": f"api/stream/{track_id}",
         "content_type": _audio_content_type(path_value),
-        "size": path_value.stat().st_size,
+        "size": content_files.size(path_value),
         "download_url": f"api/stream/{track_id}",
     }
 
@@ -674,7 +685,9 @@ def _extract_artwork_cached(track_id: str, file_path: Path) -> Optional[Tuple[by
     with _artwork_cache_lock:
         if track_id in _artwork_cache:
             return _artwork_cache[track_id]
-    result = _extract_artwork(file_path)
+    from shared import content_files
+    with content_files.materialized(file_path) as readable:
+        result = _extract_artwork(readable)
     with _artwork_cache_lock:
         _artwork_cache[track_id] = result
     return result
@@ -1246,6 +1259,9 @@ async def api_stream(track_id: str, request: Request):
         return _json_response({"success": False, "error": "File is no longer available"}, status_code=410)
 
     content_type = _audio_content_type(file_path)
+    from shared import content_files
+    if content_files.protected(file_path):
+        return content_files.response(file_path, request, content_type)
     file_size = int(file_path.stat().st_size)
     etag = f'"{file_path.stat().st_mtime_ns:x}-{file_size:x}"'
     range_header = request.headers.get("range", "")

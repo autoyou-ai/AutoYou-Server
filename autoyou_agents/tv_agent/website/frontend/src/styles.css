@@ -575,3 +575,14 @@ progress::-moz-progress-bar { background: var(--accent); }
 
 /* Keep long paginated libraries cheap to paint without changing keyboard or screen-reader order. */
 .media-card { content-visibility: auto; contain-intrinsic-size: auto 330px; }
+
+.import-steps { display:flex; gap:12px; padding:0; list-style:none; color:var(--muted); font-size:12px; }
+.import-steps li { flex:1; padding:10px 0; border-top:2px solid #363042; }
+.import-steps .active { color:#d4c0f8; border-color:#b692ef; }
+.upload-drop.drag-over { border-color:#d3b4ff; background:#342447; transform:scale(1.01); }
+.folder-upload { position:relative; overflow:hidden; justify-content:center; }
+.folder-upload input { position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; }
+.folder-upload:focus-within { outline:2px solid #d3b4ff; outline-offset:3px; }
+.upload-drop { transition:background .18s ease,border-color .18s ease,transform .18s ease; }
+@media(prefers-reduced-motion:reduce) { .upload-drop { transition:none; transform:none; } }
+@media(max-width:600px) { .import-steps { gap:8px; font-size:11px; } .form-grid { min-width:0; } }

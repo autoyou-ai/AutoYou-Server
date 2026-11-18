@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from fastapi import HTTPException
+from shared.secure_storage import read_secure_file
 
 from .media import permitted_path
 
@@ -66,7 +67,7 @@ def resource_path(store, item: dict, version: str, resource: str) -> Path:
         raise HTTPException(404, "Streaming version not available")
     try:
         marker = root / "published.json"
-        if marker.stat().st_size > 2048 or json.loads(marker.read_text())["source"] != fingerprint(permitted_path(store, item["file_path"])):
+        if marker.stat().st_size > 4096 or json.loads(read_secure_file(marker, migrate_plaintext=False))["source"] != fingerprint(permitted_path(store, item["file_path"])):
             raise ValueError("Stale version")
     except (OSError, ValueError, KeyError):
         raise HTTPException(404, "Streaming version not available") from None

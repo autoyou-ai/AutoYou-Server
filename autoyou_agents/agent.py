@@ -1852,6 +1852,12 @@ except Exception as _import_err:
     _create_location_agent = None  # type: ignore[assignment]
 
 try:
+    from autoyou_agents.organizer_agent.agent import create_organizer_agent as _create_organizer_agent
+except Exception as _import_err:
+    logger.warning("organizer_agent static import failed: %s", _import_err)
+    _create_organizer_agent = None  # type: ignore[assignment]
+
+try:
     from autoyou_agents.memory_agent.agent import create_memory_agent as _create_memory_agent
 except Exception as _import_err:
     logger.warning("memory_agent static import failed: %s", _import_err)
@@ -2001,6 +2007,7 @@ _STATIC_AGENT_FACTORY_MAP: Dict[str, Any] = {
     "hosting_agent": _create_hosting_agent,
     "internet_agent": _create_internet_agent,
     "location_agent": _create_location_agent,
+    "organizer_agent": _create_organizer_agent,
     "memory_agent": _create_memory_agent,
     "model_picker_agent": _create_model_picker_agent,
     "notes_agent": _create_notes_agent,

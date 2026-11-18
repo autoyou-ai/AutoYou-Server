@@ -35,7 +35,8 @@ class Store:
     def __init__(self, root: Path | None = None):
         self.root = Path(root or data_root()).resolve()
         self.root.mkdir(parents=True, exist_ok=True)
-        self.media_dir = self.root / "media"
+        from shared.content_library import output_dir
+        self.media_dir = self.root / "media" if root is not None else output_dir("tv_agent")
         self.media_dir.mkdir(exist_ok=True)
         self.artwork_dir = self.root / "artwork"
         self.artwork_dir.mkdir(exist_ok=True)
@@ -145,6 +146,12 @@ class Store:
         result = dict(row)
         for key in ("metadata", "technical"):
             result[key] = json.loads(result[key])
+        from shared.content_library import publish_content, forget_content
+        if result["status"] != "deleted":
+            kind = {"movie": "video", "episode": "video", "photo": "image", "document": "file"}.get(result["kind"], result["kind"])
+            publish_content("tv_agent", result["id"], result["title"], kind, path=result.get("file_path") or "", href="/agent/tv_agent/#/item/" + result["id"])
+        else:
+            forget_content("tv_agent", result["id"])
         return result
 
     def add_item(self, *, source_key: str, title: str, kind: str = "video", folder_id: str | None = None,

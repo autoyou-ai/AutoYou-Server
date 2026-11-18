@@ -255,13 +255,63 @@ def _is_probably_text_file(path: Path) -> bool:
 
 
 def _iter_workspace_files(base: Path) -> Iterator[Path]:
+    if base.is_file():
+        if _is_probably_text_file(base):
+            yield base
+        return
     for current_root, dirnames, filenames in os.walk(base):
         current = Path(current_root)
         dirnames[:] = sorted(d for d in dirnames if d not in _IGNORED_DIRS)
         for filename in sorted(filenames):
             candidate = current / filename
+            if not candidate.resolve().is_relative_to(_workspace_root()):
+                continue
             if _is_probably_text_file(candidate):
                 yield candidate
+
+
+def _literal_search_candidates(base: Path, pattern: str, case_sensitive: bool) -> Optional[List[Path]]:
+    """Use ripgrep to shortlist matching files; retain Python regex semantics."""
+    executable = shutil.which("rg")
+    if not executable or "\n" in pattern or "\r" in pattern:
+        return None
+    if not case_sensitive and not pattern.isascii():
+        return None  # Python and Rust have different Unicode case-fold rules.
+    from shared.process_lifecycle import process_spawn_kwargs
+
+    folder = base if base.is_dir() else base.parent
+    command = [executable, "--no-config", "--files-with-matches", "--null",
+               "--hidden", "--no-ignore", "--text", "--max-filesize", str(_MAX_TEXT_FILE_BYTES)]
+    rg_pattern = pattern
+    if not case_sensitive:
+        command.append("--ignore-case")
+        # Python IGNORECASE additionally matches these four Unicode characters
+        # for ASCII I/K/S. Keep the shortlist a superset of Python's matches.
+        equivalents = {"i": "[iI\u0130\u0131]", "k": "[kK\u212a]", "s": "[sS\u017f]"}
+        rg_pattern = "".join(equivalents.get(char.lower(), re.escape(char)) for char in pattern)
+    else:
+        command.append("--fixed-strings")
+    for ignored in sorted(_IGNORED_DIRS):
+        command.extend(["--glob", f"!**/{ignored}/**"])
+    command.extend(["--", rg_pattern, "." if base.is_dir() else base.name])
+    try:
+        result = subprocess.run(command, cwd=folder, stdout=subprocess.PIPE,
+                                stderr=subprocess.DEVNULL, timeout=10,
+                                env=_scrubbed_subprocess_env(),
+                                **process_spawn_kwargs(hide_window=True))
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode not in (0, 1):
+        return None
+    root = _workspace_root()
+    candidates = []
+    for name in result.stdout.decode("utf-8", errors="replace").split("\0"):
+        if not name:
+            continue
+        candidate = (folder / name).resolve()
+        if candidate.is_relative_to(root) and _is_probably_text_file(candidate):
+            candidates.append(candidate)
+    return sorted(set(candidates))
 
 
 def _render_diff(before: str, after: str, path_label: str) -> str:
@@ -357,7 +407,7 @@ def search_workspace(
 
     Args:
         pattern: Literal string or regex to find.
-        path: Directory to search under (relative or absolute within workspace).
+        path: File or directory to search (relative or absolute within workspace).
         max_results: Maximum number of matching lines to return.
         use_regex: Treat pattern as a regular expression.
         case_sensitive: Case-sensitive matching (default: case-insensitive).
@@ -390,7 +440,10 @@ def search_workspace(
         results: List[Dict[str, Any]] = []
         rendered: List[str] = []
 
-        for file_path in _iter_workspace_files(base):
+        # Regex searches keep Python's existing syntax, including lookarounds.
+        # Missing or incompatible ripgrep falls back to the portable scanner.
+        candidates = None if use_regex else _literal_search_candidates(base, pattern, case_sensitive)
+        for file_path in candidates if candidates is not None else _iter_workspace_files(base):
             if not _matches_glob(file_path):
                 continue
             try:
@@ -461,9 +514,10 @@ def read_file(
     Args:
         path: File path (relative to workspace root or absolute within it).
         start_line: First line to read (1-indexed). Ignored when ``offset`` is set.
-        end_line: Last line to read (inclusive). Window size is ``end_line - start_line``.
+        end_line: Last line to read (inclusive). Window size is ``end_line - start_line + 1``.
         offset: When set, overrides ``start_line`` - useful for continuation reads
                 (pass the ``next_start_line`` returned from a prior call).
+                The requested window size is preserved at the new offset.
     """
     try:
         file_path = _resolve_workspace_path(path, must_exist=True)
@@ -504,12 +558,14 @@ def read_file(
         all_lines = text.splitlines()
         total = len(all_lines)
 
+        # An offset moves the requested window, rather than shrinking it to a
+        # single line when the next page begins beyond the original end_line.
+        window = max(1, int(end_line) - max(1, int(start_line)) + 1)
         if offset is not None:
             start_line = max(1, int(offset))
         else:
             start_line = max(1, int(start_line))
 
-        window = max(1, int(end_line) - int(start_line) + 1) if offset is None else max(1, int(end_line) - start_line + 1)
         end_line_actual = min(total, start_line - 1 + window)
         selected = all_lines[start_line - 1 : end_line_actual]
         numbered = "\n".join(

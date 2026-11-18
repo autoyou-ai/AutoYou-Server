@@ -326,18 +326,19 @@ def create_app(data_dir: Path | None = None, *, otp_verifier=None) -> FastAPI:
         destination = store.media_dir / (uid() + suffix)
         temporary = destination.with_suffix(suffix + ".uploading")
         written = 0
+        from shared import content_files
         try:
-            with temporary.open("xb") as handle:
-                async for chunk in request.stream():
-                    written += len(chunk)
-                    if written > MAX_UPLOAD_BYTES:
-                        raise HTTPException(413, "Video exceeds the 20 GB upload limit")
-                    await asyncio.to_thread(handle.write, chunk)
+            content_files.create(temporary)
+            async for chunk in request.stream():
+                if written + len(chunk) > MAX_UPLOAD_BYTES:
+                    raise HTTPException(413, "Video exceeds the 20 GB upload limit")
+                written = await asyncio.to_thread(content_files.append, temporary, written, chunk)
             if written == 0:
                 raise HTTPException(400, "The uploaded file is empty")
-            temporary.replace(destination)
+            content_files.promote(temporary, destination)
         finally:
-            temporary.unlink(missing_ok=True)
+            if temporary.exists():
+                content_files.discard(temporary)
         info = parse_name(filename)
         info["title"] = title.strip() or info["title"]
         info["kind"] = media_kind(suffix, "episode" if info["episode"] is not None else kind)
@@ -554,17 +555,17 @@ def create_app(data_dir: Path | None = None, *, otp_verifier=None) -> FastAPI:
         return Response(subtitle_content(store, store.item(item_id), track_id), media_type="text/vtt")
 
     @application.get("/api/artwork/{item_id}")
-    async def artwork(item_id: str):
+    async def artwork(item_id: str, request: Request):
         store, _, _ = services()
         item = store.item(item_id)
         if item["kind"] == "photo":
             async with photo_decoders:
                 path = await asyncio.to_thread(photo_thumbnail, store, item)
-            return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=60"})
+            return file_stream(path, request, media_type="image/jpeg")
         path = store.artwork_dir / (item_id + ".jpg")
         if item["status"] == "deleted" or not path.is_file() or not path.resolve().is_relative_to(store.artwork_dir.resolve()):
             raise HTTPException(404, "Artwork not available")
-        return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=3600"})
+        return file_stream(path, request, media_type="image/jpeg")
 
     @application.get("/api/settings/browse")
     async def browse_source(request: Request, path: str = Query("", max_length=4096)):

@@ -263,10 +263,19 @@ async def _coding_after_tool_callback(
         str(tool_response.get("stderr") or "").strip() if isinstance(tool_response, dict) else "",
     ]
     combined_message = " ".join(p for p in message_parts if p)
-    if combined_message:
+    response = tool_response if isinstance(tool_response, dict) else {}
+    failed = response.get("status") == "error"
+    # Command output can mention timeout tests or configuration on a successful
+    # run. Only an explicit timeout (or legacy error message) should pause work.
+    timed_out = response.get("timed_out") is True or (
+        "timed_out" not in response
+        and response.get("status") != "success"
+        and (str(response.get("message") or "").lower().startswith("timeout")
+             or "timed out" in str(response.get("message") or "").lower())
+    )
+    if failed or timed_out:
         state["last_error_message"] = combined_message
-        lowered = combined_message.lower()
-        if "timeout" in lowered or "timed out" in lowered:
+        if timed_out:
             next_count = int(state.get("consecutive_timeouts") or 0) + 1
             state["consecutive_timeouts"] = next_count
             breaker_until = None
@@ -286,6 +295,9 @@ async def _coding_after_tool_callback(
                 "session_execution": build_session_execution_metadata(paused_state),
                 "recovery_actions": build_session_recovery_actions(paused_state),
             }
+    elif response.get("status") == "success":
+        state["consecutive_timeouts"] = 0
+        state["last_error_message"] = ""
 
     tool_context.state[SESSION_CONTROL_STATE_KEY] = state
     return None

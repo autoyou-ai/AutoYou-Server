@@ -154,18 +154,25 @@ def parse_range(value: str, size: int) -> tuple[int, int] | None:
 
 def permitted_path(store: Store, raw: str) -> Path:
     path = Path(raw).resolve()
-    roots = [store.media_dir.resolve()]
+    roots = [store.media_dir.resolve(), (store.root / "media").resolve()]
     for folder in store.folders(all_folders=True):
         if folder["root_path"] and not folder["relative_path"]:
             roots.append(Path(folder["root_path"]).resolve())
     if not any(path.is_relative_to(root) for root in roots):
-        raise HTTPException(404, "Media is outside a configured library folder")
+        # Managed items retain access after the output destination changes.
+        with store.connect() as db:
+            managed = db.execute("SELECT 1 FROM items WHERE file_path=? AND status!='deleted' AND (source_key LIKE 'upload:%' OR source_key LIKE 'download:%')", (str(path),)).fetchone()
+        if not managed:
+            raise HTTPException(404, "Media is outside a configured library folder")
     if not path.is_file():
         raise HTTPException(404, "Media is missing. Rescan its source folder.")
     return path
 
 
 def file_stream(path: Path, request: Request, *, media_type: str | None = None):
+    from shared import content_files
+    if content_files.protected(path):
+        return content_files.response(path, request, media_type)
     stat = path.stat()
     size = stat.st_size
     etag = f'"{stat.st_mtime_ns:x}-{size:x}"'
@@ -313,7 +320,8 @@ def subtitle_content(store: Store, item: dict, track_id: str) -> str:
         candidate = permitted_path(store, str(candidate))
         if candidate.stat().st_size > 5 * 1024 * 1024:
             raise HTTPException(413, "Subtitle file is too large")
-        text = candidate.read_text(encoding="utf-8-sig", errors="replace")
+        from shared.secure_storage import read_secure_file
+        text = read_secure_file(candidate, migrate_plaintext=False).decode("utf-8-sig", errors="replace")
         if candidate.suffix.lower() == ".srt":
             text = "WEBVTT\n\n" + re.sub(r"(\d{2}:\d{2}:\d{2}),(\d{3})", r"\1.\2", text)
         return text
@@ -336,24 +344,21 @@ def photo_thumbnail(store: Store, item: dict, pixels: int = 640) -> Path:
     target = directory / f"{pixels}-{version}.jpg"
     if target.is_file():
         return target
-    import tempfile
-    temporary = None
+    import io
+    from shared import content_files
+    from shared.secure_storage import write_secure_file
     bounds = (1280, 720) if pixels == 1280 else (pixels, pixels)
     try:
-        with Image.open(source) as image:
+        with content_files.materialized(source) as readable, Image.open(readable) as image:
             image.draft("RGB", bounds)
             image = ImageOps.exif_transpose(image)
             image.thumbnail(bounds)
-            with tempfile.NamedTemporaryFile(dir=directory, suffix=".part", delete=False) as output:
-                temporary = Path(output.name)
-                image.convert("RGB").save(output, "JPEG", quality=82)
-        temporary.replace(target)
+            output = io.BytesIO()
+            image.convert("RGB").save(output, "JPEG", quality=82)
+            write_secure_file(target, output.getvalue())
         for old in directory.glob(f"{pixels}-*.jpg"):
             if old != target and old.stat().st_mtime < time.time() - 86400:
                 old.unlink(missing_ok=True)
         return target
     except (UnidentifiedImageError, OSError, Image.DecompressionBombError):
         raise HTTPException(415, "This photo has no supported preview") from None
-    finally:
-        if temporary:
-            temporary.unlink(missing_ok=True)

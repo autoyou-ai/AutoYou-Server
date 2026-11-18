@@ -1,0 +1,12 @@
+{
+  "agent_name": "organizer_agent",
+  "title": "Your Content",
+  "description": "Private collections, labels, annotations and shared agent outputs.",
+  "entry_path": "/",
+  "recommended_port": 8119,
+  "requires_proxy_registration": true,
+  "websocket_enabled": false,
+  "auth_default": "gated",
+  "shared_session_eligible": true,
+  "bypass_global_otp": false
+}

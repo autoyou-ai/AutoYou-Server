@@ -143,6 +143,7 @@ def test_release_agent_defaults_match_public_private_policy():
         "hermes_agent",
         "media_generation_agent",
         "openclaw_agent",
+        "organizer_agent",
         "proxy_agent",
         "website_agent",
     }

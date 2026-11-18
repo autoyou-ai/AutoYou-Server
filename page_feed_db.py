@@ -336,6 +336,8 @@ class PageFeedDB:
                 (item_type, url, title or "", str(content or "")[:50000], source or "", added_at),
             )
             item_id = int(cur.lastrowid)
+        from shared.content_library import publish_content
+        publish_content("page_agent", str(item_id), title or "Saved page", "page", href="/agent/page_agent/")
         return FeedItem(
             id=item_id,
             type=item_type,
@@ -400,13 +402,21 @@ class PageFeedDB:
         with self._connect() as con:
             cur = con.execute("UPDATE feed_items SET title=?,url=?,content=?,type=?,source=? WHERE id=?",
                               (title, url, content, item_type, source, item_id))
-            return cur.rowcount > 0
+            changed = cur.rowcount > 0
+        if changed:
+            from shared.content_library import publish_content
+            publish_content("page_agent", str(item_id), title or "Saved page", "page", href="/agent/page_agent/", force_revision=True)
+        return changed
 
     def delete(self, item_id: int) -> bool:
         """Delete an item by id. Returns True if a row was deleted."""
         with self._connect() as con:
             cur = con.execute("DELETE FROM feed_items WHERE id = ?", (item_id,))
-            return cur.rowcount > 0
+            changed = cur.rowcount > 0
+        if changed:
+            from shared.content_library import forget_content
+            forget_content("page_agent", str(item_id))
+        return changed
 
     def _extract_blob_id(self, url: str) -> Optional[str]:
         """Extract blob id from a feed URL like 'blob://<uuid>'."""
@@ -478,14 +488,22 @@ class PageFeedDB:
                                 os.remove(path)
                                 result["file_deleted"] += 1
                                 break
+        if result["deleted"]:
+            from shared.content_library import forget_content
+            forget_content("page_agent", str(item_id))
         return result
 
     def clear(self) -> int:
         """Delete all items. Returns number of rows deleted."""
         with self._connect() as con:
+            item_ids = [row[0] for row in con.execute("SELECT id FROM feed_items")]
             con.execute("DELETE FROM feed_attachments")
             cur = con.execute("DELETE FROM feed_items")
-            return cur.rowcount or 0
+            count = cur.rowcount or 0
+        from shared.content_library import forget_content
+        for item_id in item_ids:
+            forget_content("page_agent", str(item_id))
+        return count
 
     def clear_all_and_cleanup(self, uploads_dir: Optional[str] = None) -> Dict[str, Any]:
         """Clear the feed and perform comprehensive cleanup.
@@ -505,6 +523,7 @@ class PageFeedDB:
 
         with self._connect() as con:
             # Delete items and tags
+            item_ids = [row[0] for row in con.execute("SELECT id FROM feed_items")]
             con.execute("DELETE FROM feed_attachments")
             cur_items = con.execute("DELETE FROM feed_items")
             result["items_deleted"] = int(cur_items.rowcount or 0)
@@ -520,6 +539,10 @@ class PageFeedDB:
                         blob_paths.append(str(p))
             cur_blobs = con.execute("DELETE FROM blobs")
             result["blobs_deleted"] = int(cur_blobs.rowcount or 0)
+
+        from shared.content_library import forget_content
+        for item_id in item_ids:
+            forget_content("page_agent", str(item_id))
 
         # Delete blob files on disk
         for p in blob_paths:

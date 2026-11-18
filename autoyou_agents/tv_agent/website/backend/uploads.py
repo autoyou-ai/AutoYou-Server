@@ -9,6 +9,7 @@ from pathlib import Path
 import time
 
 from fastapi import HTTPException, Request
+from shared import content_files
 
 from .auth import COOKIE_NAME
 from .media import MEDIA_EXTENSIONS, media_kind, parse_name
@@ -27,7 +28,7 @@ def upload_owner(request: Request) -> str:
 class Uploads:
     def __init__(self, store: Store):
         self.store = store
-        self.directory = store.root / "uploads"
+        self.directory = store.media_dir / ".uploads"
         self.directory.mkdir(exist_ok=True)
 
     def _row(self, db, upload_id: str, owner: str) -> dict:
@@ -36,6 +37,11 @@ class Uploads:
         if not row:
             raise HTTPException(404, "Upload has expired or belongs to another session")
         return dict(row)
+
+    def partial(self, upload_id):
+        current = self.directory / (upload_id + ".part")
+        legacy = self.store.root / "uploads" / (upload_id + ".part")
+        return legacy if not current.exists() and legacy.is_file() else current
 
     @staticmethod
     def public(row: dict) -> dict:
@@ -55,62 +61,50 @@ class Uploads:
             db.execute("BEGIN IMMEDIATE")
             expired = db.execute("SELECT id FROM uploads WHERE expires<?", (now,)).fetchall()
             for row in expired:
-                (self.directory / (row[0] + ".part")).unlink(missing_ok=True)
+                content_files.discard(self.partial(row[0]))
             db.execute("DELETE FROM uploads WHERE expires<?", (now,))
             active = db.execute("SELECT COUNT(*) FROM uploads WHERE owner=? AND item_id IS NULL", (owner,)).fetchone()[0]
             if active >= 4:
                 raise HTTPException(429, "Finish or cancel an existing upload before adding another")
             db.execute("INSERT INTO uploads(id,owner,filename,title,kind,folder_id,size,expires) VALUES (?,?,?,?,?,?,?,?)",
                        (upload_id, owner, filename, title.strip(), kind, folder_id, size, now + 86400))
-            (self.directory / (upload_id + ".part")).touch(exist_ok=False)
+            content_files.create(self.directory / (upload_id + ".part"))
             return self.public(self._row(db, upload_id, owner))
 
     def status(self, upload_id: str, owner: str):
         with self.store.connect() as db:
             return self.public(self._row(db, upload_id, owner))
 
-    def _append(self, upload_id: str, owner: str, offset: int, chunk_path: Path):
-        length = chunk_path.stat().st_size
+    def _append(self, upload_id: str, owner: str, offset: int, chunk_path):
+        payload = chunk_path.read_bytes() if isinstance(chunk_path, Path) else bytes(chunk_path)
+        length = len(payload)
         with self.store.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             row = self._row(db, upload_id, owner)
             if row["item_id"] or offset > row["received"] or offset + length > row["size"]:
                 raise HTTPException(409, "Upload offset does not match the server. Resume from its received offset.")
-            partial = self.directory / (upload_id + ".part")
-            if not partial.is_file() or partial.stat().st_size < row["received"]:
+            partial = self.partial(upload_id)
+            if not partial.is_file() or content_files.size(partial) < row["received"]:
                 raise HTTPException(409, "Upload data is unavailable. Cancel this upload and start again.")
-            with partial.open("r+b") as handle:
-                if offset < row["received"]:
-                    handle.seek(offset)
-                    if offset + length > row["received"] or hashlib.sha256(handle.read(length)).digest() != hashlib.sha256(chunk_path.read_bytes()).digest():
-                        raise HTTPException(409, "This upload chunk conflicts with data already received")
-                    return self.public(row)
-                # Recover a process interruption between disk append and SQL commit.
-                handle.truncate(row["received"])
-                handle.seek(row["received"])
-                handle.write(chunk_path.read_bytes())
-                handle.flush()
-                os.fsync(handle.fileno())
-            row["received"] += length
+            try:
+                if content_files.size(partial) > row["received"]:
+                    content_files.truncate(partial, row["received"])
+                row["received"] = content_files.append(partial, offset, payload)
+            except ValueError as error:
+                raise HTTPException(409, str(error)) from error
             db.execute("UPDATE uploads SET received=? WHERE id=?", (row["received"], upload_id))
             return self.public(row)
 
     async def append(self, request: Request, upload_id: str, owner: str, offset: int):
         self.status(upload_id, owner)
-        chunk_path = self.directory / ("chunk-" + uid())
-        written = 0
-        try:
-            with chunk_path.open("xb") as handle:
-                async for chunk in request.stream():
-                    written += len(chunk)
-                    if written > CHUNK_BYTES:
-                        raise HTTPException(413, "Upload requests must contain at most 2 MB")
-                    await asyncio.to_thread(handle.write, chunk)
-            if not written:
-                raise HTTPException(400, "The upload chunk is empty")
-            return await asyncio.to_thread(self._append, upload_id, owner, offset, chunk_path)
-        finally:
-            chunk_path.unlink(missing_ok=True)
+        payload = bytearray()
+        async for chunk in request.stream():
+            if len(payload) + len(chunk) > CHUNK_BYTES:
+                raise HTTPException(413, "Upload requests must contain at most 2 MB")
+            payload.extend(chunk)
+        if not payload:
+            raise HTTPException(400, "The upload chunk is empty")
+        return await asyncio.to_thread(self._append, upload_id, owner, offset, payload)
 
     def complete(self, upload_id: str, owner: str) -> dict:
         with self.store.connect() as db:
@@ -124,11 +118,11 @@ class Uploads:
                 if row["folder_id"]:
                     self.store.folder(row["folder_id"])
                 destination = self.store.media_dir / (upload_id + Path(row["filename"]).suffix.lower())
-                partial = self.directory / (upload_id + ".part")
-                if partial.is_file() and partial.stat().st_size == row["size"]:
-                    partial.replace(destination)
-                elif not destination.is_file() or destination.stat().st_size != row["size"]:
-                    raise HTTPException(409, "Upload data is unavailable. Cancel this upload and start again.")
+                partial = self.partial(upload_id)
+                try:
+                    content_files.finish_upload(partial, destination, row["size"])
+                except ValueError as error:
+                    raise HTTPException(409, str(error)) from error
                 info = parse_name(row["filename"])
                 info["title"] = row["title"] or info["title"]
                 info["kind"] = media_kind(destination.suffix.lower(), "episode" if info["episode"] is not None else row["kind"])
@@ -146,5 +140,5 @@ class Uploads:
             row = self._row(db, upload_id, owner)
             if row["item_id"]:
                 raise HTTPException(409, "This upload is already in the library")
-            (self.directory / (upload_id + ".part")).unlink(missing_ok=True)
+            content_files.discard(self.partial(upload_id))
             db.execute("DELETE FROM uploads WHERE id=?", (upload_id,))

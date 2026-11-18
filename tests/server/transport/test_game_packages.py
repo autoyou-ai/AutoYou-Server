@@ -1,5 +1,6 @@
 """Portable package integrity, consistent SQLite export, updates and upload ownership."""
 import json
+import os
 from pathlib import Path
 import shutil
 import sqlite3
@@ -95,6 +96,26 @@ def test_upload_resume_integrity_and_session_ownership(tmp_path):
     assert (tmp_path / "mobile_games/synthetic-package.aygame").read_bytes() == data
 
 
+def mark_sparse_on_windows(stream):
+    if os.name != "nt":
+        return
+    import ctypes
+    from ctypes import wintypes
+    import msvcrt
+
+    control = ctypes.WinDLL("kernel32", use_last_error=True).DeviceIoControl
+    control.argtypes = (
+        wintypes.HANDLE, wintypes.DWORD, wintypes.LPVOID, wintypes.DWORD,
+        wintypes.LPVOID, wintypes.DWORD, ctypes.POINTER(wintypes.DWORD), wintypes.LPVOID,
+    )
+    control.restype = wintypes.BOOL
+    returned = wintypes.DWORD()
+    fsctl_set_sparse = 0x000900C4
+    if not control(msvcrt.get_osfhandle(stream.fileno()), fsctl_set_sparse,
+                   None, 0, None, 0, ctypes.byref(returned), None):
+        raise ctypes.WinError(ctypes.get_last_error())
+
+
 def test_five_gib_manifest_and_ranges_use_64_bit_offsets_without_allocating_game(tmp_path):
     manifest, header = package.read_manifest(FIXTURES / "package-v1.aygame")
     # Keep the real game files (they carry its Quit call); only the added large asset is sparse.
@@ -105,7 +126,8 @@ def test_five_gib_manifest_and_ranges_use_64_bit_offsets_without_allocating_game
     raw = package.canonical(manifest); size = 12+len(raw)+sum(item["size"] for item in manifest["files"])
     root = tmp_path / "state/mobile_games"; root.mkdir(parents=True); file = root / "synthetic-package.aygame"
     with file.open("wb") as stream:
-        stream.write(package.MAGIC+struct.pack(">I",len(raw))+raw+payload); stream.truncate(size)
+        mark_sparse_on_windows(stream)
+        stream.write(package.MAGIC+struct.pack(">I",len(raw))+raw+payload)
         stream.seek(size-4); stream.write(b"TAIL")
     assert package.MAX_BYTES == 5*1024**3
     assert package.read_manifest(file)[0]["files"][-1]["size"] == large

@@ -168,7 +168,7 @@ def test_audio_ui_play_toggle_has_webview_accessibility_fallback() -> None:
     assert ".sr-only" in css_response.text
 
 
-def test_audio_ui_frontend_includes_library_sources_and_page_feed_upload() -> None:
+def test_audio_ui_frontend_includes_library_sources_and_resumable_upload() -> None:
     client = TestClient(audio_ui_backend.app)
 
     html_response = client.get("/")
@@ -180,8 +180,14 @@ def test_audio_ui_frontend_includes_library_sources_and_page_feed_upload() -> No
     assert 'id="setting-source-page"' in html_response.text
     assert 'id="setting-source-notes"' in html_response.text
     assert 'id="audio-upload-input"' in html_response.text
-    assert "resolveAgentApiPath('page_agent', 'api/blob')" in js_response.text
-    assert "resolveAgentApiPath('page_agent', 'api/feed')" in js_response.text
+    assert 'id="audio-folder-input"' in html_response.text
+    assert '<script type="module" src="assets/content-drop.js"></script>' in html_response.text
+    drop_response = client.get("/assets/content-drop.js")
+    assert drop_response.status_code == 200
+    assert "javascript" in drop_response.headers["content-type"]
+    assert "export async function collectDroppedFiles" in drop_response.text
+    assert "apiJson('api/upload-sessions'" in js_response.text
+    assert "'/complete'" in js_response.text
     assert "function renderAudioPaths(paths)" in js_response.text
 
 

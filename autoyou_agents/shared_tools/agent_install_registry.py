@@ -102,6 +102,7 @@ DEFAULT_AGENT_INSTALL_STATES: Dict[str, bool] = {
     "memory_agent": True,
     "model_picker_agent": False,     # Opt-in: hardware-fit model advice
     "notes_agent": True,
+    "organizer_agent": False,        # Opt-in: private cross-agent content catalog
     "notify_agent": True,
     "openclaw_agent": False,         # Opt-in: install manually when OpenClaw Gateway is running locally
     "page_agent": True,

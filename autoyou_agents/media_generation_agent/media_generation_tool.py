@@ -39,7 +39,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 MEDIA_DATA_DIR = get_service_data_dir("media_generation_agent", anchor=__file__)
 DB_PATH = MEDIA_DATA_DIR / "media_history.db"
-OUTPUT_DIR = MEDIA_DATA_DIR / "output"
+from shared.content_library import output_dir, publish_content
+OUTPUT_DIR = output_dir("media_generation_agent")
 
 VALID_MEDIA_TYPES = {"video", "image"}
 IMAGE_OUTPUT_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp")
@@ -893,6 +894,8 @@ def save_history_item(
             )
         )
         conn.commit()
+        if file_path and status == "completed":
+            publish_content("media_generation_agent", str(cur.lastrowid), file_name or original_prompt[:100], media_type, path=file_path, href="/agent/media_generation_agent/")
         return cur.lastrowid
     finally:
         conn.close()
@@ -949,6 +952,10 @@ def update_history_status(
             values,
         )
         conn.commit()
+        if status == "completed":
+            row = conn.execute("SELECT file_path,file_name,original_prompt,media_type FROM media_history WHERE id=?", (item_id,)).fetchone()
+            if row and row[0]:
+                publish_content("media_generation_agent", str(item_id), row[1] or row[2][:100], row[3], path=row[0], href="/agent/media_generation_agent/")
     finally:
         conn.close()
 
@@ -1001,6 +1008,8 @@ def delete_history_item(item_id: int) -> bool:
     try:
         conn.execute("DELETE FROM media_history WHERE id = ?", (item_id,))
         conn.commit()
+        from shared.content_library import forget_content
+        forget_content("media_generation_agent", str(item_id))
         return True
     finally:
         conn.close()

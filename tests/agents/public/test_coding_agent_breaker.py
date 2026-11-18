@@ -116,3 +116,31 @@ async def test_after_tool_callback_marks_timeout_pause_and_breaker():
     assert state["status"] == "breaker_open"
     assert state["consecutive_timeouts"] == 2
     assert "tool timeout" in state["pause_reason"].lower()
+
+
+@pytest.mark.asyncio
+async def test_successful_timeout_test_output_does_not_pause_and_resets_streak():
+    context = DummyContext({SESSION_CONTROL_STATE_KEY: {"consecutive_timeouts": 1}})
+    result = await _coding_after_tool_callback(DummyTool("run_command"), {}, context,
+        {"status": "success", "timed_out": False, "message": "timeout tests passed", "stderr": "test_timeout.py passed"})
+    assert result is None
+    assert context.state[SESSION_CONTROL_STATE_KEY]["consecutive_timeouts"] == 0
+    assert context.state[SESSION_CONTROL_STATE_KEY]["last_error_message"] == ""
+
+
+@pytest.mark.asyncio
+async def test_failing_test_about_timeout_is_not_a_tool_timeout():
+    context = DummyContext()
+    result = await _coding_after_tool_callback(DummyTool("run_command"), {}, context,
+        {"status": "error", "timed_out": False, "stderr": "AssertionError: timeout must be 20"})
+    assert result is None
+    assert context.state[SESSION_CONTROL_STATE_KEY].get("consecutive_timeouts", 0) == 0
+
+
+@pytest.mark.asyncio
+async def test_structured_timeout_pauses_without_an_english_message():
+    context = DummyContext()
+    result = await _coding_after_tool_callback(DummyTool("run_command"), {}, context,
+        {"status": "error", "timed_out": True})
+    assert result is not None
+    assert context.state[SESSION_CONTROL_STATE_KEY]["consecutive_timeouts"] == 1
