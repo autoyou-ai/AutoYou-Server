@@ -15,12 +15,12 @@ If you only want the lighter mobile bridge, use `autoyou-lite` (distributed sepa
 
 Required:
 
-- Python 3.10 or newer
+- Git and Python 3.11 or newer; Python 3.13 is recommended for the full profile
 
 Optional, depending on features:
 
 - Ollama for local models
-- Node.js 18 or newer for WhatsApp
+- Node.js 22.12 or newer for WhatsApp (bootstrap downloads a local runtime when needed)
 - Docker Desktop or Docker Engine for Signal
 
 The bootstrap script pre-seeds the Tunnelmole helper for OTP pairing by default, so you do not need Tunnelmole on `PATH` unless you are managing it yourself.
@@ -40,6 +40,11 @@ macOS or Linux:
 ```bash
 ./run_autoyou.sh --profile full
 ```
+
+The launcher creates and reuses `.venv/` inside this checkout. You do not need
+to activate it or install the runtime packages into your system Python.
+On macOS without Homebrew PortAudio, voice setup builds PortAudio locally and
+needs Xcode Command Line Tools (`xcode-select --install`).
 
 ## 4. Useful bootstrap variants
 
@@ -78,13 +83,16 @@ The full server starts these local surfaces by default:
 
 The auth/signaling server is primarily used during pairing and is presented by the server only when setup needs it.
 
-On a fresh setup, the bootstrap path may initialize the server with the default bootstrap password `autoyou123` until you change it in the Admin UI.
+On a fresh setup, AutoYou creates an initial config with the bootstrap password
+`autoyou123`. Replace it with a unique server password in the local Admin UI.
+For unattended first setup, supply `AUTOYOU_SERVER_PASSWORD` through the environment
+or a secret manager instead.
 
 ## 6. First setup in the Admin UI
 
 Open the Admin UI and:
 
-1. Change the default password if this is a fresh install.
+1. Replace the bootstrap password with a unique password if this is a fresh install.
 2. Choose your AI backend.
 3. Enable only the integrations you plan to use.
 4. Pick your pairing and security settings.
@@ -145,7 +153,7 @@ That starts the lighter server on:
 ## 10. Troubleshooting
 
 - If port `8001` is already in use, the bootstrap script refuses to start a second AutoYou instance.
-- If WhatsApp setup stays disabled, install Node.js 18 or newer and rerun bootstrap without `--skip-node`.
+- If WhatsApp setup stays disabled, rerun bootstrap without `--skip-node` so it can prepare Node.js 22.12 or newer and the pinned dependencies.
 - If Signal stays disabled, start Docker and rerun bootstrap without `--skip-docker`.
 - If local models do not respond, start Ollama manually with `ollama serve` or open the Ollama app on macOS.
 - If OTP pairing cannot open a tunnel because `tmole` is missing, run `python scripts/download_tunnelmole.py` or set `AUTOYOU_TUNNELMOLE_BIN`.

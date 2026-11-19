@@ -23,6 +23,58 @@ from shared import process_lifecycle
 __debug_provenance_y__ = "AUTOYOU-PROVENANCE-Y-legal-94a5f28396092b459f8c226e"
 
 
+def test_new_venv_is_isolated_from_system_packages(tmp_path, monkeypatch):
+    python = tmp_path / ".venv" / "bin" / "python"
+    commands = []
+    monkeypatch.setattr(bootstrap, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(bootstrap, "venv_python_path", lambda: python)
+
+    def fake_run(command, **_kwargs):
+        commands.append(command)
+        if command[1:3] == ["-m", "venv"]:
+            python.parent.mkdir(parents=True)
+            python.touch()
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(bootstrap, "run_command", fake_run)
+
+    assert bootstrap.create_venv(sys.executable) == python
+    assert commands[0] == [sys.executable, "-m", "venv", str(tmp_path / ".venv")]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX shell launcher")
+def test_shell_launcher_reuses_repo_venv_from_another_working_directory(tmp_path):
+    root = tmp_path / "synthetic-server"
+    python = root / ".venv" / "bin" / "python"
+    python.parent.mkdir(parents=True)
+    python.symlink_to(sys.executable)
+    launcher = root / "run_autoyou.sh"
+    launcher.write_text((bootstrap.REPO_ROOT / "run_autoyou.sh").read_text())
+    scripts = root / "scripts"
+    scripts.mkdir()
+    (scripts / "bootstrap_autoyou.py").write_text(
+        "import os, sys\nprint(sys.executable)\nprint(os.getcwd())\nprint(sys.argv[1:])\n"
+    )
+    commands = tmp_path / "bin"
+    commands.mkdir()
+    system_python = commands / "python3.13"
+    system_python.write_text("#!/bin/sh\nexit 99\n")
+    system_python.chmod(0o755)
+
+    result = subprocess.run(
+        ["/bin/bash", str(launcher), "--profile", "full", "--install-only"],
+        cwd=tmp_path,
+        env={**os.environ, "PATH": str(commands) + os.pathsep + os.defpath},
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    assert str(python) in result.stdout
+    assert str(root) in result.stdout
+    assert "'--profile', 'full', '--install-only'" in result.stdout
+
+
 @pytest.mark.parametrize("version", [(3, 10), (3, 11)])
 def test_reused_venv_enforces_the_patched_codecs_python_minimum(tmp_path, monkeypatch, version):
     environment = tmp_path / ".venv"

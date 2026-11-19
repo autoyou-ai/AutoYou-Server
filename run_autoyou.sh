@@ -18,7 +18,7 @@ command_exists() {
 }
 
 PYTHON_CMD=""
-for cmd in python3.13 python3.12 python3.11 python3 python; do
+for cmd in "$SCRIPT_DIR/.venv/bin/python" python3.13 python3.12 python3.11 python3 python; do
     if command_exists "$cmd" && "$cmd" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' >/dev/null 2>&1; then
         PYTHON_CMD="$cmd"
         break

@@ -90,7 +90,9 @@ macOS or Linux:
 ./run_autoyou.sh --profile full --host 0.0.0.0
 ```
 
-The launcher creates a Python environment, installs dependencies from package indexes, and may
+The launcher creates and reuses `.venv/` inside the server checkout; no manual activation is
+needed. Python 3.13 is recommended for the full profile to match the shared dependency lock.
+It installs dependencies from package indexes and may
 download models and native tools. Read the scripts first and run them in an environment you
 can safely modify.
 
