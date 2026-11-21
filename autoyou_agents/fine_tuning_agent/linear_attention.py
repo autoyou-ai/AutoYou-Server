@@ -28,8 +28,18 @@ and the outputs joined once (``stack``), so the backward is linear in the
 tensor, not in chunks x tensor. The arithmetic is unchanged; the test suite
 compares values and gradients against transformers' own reference.
 
-:func:`install` swaps it in only when no ``fla`` kernel is available, so a CUDA
-host that has the real kernel keeps it.
+The second cost is the short causal convolution in front of the scan. Without the
+``causal_conv1d`` package transformers runs it as a grouped ``F.conv1d`` with one
+group per channel (8192 of them in the 4B model), which the ROCm and MIOpen
+depthwise path executes at ~19 ms forward+backward per layer for 1024 tokens -
+as much as the scan itself, about a fifth of a whole training step. A kernel
+of width four is four shifted multiply-adds; :func:`fast_causal_conv1d_fn` does
+exactly that and measures ~6 ms for the same layer, with an error against an
+fp32 reference of the same order as the convolution's own bf16 rounding.
+
+:func:`install` swaps each function in only when its real kernel is not
+available (``fla`` for the scan, ``causal_conv1d`` for the convolution), so a
+CUDA host that has the real kernels keeps them.
 """
 
 from __future__ import annotations
@@ -49,6 +59,44 @@ _MODEL_MODULES = (
 )
 _REFERENCE_NAME = "torch_chunk_gated_delta_rule"
 _INSTALLED_MARK = "_autoyou_fast_gated_delta_rule"
+_CONV_NAME = "causal_conv1d_fn"
+_CONV_MARK = "_autoyou_fast_causal_conv1d"
+
+
+def fast_causal_conv1d_fn(
+    hidden_states: Any,
+    weight: Any,
+    bias: Optional[Any] = None,
+    activation: Optional[str] = None,
+    **kwargs: Any,
+) -> Any:
+    """Same inputs, outputs and arithmetic as transformers' fallback ``causal_conv1d_fn``.
+
+    ``hidden_states`` is ``[B, C, L]``, ``weight`` is ``[C, K]`` (one filter per
+    channel) and the result is ``[B, C, L]``: the causal depthwise convolution,
+    then ``activation``. Computed as ``K`` shifted multiply-adds over the
+    left-padded input rather than as a grouped convolution; autograd's backward is
+    the matching handful of elementwise ops. Extra keyword arguments (``seq_idx``
+    and the like, meant for the fused kernel) are ignored, as the fallback does.
+    """
+    import torch.nn.functional as F
+
+    seq_len = hidden_states.shape[-1]
+    kernel = weight.shape[-1]
+    padded = F.pad(hidden_states.to(weight.dtype), (kernel - 1, 0))
+    out = padded[..., :seq_len] * weight[:, 0:1]
+    for shift in range(1, kernel):
+        out = out + padded[..., shift:shift + seq_len] * weight[:, shift:shift + 1]
+    if bias is not None:
+        out = out + bias[:, None]
+    if activation is not None:
+        try:
+            from transformers.activations import ACT2FN
+
+            out = ACT2FN[activation](out)
+        except (ImportError, KeyError):
+            out = getattr(F, activation)(out)
+    return out.to(hidden_states.dtype)
 
 
 def fast_chunk_gated_delta_rule(
@@ -148,31 +196,42 @@ def fast_chunk_gated_delta_rule(
     return core_attn_out, final_state
 
 
-def install(*, force: bool = False) -> Dict[str, Any]:
-    """Replace transformers' reference scan with :func:`fast_chunk_gated_delta_rule`.
+def _swap(module: Any, attribute: str, replacement: Any, mark: str) -> bool:
+    """Put ``replacement`` in place of ``module.attribute``; True when it is in place afterwards."""
+    current = getattr(module, attribute, None)
+    if current is None:
+        return False
+    if getattr(current, mark, False):
+        return True
+    setattr(replacement, mark, True)
+    setattr(module, attribute, replacement)
+    return True
 
-    Does nothing when an ``fla`` kernel is available (CUDA hosts keep the real
-    one) unless ``force``. Safe to call repeatedly. Returns what it did, for the
-    job log.
+
+def install(*, force: bool = False) -> Dict[str, Any]:
+    """Replace transformers' reference scan and short convolution with the faster equivalents.
+
+    The scan is replaced by :func:`fast_chunk_gated_delta_rule` unless an ``fla``
+    kernel is available, the convolution by :func:`fast_causal_conv1d_fn` unless
+    ``causal_conv1d`` is (CUDA hosts keep the real kernels), both unless ``force``.
+    Safe to call repeatedly. Returns what it did, for the job log: ``patched``
+    lists the model modules whose scan was replaced, ``conv_patched`` those whose
+    convolution was.
     """
-    result: Dict[str, Any] = {"patched": [], "skipped": ""}
-    if not force and importlib.util.find_spec("fla") is not None:
+    result: Dict[str, Any] = {"patched": [], "conv_patched": [], "skipped": ""}
+    patch_scan = force or importlib.util.find_spec("fla") is None
+    patch_conv = force or importlib.util.find_spec("causal_conv1d") is None
+    if not patch_scan:
         result["skipped"] = "flash-linear-attention is installed; its kernel is used"
-        return result
     for name in _MODEL_MODULES:
         try:
             module = importlib.import_module(name)
         except Exception:
             continue
-        current = getattr(module, _REFERENCE_NAME, None)
-        if current is None:
-            continue
-        if getattr(current, _INSTALLED_MARK, False):
+        if patch_scan and _swap(module, _REFERENCE_NAME, fast_chunk_gated_delta_rule, _INSTALLED_MARK):
             result["patched"].append(name)
-            continue
-        setattr(fast_chunk_gated_delta_rule, _INSTALLED_MARK, True)
-        setattr(module, _REFERENCE_NAME, fast_chunk_gated_delta_rule)
-        result["patched"].append(name)
-    if not result["patched"]:
+        if patch_conv and _swap(module, _CONV_NAME, fast_causal_conv1d_fn, _CONV_MARK):
+            result["conv_patched"].append(name)
+    if patch_scan and not result["patched"]:
         result["skipped"] = "no gated-delta-rule model module is importable"
     return result

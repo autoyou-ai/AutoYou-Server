@@ -652,10 +652,11 @@ def _make_trainer_callbacks(*, progress_file: Optional[Path], total_steps_hint: 
 
         def on_step_end(self, args: Any, state: Any, control: Any, **kwargs: Any) -> None:
             if self.first_step is None:
-                self.first_step = state.global_step - 1
+                # The clock starts when this process's first step ends (warm-up is not averaged in).
+                self.first_step = state.global_step
                 self.started = time.time()
-            done = max(1, state.global_step - self.first_step)
-            per_step = (time.time() - self.started) / done
+            done = state.global_step - self.first_step
+            per_step = (time.time() - self.started) / done if done > 0 else 0.0
             memory = None
             try:
                 import torch

@@ -118,25 +118,120 @@ def test_the_scan_is_linear_in_chunks_not_quadratic_in_autograd_nodes():
     assert select_like(fast) < select_like(reference)
 
 
+# ----------------------------------------------------- the short causal convolution
+def _conv_reference(hidden_states, weight, bias=None, activation=None, **kwargs):
+    """transformers' fallback ``causal_conv1d_fn``, written out: a grouped F.conv1d."""
+    import torch.nn.functional as F
+
+    seq_len = hidden_states.shape[-1]
+    out = F.conv1d(hidden_states.to(weight.dtype), weight.unsqueeze(1), bias, padding=weight.shape[-1] - 1,
+                   groups=hidden_states.shape[1])[:, :, :seq_len]
+    if activation is not None:
+        out = F.silu(out)
+    return out.to(hidden_states.dtype)
+
+
+def _conv_inputs(seq_len, *, channels=12, kernel=4, bias=True, dtype=torch.float32, batch=2, seed=0):
+    generator = torch.Generator().manual_seed(seed)
+    x = torch.randn(batch, channels, seq_len, generator=generator, dtype=dtype).requires_grad_(True)
+    w = torch.randn(channels, kernel, generator=generator, dtype=dtype).requires_grad_(True)
+    b = torch.randn(channels, generator=generator, dtype=dtype).requires_grad_(True) if bias else None
+    return x, w, b
+
+
+@pytest.mark.parametrize("seq_len", [1, 2, 3, 4, 17, 130])
+@pytest.mark.parametrize("bias", [True, False])
+@pytest.mark.parametrize("activation", ["silu", None])
+def test_the_fast_convolution_matches_the_grouped_convolution(seq_len, bias, activation):
+    x, w, b = _conv_inputs(seq_len, bias=bias)
+    tensors = [t for t in (x, w, b) if t is not None]
+
+    def run(fn):
+        for t in tensors:
+            t.grad = None
+        out = fn(x, w, b, activation)
+        (out.pow(2).sum() + out.sum()).backward()
+        return out, [t.grad.clone() for t in tensors]
+
+    ref_out, ref_grads = run(_conv_reference)
+    out, grads = run(la.fast_causal_conv1d_fn)
+    assert out.shape == ref_out.shape == x.shape
+    assert torch.allclose(out, ref_out, atol=1e-5, rtol=1e-5)
+    for mine, theirs in zip(grads, ref_grads):
+        assert torch.allclose(mine, theirs, atol=1e-4, rtol=1e-4)
+
+
+def test_the_fast_convolution_is_causal():
+    x, w, b = _conv_inputs(32, bias=False)
+    with torch.no_grad():
+        before = la.fast_causal_conv1d_fn(x, w, b, "silu")
+        changed = x.clone()
+        changed[:, :, 20:] += 5.0
+        after = la.fast_causal_conv1d_fn(changed, w, b, "silu")
+    assert torch.equal(before[:, :, :20], after[:, :, :20])
+    assert not torch.equal(before[:, :, 20:], after[:, :, 20:])
+
+
+def test_bf16_inputs_stay_bf16_and_stay_close_to_the_grouped_convolution():
+    x, w, b = _conv_inputs(64, dtype=torch.bfloat16)
+    out = la.fast_causal_conv1d_fn(x, w, b, "silu")
+    ref = _conv_reference(x, w, b, "silu")
+    assert out.dtype == torch.bfloat16
+    assert (out.float() - ref.float()).abs().max() < 0.1
+
+
+def test_the_fast_convolution_builds_no_convolution_node():
+    x, w, _ = _conv_inputs(32, bias=False)
+    out = la.fast_causal_conv1d_fn(x, w, None, "silu")
+    seen, stack, names = set(), [out.grad_fn], []
+    while stack:
+        node = stack.pop()
+        if node is None or node in seen:
+            continue
+        seen.add(node)
+        names.append(type(node).__name__)
+        stack.extend(next_fn for next_fn, _ in node.next_functions)
+    assert not any("Convolution" in name for name in names)
+
+
 # ------------------------------------------------------------------- install
 def test_install_swaps_the_function_and_is_idempotent(monkeypatch):
     monkeypatch.setattr(modeling, "torch_chunk_gated_delta_rule", _ORIGINAL)
+    monkeypatch.setattr(modeling, "causal_conv1d_fn", _conv_reference)
     monkeypatch.setattr(la.importlib.util, "find_spec", lambda name, *a, **k: None)
     first = la.install()
     assert "transformers.models.qwen3_5.modeling_qwen3_5" in first["patched"]
+    assert "transformers.models.qwen3_5.modeling_qwen3_5" in first["conv_patched"]
     assert modeling.torch_chunk_gated_delta_rule is la.fast_chunk_gated_delta_rule
+    assert modeling.causal_conv1d_fn is la.fast_causal_conv1d_fn
     second = la.install()
-    assert second["patched"] and modeling.torch_chunk_gated_delta_rule is la.fast_chunk_gated_delta_rule
+    assert second["patched"] and second["conv_patched"]
+    assert modeling.torch_chunk_gated_delta_rule is la.fast_chunk_gated_delta_rule
+    assert modeling.causal_conv1d_fn is la.fast_causal_conv1d_fn
 
 
 def test_install_leaves_a_real_fla_kernel_alone(monkeypatch):
     monkeypatch.setattr(modeling, "torch_chunk_gated_delta_rule", _ORIGINAL)
+    monkeypatch.setattr(modeling, "causal_conv1d_fn", _conv_reference)
     monkeypatch.setattr(la.importlib.util, "find_spec", lambda name, *a, **k: object() if name == "fla" else None)
     result = la.install()
     assert result["patched"] == [] and "flash-linear-attention" in result["skipped"]
     assert modeling.torch_chunk_gated_delta_rule is _ORIGINAL
+    assert modeling.causal_conv1d_fn is la.fast_causal_conv1d_fn  # no causal_conv1d package: its fallback is replaced
     forced = la.install(force=True)
     assert forced["patched"]
+
+
+def test_install_leaves_a_real_causal_conv1d_kernel_alone(monkeypatch):
+    monkeypatch.setattr(modeling, "torch_chunk_gated_delta_rule", _ORIGINAL)
+    monkeypatch.setattr(modeling, "causal_conv1d_fn", _conv_reference)
+    monkeypatch.setattr(la.importlib.util, "find_spec",
+                        lambda name, *a, **k: object() if name == "causal_conv1d" else None)
+    result = la.install()
+    assert result["patched"] and result["conv_patched"] == []
+    assert modeling.causal_conv1d_fn is _conv_reference
+    assert modeling.torch_chunk_gated_delta_rule is la.fast_chunk_gated_delta_rule
+    assert la.install(force=True)["conv_patched"]
 
 
 def test_a_patched_layer_computes_the_same_forward_as_an_unpatched_one(monkeypatch):
@@ -157,10 +252,12 @@ def test_a_patched_layer_computes_the_same_forward_as_an_unpatched_one(monkeypat
     ids = torch.randint(0, 128, (2, 70))
 
     monkeypatch.setattr(modeling, "torch_chunk_gated_delta_rule", _ORIGINAL)
+    monkeypatch.setattr(modeling, "causal_conv1d_fn", _conv_reference)
     with torch.no_grad():
         expected = model(input_ids=ids).logits
     monkeypatch.setattr(la.importlib.util, "find_spec", lambda name, *a, **k: None)
     la.install()
+    assert modeling.causal_conv1d_fn is la.fast_causal_conv1d_fn
     with torch.no_grad():
         actual = model(input_ids=ids).logits
     assert torch.allclose(actual, expected, atol=1e-5, rtol=1e-4)
