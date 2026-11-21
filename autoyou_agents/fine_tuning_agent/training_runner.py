@@ -207,16 +207,32 @@ def _template_has_thinking(tokenizer: Any) -> bool:
     return "enable_thinking" in str(template or "")
 
 
-def _build_template_sample(messages: List[Dict[str, Any]], tokenizer: Any, max_length: int) -> Optional[Dict[str, List[int]]]:
+def _thinking_for_sample(messages: List[Dict[str, Any]], thinking_mix: float) -> bool:
+    """Whether this sample is rendered with the open think block. Stable per sample."""
+    import hashlib
+
+    key = json.dumps(messages, sort_keys=True, ensure_ascii=False, default=str)
+    fraction = int.from_bytes(hashlib.sha256(key.encode("utf-8")).digest()[:4], "big") / 2**32
+    return fraction < float(thinking_mix)
+
+
+def _build_template_sample(
+    messages: List[Dict[str, Any]], tokenizer: Any, max_length: int, thinking_mix: float = 0.5,
+) -> Optional[Dict[str, List[int]]]:
     """Mask by the model's own chat template, supervising the final reply only.
 
     The ChatML text the other builder hard-codes omits what a thinking template
-    adds around an answer (an empty ``<think>`` block), so a model trained on it
-    is served prompts it never saw. Here the template renders the prompt in
-    non-thinking mode and the completion is whatever follows it in the full
-    rendering. The two halves are tokenized separately and joined, which is what
-    generation does; tokenizing the whole conversation can merge across the
+    adds around an answer, so a model trained on it is served prompts it never saw.
+    Here the template renders the prompt and the completion is whatever follows it in
+    the full rendering. The two halves are tokenized separately and joined, which is
+    what generation does; tokenizing the whole conversation can merge across the
     boundary and teach a token the model is never positioned to emit.
+
+    ``thinking_mix`` is the share of samples rendered with the open think block.
+    Ollama sends enable_thinking=true to any model it detects as thinking-capable
+    unless the client says think:false, so a plain request renders the open block and
+    a think:false request the empty one. Training both lets the installed model
+    answer directly either way; training only one returned empty answers in the other.
     """
     clean = [
         {"role": str(m.get("role") or "").strip().lower(), "content": str(m.get("content") or "").strip()}
@@ -225,7 +241,9 @@ def _build_template_sample(messages: List[Dict[str, Any]], tokenizer: Any, max_l
     ]
     if len(clean) < 2 or clean[-1]["role"] != "assistant":
         return None
-    kwargs = {"enable_thinking": False} if _template_has_thinking(tokenizer) else {}
+    kwargs: Dict[str, Any] = {}
+    if _template_has_thinking(tokenizer):
+        kwargs["enable_thinking"] = _thinking_for_sample(clean, thinking_mix)
     try:
         prompt_text = tokenizer.apply_chat_template(clean[:-1], tokenize=False, add_generation_prompt=True, **kwargs)
         full_text = tokenizer.apply_chat_template(clean, tokenize=False, add_generation_prompt=False, **kwargs)
@@ -904,7 +922,11 @@ def train_adapter(args: argparse.Namespace) -> int:
         template_masking = _template_has_thinking(tokenizer)
         for row in rows:
             builder = _build_template_sample if template_masking else _build_masked_sample
-            sample = builder(list(row.get("messages") or []), tokenizer, int(args.max_seq_length))
+            if template_masking:
+                sample = builder(list(row.get("messages") or []), tokenizer, int(args.max_seq_length),
+                                 float(getattr(args, "thinking_mix", 0.5)))
+            else:
+                sample = builder(list(row.get("messages") or []), tokenizer, int(args.max_seq_length))
             if sample is None:
                 skipped += 1
             else:
@@ -1151,6 +1173,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="append AUTOYOU_PROGRESS lines here as well as to the log")
     parser.add_argument("--trust-remote-code", action="store_true",
                         help="run Python shipped in the model repository (off by default)")
+    parser.add_argument("--thinking-mix", type=float, default=0.5,
+                        help="share of samples rendered with the open think block for thinking-capable templates")
     parser.add_argument("--executor", choices=["torch", "mlx"], default="torch",
                         help="mlx trains text LoRA with mlx-lm on Apple silicon")
     return parser
