@@ -404,7 +404,7 @@ def _ai_provider() -> str:
 
 def _ollama_model() -> str:
     """The Ollama model the AI agent uses, read the way the agent reads it."""
-    model = str(os.getenv("OLLAMA_MODEL", "ministral-3:8b") or "").strip()
+    model = str(os.getenv("OLLAMA_MODEL", "qwen3.5:4b") or "").strip()
     return re.sub(r"^(?:ollama_chat|ollama|litellm)/", "", model, flags=re.IGNORECASE)
 
 

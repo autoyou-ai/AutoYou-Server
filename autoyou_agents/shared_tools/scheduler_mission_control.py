@@ -777,7 +777,23 @@ def _inject_frontend_auth_gate(
   }}
 </script>
 """
-    gate = f"""
+    needs_totp_setup = (
+        locked
+        and not bool(auth.get("totp_configured", True))
+        and not bool(auth.get("per_agent_profile", False))
+    )
+    if needs_totp_setup:
+        gate = f"""
+<div id="autoyou-auth-gate" role="dialog" aria-modal="true" aria-labelledby="autoyou-auth-title"{locked_attr}>
+  <section>
+    <h2 id="autoyou-auth-title">{escaped_title} needs 2FA setup</h2>
+    <p>Two-factor authentication has not been set up on this computer yet. Open AutoYou on the host computer and go to Security &rarr; Authenticator &amp; 2FA to enable it, or allow open access for this site.</p>
+    <p id="autoyou-auth-error" role="alert" aria-live="polite"></p>
+  </section>
+</div>
+"""
+    else:
+        gate = f"""
 <div id="autoyou-auth-gate" role="dialog" aria-modal="true" aria-labelledby="autoyou-auth-title"{locked_attr}>
   <section>
     <h2 id="autoyou-auth-title">Unlock {escaped_title}</h2>

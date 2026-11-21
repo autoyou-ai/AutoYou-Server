@@ -2317,14 +2317,55 @@ class InternetTool:
                             "error": str(action_error)
                         })
                 
-                # Get final page state
+                # Get final page state including readable text, headlines, and interactive controls
                 final_url = page.url
                 title = await page.title()
-                
+                page_snapshot: Dict[str, Any] = {}
+                try:
+                    page_snapshot = await page.evaluate(
+                        """() => {
+                            const text = (document.body && document.body.innerText ? document.body.innerText : '')
+                                .replace(/\\s+/g, ' ').trim().slice(0, 4000);
+                            const seenH = new Set();
+                            const headlines = [];
+                            for (const el of document.querySelectorAll('h1, h2, h3, article a')) {
+                                const t = (el.innerText || el.textContent || '').replace(/\\s+/g, ' ').trim();
+                                if (t.length < 18 || t.length > 220 || seenH.has(t)) continue;
+                                seenH.add(t);
+                                const a = el.tagName === 'A' ? el : el.closest('a') || el.querySelector('a');
+                                headlines.push({ title: t, url: a && a.href ? a.href : '' });
+                                if (headlines.length >= 12) break;
+                            }
+                            const interactive = [];
+                            const els = document.querySelectorAll('a[href], button, input, textarea, select, [role="button"], [role="link"]');
+                            let idx = 0;
+                            for (const el of els) {
+                                const rect = el.getBoundingClientRect();
+                                if (rect.width <= 0 || rect.height <= 0) continue;
+                                const label = (el.innerText || el.getAttribute('aria-label') || el.getAttribute('placeholder') || el.getAttribute('name') || '').replace(/\\s+/g, ' ').trim();
+                                if (!label && el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') continue;
+                                idx += 1;
+                                interactive.push({
+                                    index: idx,
+                                    tag: el.tagName.toLowerCase(),
+                                    label: label.slice(0, 100),
+                                    href: el.tagName === 'A' ? (el.href || '').slice(0, 240) : '',
+                                });
+                                if (interactive.length >= 35) break;
+                            }
+                            return { text_content: text, headlines, interactive_elements: interactive };
+                        }"""
+                    ) or {}
+                except Exception as snap_err:
+                    logger.debug(f"Page snapshot extraction after navigate_page skipped: {snap_err}")
+
                 return {
                     "url": str(url),
                     "final_url": final_url,
                     "title": title,
+                    "text_content": str(page_snapshot.get("text_content") or ""),
+                    "headlines": list(page_snapshot.get("headlines") or []),
+                    "interactive_elements": list(page_snapshot.get("interactive_elements") or []),
                     "actions_performed": len(results),
                     "results": results,
                     "browser_headless": requested_headless if requested_headless is not None else PlaywrightDriverManager._resolve_default_headless_setting(),

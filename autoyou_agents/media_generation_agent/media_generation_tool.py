@@ -1425,7 +1425,7 @@ def ai_enhance_prompt(prompt: str, media_type: str = "video") -> str:
                 **completion_kwargs,
             )
         else: # Default local Ollama
-            model_name = os.getenv("OLLAMA_MODEL", "ministral-3:8b")
+            model_name = os.getenv("OLLAMA_MODEL", "qwen3.5:4b")
             api_base = os.getenv("OLLAMA_API_BASE", "http://localhost:11434")
             response = litellm.completion(
                 model=f"ollama_chat/{model_name}",

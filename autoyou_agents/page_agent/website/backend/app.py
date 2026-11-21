@@ -252,7 +252,7 @@ class PageFeedService:
             self._next_id = 1
 
     def _get_ui_theme(self) -> str:
-        return get_ui_theme(app_name="AutoYou", anchor=__file__, default="dark")
+        return get_ui_theme(app_name="AutoYou", anchor=__file__, default="light")
 
     def _set_ui_theme(self, theme: Any) -> str:
         return set_ui_theme(normalize_ui_theme(theme), app_name="AutoYou", anchor=__file__)

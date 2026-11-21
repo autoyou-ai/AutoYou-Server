@@ -2410,7 +2410,7 @@ def register_routes(
                         raise ValueError(f'Invalid timeline days: {e}')
 
                 if autoyou_page_theme is not None:
-                    cfg['autoyou_page']['theme'] = server.normalize_ui_theme(autoyou_page_theme, default='dark')
+                    cfg['autoyou_page']['theme'] = server.normalize_ui_theme(autoyou_page_theme, default='light')
 
                 # Custom forwarding enable
                 if autoyou_custom_forward_enabled is not None:
@@ -2455,7 +2455,7 @@ def register_routes(
                     # If any error during conflict detection, proceed without aggressive stop
                     pass
                 try:
-                    server._persist_autoyou_ui_theme(cfg.get('autoyou_page', {}).get('theme', 'dark'), cfg=cfg, persist_config=False)
+                    server._persist_autoyou_ui_theme(cfg.get('autoyou_page', {}).get('theme', 'light'), cfg=cfg, persist_config=False)
                 except Exception as exc:
                     server.LOGGER.warning("Failed to persist shared AutoYou theme preference: %s", exc)
             elif kind == 'admin_frontend':
@@ -2569,7 +2569,7 @@ def register_routes(
             payload = await request.json()
         except Exception:
             payload = {}
-        requested_theme = server.normalize_ui_theme((payload or {}).get("theme"), default="dark")
+        requested_theme = server.normalize_ui_theme((payload or {}).get("theme"), default="light")
         try:
             persisted_theme = server._persist_autoyou_ui_theme(
                 requested_theme,

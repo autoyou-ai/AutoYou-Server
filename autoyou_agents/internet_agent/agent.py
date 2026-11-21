@@ -68,7 +68,7 @@ _INTERNET_BROWSE_ACTION_PATTERN = re.compile(
 # a scheduled task worded that way came back as a raw page dump.
 _INTERNET_SYNTHESIS_PATTERN = re.compile(
     r"\b(?:summar(?:y|ies|i[sz]e[sd]?)|synthesi[sz]e|compare|analy[sz]e|explain|brief(?:ly)?|roundup|digest|"
-    r"report|identify)\b",
+    r"report|identify|parse|extract|headlines?|stories|articles?)\b",
     re.IGNORECASE,
 )
 _INTERNET_RESULT_ONLY_PATTERN = re.compile(
@@ -555,12 +555,23 @@ def _format_verified_internet_tool_result(tool_name: str, args: Dict[str, Any], 
         preview_lines = "\n".join(_format_search_result_preview(result) for result in results[:5])
         return f"{prefix}\n\nTop results:\n{preview_lines}"
 
-    if tool_name == "scrape_website":
-        url = str(tool_response.get("url") or args.get("url") or "").strip()
+    if tool_name in {"scrape_website", "navigate_page"}:
+        url = str(tool_response.get("final_url") or tool_response.get("url") or args.get("url") or "").strip()
         title = str(tool_response.get("title") or "Untitled page").strip()
         text = " ".join(str(tool_response.get("text_content") or "").split()).strip()
+        headlines = [
+            h for h in list(tool_response.get("headlines") or [])
+            if isinstance(h, dict) and str(h.get("title") or "").strip()
+        ]
         lines = [f"Retrieved the page '{title}'" + (f" at {url}." if url else ".")]
-        if text:
+        if headlines:
+            lines.append("")
+            lines.append("Top headlines:")
+            for headline in headlines[:8]:
+                htitle = str(headline.get("title") or "").strip()
+                hurl = str(headline.get("url") or "").strip()
+                lines.append(f"- {htitle}" + (f" ({hurl})" if hurl else ""))
+        elif text:
             lines.append("")
             lines.append(text[:700])
         return "\n".join(lines)
@@ -674,7 +685,11 @@ async def _internet_expanded_before_model_callback(callback_context: Any, llm_re
     page_url = _extract_explicit_page_url(user_text)
     direct_page_request = bool(
         page_url
-        and re.search(r"\b(?:open|visit|load|scrape|page\s+title|visible\s+headlines?)\b", user_text, re.IGNORECASE)
+        and re.search(
+            r"\b(?:open|visit|load|scrape|parse|read|extract|page\s+title|visible\s+headlines?|news|headlines?)\b",
+            user_text,
+            re.IGNORECASE,
+        )
     )
     if not direct_page_request:
         # "The latest news from example.com": read that site on this computer

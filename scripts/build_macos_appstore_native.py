@@ -149,6 +149,49 @@ def stage(prefix: Path, bundle: Path) -> None:
     shutil.copytree(prefix / 'licenses', bundle / 'runtime/native-audio-licenses', dirs_exist_ok=True)
 
 
+def _has_only_bundled_deps(path: Path, allowed_names: set[str]) -> bool:
+    libraries = subprocess.check_output(['otool', '-L', str(path)], text=True).splitlines()[1:]
+    for line in libraries:
+        library = line.strip().split(' (', 1)[0]
+        if library.startswith(('/usr/lib/', '/System/Library/')):
+            continue
+        if not library.startswith('@loader_path/'):
+            return False
+        if Path(library).name not in allowed_names:
+            return False
+    return True
+
+
+def already_staged(bundle: Path) -> bool:
+    """Return True when all pinned macOS 14 codecs, PortAudio, libsodium, and licenses are already staged."""
+    codec_root = bundle / 'runtime_site_packages/torchaudio/lib'
+    codec_set = set(CODECS)
+    for name in CODECS:
+        target = codec_root / name
+        if not target.is_file() or minimum_macos(target) > (14, 0) or not _has_only_bundled_deps(target, codec_set):
+            return False
+    arch = f'darwin-{platform.machine()}'
+    for relative in ('shared/native/libsodium', 'runtime_modules/shared/native/libsodium'):
+        target = bundle / relative / arch / 'libsodium.dylib'
+        if not target.is_file() or minimum_macos(target) > (14, 0) or not _has_only_bundled_deps(target, {'libsodium.dylib'}):
+            return False
+    portaudio_targets = [path for path in (
+        bundle / 'libportaudio.2.dylib',
+        bundle / 'runtime_site_packages/pyaudio/libportaudio.2.dylib',
+    ) if path.is_file()]
+    if not portaudio_targets:
+        return False
+    for target in portaudio_targets:
+        if minimum_macos(target) > (14, 0) or not _has_only_bundled_deps(target, {'libportaudio.2.dylib'}):
+            return False
+    manifest = json.loads(Path(__file__).with_name('macos_appstore_native.json').read_text())
+    licenses_root = bundle / 'runtime/native-audio-licenses'
+    for package in manifest['packages']:
+        if not (licenses_root / package['name']).is_dir():
+            return False
+    return True
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--build-dir', type=Path, required=True)
@@ -158,6 +201,9 @@ def main() -> None:
     if platform.system() != 'Darwin' or args.jobs < 1:
         parser.error('Requires macOS and a positive job count')
     bundle = args.bundle_root.resolve()
+    if already_staged(bundle):
+        print('SoX codecs, PortAudio, and libsodium already staged for macOS 14; licenses verified.')
+        return
     stage(prepare(args.build_dir, args.jobs), bundle)
     portaudio_targets = [path for path in (
         bundle / 'libportaudio.2.dylib',

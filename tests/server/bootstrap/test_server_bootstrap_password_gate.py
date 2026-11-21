@@ -543,10 +543,15 @@ def test_login_page_exposes_password_generator_when_default_password_is_active()
         response = client.get("/login")
 
     assert response.status_code == 200
+    assert "data-theme='light'" in response.text
+    assert "Set up AutoYou" in response.text
     assert "Generate random password" in response.text
+    assert "id='use-default-password'" in response.text
     assert "toggle-password" in response.text
-    assert "Secure Cloud Pair works with the same paid account" in response.text
     assert "Public links require a custom password" in response.text
+    assert "same paid account" not in response.text
+    assert "sign in to AutoYou Cloud" not in response.text
+    assert "By continuing you agree to the" not in response.text
 
 
 def test_login_page_stays_available_when_maximus_acknowledgement_is_locked():

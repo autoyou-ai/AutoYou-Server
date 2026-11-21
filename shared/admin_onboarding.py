@@ -479,7 +479,7 @@ def build_ollama_install_guide_html() -> str:
       <h1>Install Ollama First</h1>
       <p>AutoYou uses your local Ollama runtime by default. That keeps inference on your machine and avoids requiring a cloud provider for the first-run setup.</p>
       <div class='guide-callout'>
-        <strong>Recommended starter model:</strong> <code>ministral-3:8b</code>. It is the default model AutoYou expects during first-run onboarding.
+        <strong>Recommended starter model:</strong> <code>qwen3.5:4b</code> (or <code>qwen3.5:9b</code> on machines with 24 GB+ RAM). It is the default model AutoYou recommends during first-run setup.
       </div>
       <h2>Windows walkthrough</h2>
       <ol>
@@ -492,13 +492,13 @@ def build_ollama_install_guide_html() -> str:
       <ul>
         <li>Launch the Ollama desktop app again.</li>
         <li>Or open a terminal and run <code>ollama serve</code>.</li>
-        <li>Then install the starter model with <code>ollama pull ministral-3:8b</code> or use the AutoYou download button.</li>
+        <li>Then install the starter model with <code>ollama pull qwen3.5:4b</code> or use the AutoYou download button.</li>
       </ul>
       <h2>About Ollama cloud models</h2>
       <p><strong>Local models are recommended for AutoYou.</strong> They download once, run entirely on your device, and require no sign-in or subscription.</p>
       <p>Ollama recently added cloud model support, but cloud models require signing into your Ollama.com account via the command line:</p>
       <code style='display:block;margin:10px 0'>ollama login</code>
-      <p>If you prefer local models (which we recommend), just ignore the cloud toggle in the model picker. Focus on installing a local model like <code>ministral-3:8b</code> or another option from the Ollama library.</p>
+      <p>If you prefer local models (which we recommend), just ignore the cloud toggle in the model picker. Focus on installing a local model like <code>qwen3.5:4b</code> or another option from the Ollama library.</p>
     </section>
     """
 

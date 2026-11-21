@@ -657,6 +657,40 @@ def list_running_windows() -> Dict[str, Any]:
         Dict[str, Any]: Status and list of active application windows.
     """
     try:
+        from autoyou_agents.shared_tools.desktop_accessibility import list_accessible_windows
+
+        accessible = list_accessible_windows()
+        if accessible.get("status") == "headless":
+            return accessible
+        if accessible.get("status") == "success" and accessible.get("windows"):
+            normalized = []
+            for entry in accessible["windows"]:
+                b = entry.get("bounds") or {}
+                normalized.append(
+                    _window_entry(
+                        title=str(entry.get("title") or ""),
+                        left=int(float(b.get("x") or 0)),
+                        top=int(float(b.get("y") or 0)),
+                        width=max(1, int(float(b.get("width") or 1))),
+                        height=max(1, int(float(b.get("height") or 1))),
+                        handle=entry.get("window_id") if isinstance(entry.get("window_id"), int) else None,
+                        xid=str(entry.get("window_id")) if isinstance(entry.get("window_id"), str) else None,
+                        pid=entry.get("pid"),
+                        process_name=entry.get("app_name") or entry.get("process_name"),
+                        platform_tag=entry.get("platform") or _platform_tag(),
+                    )
+                )
+            return {
+                "status": "success",
+                "platform": accessible.get("platform") or _platform_tag(),
+                "backend": accessible.get("backend"),
+                "windows": normalized,
+                "count": len(normalized),
+            }
+    except Exception as exc:
+        logger.debug("Accessible window listing fell back to legacy enumerator: %s", exc)
+
+    try:
         seen: set[str] = set()
         windows: List[Dict[str, Any]] = []
         discovered = _list_windows_pygetwindow()
@@ -684,14 +718,116 @@ def list_running_windows() -> Dict[str, Any]:
         }
 
 
+def desktop_automation_status() -> Dict[str, Any]:
+    """Inspect the host OS (macOS, Windows, Linux, WSL2, or Docker) and active background UI automation backend.
+
+    Returns:
+        Dict[str, Any]: Platform capabilities, active accessibility backend, and display status.
+    """
+    from autoyou_agents.shared_tools.desktop_accessibility import detect_desktop_environment
+
+    return detect_desktop_environment()
+
+
+def snapshot_window_ui(
+    app_name: str = "",
+    window_title: str = "",
+    max_elements: int = 80,
+) -> Dict[str, Any]:
+    """Capture a compact accessibility UI tree with snapshot-bound element tokens for a desktop window.
+
+    Args:
+        app_name: Optional application or process name to match (for example ``Safari``, ``Notes``, ``Code``).
+        window_title: Optional substring of the window title to match.
+        max_elements: Maximum number of interactive UI elements to return (10-200).
+
+    Returns:
+        Dict[str, Any]: Snapshot metadata, Markdown accessibility tree, and element tokens.
+    """
+    from autoyou_agents.shared_tools.desktop_accessibility import snapshot_window_accessibility
+
+    return snapshot_window_accessibility(
+        app_name=app_name,
+        window_title=window_title,
+        max_elements=max_elements,
+    )
+
+
+def click_ui_element(
+    element_token: str,
+    double_click: bool = False,
+    right_click: bool = False,
+) -> Dict[str, Any]:
+    """Click or invoke a snapshot-bound UI element token returned by ``snapshot_window_ui``.
+
+    Args:
+        element_token: Snapshot-bound token in ``<snapshot_id>:<index>`` form.
+        double_click: Whether to double-click the element.
+        right_click: Whether to secondary/right-click the element.
+
+    Returns:
+        Dict[str, Any]: Action outcome and backend used.
+    """
+    from autoyou_agents.shared_tools.desktop_accessibility import click_accessible_element
+
+    return click_accessible_element(
+        element_token,
+        double_click=double_click,
+        right_click=right_click,
+    )
+
+
+def type_into_ui_element(
+    element_token: str,
+    text: str,
+    submit: bool = False,
+) -> Dict[str, Any]:
+    """Enter text into a snapshot-bound UI input token returned by ``snapshot_window_ui``.
+
+    Args:
+        element_token: Snapshot-bound token in ``<snapshot_id>:<index>`` form.
+        text: Text to write into the control.
+        submit: Whether to press Enter/Return after writing text.
+
+    Returns:
+        Dict[str, Any]: Outcome of the text entry operation.
+    """
+    from autoyou_agents.shared_tools.desktop_accessibility import type_into_accessible_element
+
+    return type_into_accessible_element(element_token, text, submit=submit)
+
+
+def press_ui_hotkey(
+    keys: List[str],
+    app_name: str = "",
+) -> Dict[str, Any]:
+    """Press a keyboard shortcut (for example ``["cmd", "l"]`` or ``["ctrl", "s"]``).
+
+    Args:
+        keys: Sequence of key names to press together (or a single key such as ``["return"]``).
+        app_name: Optional application name hint.
+
+    Returns:
+        Dict[str, Any]: Outcome of the hotkey press.
+    """
+    from autoyou_agents.shared_tools.desktop_accessibility import press_accessible_hotkey
+
+    return press_accessible_hotkey(keys, app_name=app_name)
+
+
 # ─── Factory and Callbacks ───────────────────────────────────────────────────
 
 def get_tools() -> List[Any]:
     """Get list of custom tools for the Remote Desktop agent."""
     return [
         get_current_datetime,
+        desktop_automation_status,
         list_active_monitors,
         list_running_windows,
+        snapshot_window_ui,
+        click_ui_element,
+        type_into_ui_element,
+        press_ui_hotkey,
     ]
 
 

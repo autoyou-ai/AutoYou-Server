@@ -330,7 +330,8 @@ def _windows_msix_package_version(exe_path: str) -> Optional[str]:
 def _windows_squirrel_app_version(exe_path: str) -> Optional[str]:
     """Extract the app version from a Squirrel/Velopack app-<version> folder path (e.g. AnthropicClaude/app-3.6556.2/claude.exe)."""
     try:
-        parts = Path(exe_path).parts
+        raw = str(exe_path or "").replace("\\", "/")
+        parts = [p for p in raw.split("/") if p]
     except Exception:
         return None
     for part in reversed(parts):
@@ -3316,6 +3317,80 @@ def refresh_desktop_agent_llm_reference(agent_dir: Path) -> Dict[str, Any]:
     }
 
 
+def inspect_desktop_app_accessibility(
+    agent_dir: Path,
+    *,
+    max_elements: int = 60,
+) -> Dict[str, Any]:
+    """Inspect a bridge desktop app's live UI via native background accessibility/UIA without stealing focus."""
+    manifest = load_desktop_app_manifest(Path(agent_dir))
+    if not manifest:
+        return {"status": "error", "message": _missing_desktop_manifest_message(agent_dir)}
+    details = current_platform_details()
+    pack = select_desktop_asset_pack(manifest, platform_tag=details["platform"], architecture=details["architecture"])
+    process_hints = _normalize_process_names(manifest, pack, details["platform"])
+    title_hints = _normalize_window_title_hints(manifest, pack, details["platform"])
+
+    from .desktop_accessibility import find_composer_element_token, snapshot_window_accessibility
+
+    for hint in (*process_hints, *title_hints):
+        snap = snapshot_window_accessibility(app_name=hint, max_elements=max_elements)
+        if snap.get("status") == "success":
+            snap["composer_token"] = find_composer_element_token(snap)
+            snap["agent_name"] = manifest.get("agent_name")
+            snap["app_id"] = manifest.get("app_id")
+            return snap
+    return {
+        "status": "not_found",
+        "agent_name": manifest.get("agent_name"),
+        "app_id": manifest.get("app_id"),
+        "message": f"No accessible window found for {manifest.get('app_id') or agent_dir.name}.",
+    }
+
+
+def send_prompt_via_accessibility(
+    agent_dir: Path,
+    *,
+    prompt: str,
+    working_directory: Optional[str] = None,
+    submit: bool = True,
+) -> Dict[str, Any]:
+    """Attempt background prompt submission through native OS Accessibility / UIA / cua-driver."""
+    manifest = load_desktop_app_manifest(Path(agent_dir))
+    if not manifest:
+        return {"status": "error", "message": _missing_desktop_manifest_message(agent_dir)}
+    snap = inspect_desktop_app_accessibility(agent_dir, max_elements=80)
+    if snap.get("status") != "success":
+        return snap
+    composer_token = str(snap.get("composer_token") or "").strip()
+    if not composer_token:
+        return {
+            "status": "no_composer",
+            "backend": snap.get("backend"),
+            "message": "Accessible window found, but no text composer element was exposed in its accessibility tree.",
+        }
+    effective_prompt = _apply_working_directory_strategy(manifest, prompt, working_directory)
+    from .desktop_accessibility import type_into_accessible_element
+
+    result = type_into_accessible_element(composer_token, effective_prompt, submit=submit)
+    if result.get("status") != "success":
+        return result
+    _remember_draft_prompt(manifest.get("agent_name"), effective_prompt)
+    if submit:
+        _remember_submitted_prompt(manifest.get("agent_name"), effective_prompt)
+    return {
+        "status": "success",
+        "agent_name": manifest.get("agent_name"),
+        "app_id": manifest.get("app_id"),
+        "backend": result.get("backend") or snap.get("backend"),
+        "automation_mode": "accessibility_background",
+        "composer_token": composer_token,
+        "submitted": bool(submit),
+        "window": snap.get("window"),
+        "message": f"Prompt sent to {manifest.get('title') or manifest.get('app_id')} via {result.get('backend') or snap.get('backend')} without stealing cursor focus.",
+    }
+
+
 def send_prompt_to_desktop_app(
     agent_dir: Path,
     *,
@@ -3326,6 +3401,17 @@ def send_prompt_to_desktop_app(
     capture_before_submit: bool = False,
     capture_after_submit: bool = True,
 ) -> Dict[str, Any]:
+    ax_first = str(os.getenv("AUTOYOU_DESKTOP_AX_FIRST", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}
+    if ax_first and not attachment_paths and not capture_before_submit:
+        ax_result = send_prompt_via_accessibility(
+            agent_dir,
+            prompt=prompt,
+            working_directory=working_directory,
+            submit=True,
+        )
+        if ax_result.get("status") == "success":
+            return ax_result
+
     prepared = _prepare_desktop_app_interaction(agent_dir, launch_if_needed=launch_if_needed)
     if prepared.get("status") != "success":
         return prepared

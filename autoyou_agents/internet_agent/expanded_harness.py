@@ -49,8 +49,8 @@ _NO_SEARCH_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _PAGE_EVIDENCE_REQUEST_PATTERN = re.compile(
-    r"\b(?:open|visit|browse|read|scrape|summari[sz]e|synthesi[sz]e|compare|analy[sz]e|"
-    r"brief|roundup|digest|report|headlines?)\b",
+    r"\b(?:open|visit|browse|read|scrape|parse|extract|summari[sz]e|synthesi[sz]e|compare|analy[sz]e|"
+    r"brief|roundup|digest|report|headlines?|news)\b",
     re.IGNORECASE,
 )
 _MULTI_SOURCE_REQUEST_PATTERN = re.compile(
@@ -782,11 +782,22 @@ async def after_model_callback(callback_context: Any, llm_response: Any) -> Any:
                 custom_metadata={"internet_page_evidence_required": True},
             )
     response_text = _response_text(llm_response)
+    has_function_call = any(
+        getattr(part, "function_call", None) is not None
+        for part in (getattr(getattr(llm_response, "content", None), "parts", None) or [])
+    )
     if terminal:
         reason = str(
             _state_get(callback_context.state, _TERMINAL_REASON_STATE_KEY, "") or ""
         ).strip() or "The model kept requesting repeated network calls, so only verified evidence is shown."
-    elif not response_text or response_text.startswith("Live network retrieval stopped before"):
+    elif has_function_call:
+        return None
+    elif not response_text:
+        if isinstance(evidence, list) and evidence:
+            reason = "The model returned an empty reply after reading the page, so the verified items retrieved are shown directly."
+        else:
+            return None
+    elif response_text.startswith("Live network retrieval stopped before"):
         return None
     else:
         refusal_markers = (

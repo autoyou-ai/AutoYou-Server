@@ -2195,7 +2195,7 @@ def preseed_tunnelmole(venv_python: Path) -> None:
 # attention lets Ollama keep the context cache in 8 bits, which roughly halves
 # the memory each token of context takes. A value the user already set is kept.
 OLLAMA_SERVE_DEFAULTS = {"OLLAMA_FLASH_ATTENTION": "1", "OLLAMA_KV_CACHE_TYPE": "q8_0"}
-DEFAULT_OLLAMA_MODEL = "ministral-3:8b"
+DEFAULT_OLLAMA_MODEL = "qwen3.5:4b"
 
 
 def ollama_installed_models() -> Optional[List[str]]:

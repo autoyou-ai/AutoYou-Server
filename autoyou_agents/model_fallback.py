@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 
 FALLBACK_MODELS_ENV = "AUTOYOU_OLLAMA_FALLBACK_MODELS"
 # The small models AutoYou is checked on, best first.
-DEFAULT_FALLBACK_MODELS = ("ministral-3:8b", "gemma4:e4b", "ministral-3:3b")
+DEFAULT_FALLBACK_MODELS = ("qwen3.5:4b", "gemma4:e4b", "qwen3.5:9b", "ministral-3:8b", "ministral-3:3b")
 NOTICE_STATE_KEY = "autoyou_model_fallback_notice"
 # How long calls skip a model that failed to load before it is tried again.
 SKIP_SECONDS = 300.0

@@ -1182,8 +1182,9 @@ def _classify_ai_backend_error(error_message: Any) -> Optional[Dict[str, str]]:
                 "provider": "ollama",
                 "kind": "ollama_model_missing",
                 "user_message": (
-                    "The selected Ollama model is not installed yet. "
-                    "Pull it in the Admin Dashboard under AI Provider, or run `ollama pull <model>` and try again."
+                    "No local AI model is ready yet. "
+                    "Open This Mac (or This PC) -> AI & Models to download a recommended model "
+                    "such as qwen3.5:4b, or choose Apple Intelligence on a supported Mac."
                 ),
             }
 
@@ -1614,7 +1615,7 @@ def _active_model_name_for_provider(provider: str) -> str:
     if normalized_provider == "apple_intelligence":
         return "apple_intelligence/on-device"
     if normalized_provider == "ollama":
-        model_name = _normalize_ollama_model_name(os.environ.get("OLLAMA_MODEL", "ministral-3:8b"))
+        model_name = _normalize_ollama_model_name(os.environ.get("OLLAMA_MODEL", "qwen3.5:4b"))
         return f"ollama_chat/{model_name}" if model_name else ""
     if normalized_provider == "google":
         base_model_name = str(os.environ.get("GOOGLE_MODEL", "gemini-2.5-flash") or "").strip()
@@ -1641,7 +1642,7 @@ def _configured_ollama_num_ctx() -> Optional[int]:
         from autoyou_agents.model_config import resolve_ollama_num_ctx
 
         resolved_num_ctx, _resolved_source = resolve_ollama_num_ctx(
-            _normalize_ollama_model_name(os.environ.get("OLLAMA_MODEL", "ministral-3:8b"))
+            _normalize_ollama_model_name(os.environ.get("OLLAMA_MODEL", "qwen3.5:4b"))
         )
         return _positive_int(resolved_num_ctx)
     except Exception:
@@ -1652,7 +1653,7 @@ def _configured_ollama_num_ctx_source() -> Optional[str]:
         from autoyou_agents.model_config import resolve_ollama_num_ctx
 
         _resolved_num_ctx, resolved_source = resolve_ollama_num_ctx(
-            _normalize_ollama_model_name(os.environ.get("OLLAMA_MODEL", "ministral-3:8b"))
+            _normalize_ollama_model_name(os.environ.get("OLLAMA_MODEL", "qwen3.5:4b"))
         )
         return str(resolved_source or "").strip() or None
     except Exception:
@@ -2336,7 +2337,7 @@ async def _send_autoyou_signtoross_legal_advice_via_ollama(
     empty root response for a simple legal drafting probe.
     """
     model_name = _normalize_ollama_model_name(
-        str((metadata or {}).get("ollama_model") or os.environ.get("OLLAMA_MODEL") or "ministral-3:8b")
+        str((metadata or {}).get("ollama_model") or os.environ.get("OLLAMA_MODEL") or "qwen3.5:4b")
     )
     if not model_name:
         return None

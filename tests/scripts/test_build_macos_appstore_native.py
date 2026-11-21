@@ -61,3 +61,27 @@ def test_staging_fails_for_an_unbundled_codec_dependency(tmp_path, monkeypatch):
                         'synthetic codec:\n /unexpected/libmissing.dylib (compatibility version 1.0.0)\n')
     with pytest.raises(RuntimeError, match='Unbundled codec dependency'):
         native.stage(prefix, bundle)
+
+
+def test_already_staged_requires_macos_14_and_all_licenses(tmp_path, monkeypatch):
+    bundle = tmp_path / 'bundle'
+    codec_root = bundle / 'runtime_site_packages/torchaudio/lib'
+    codec_root.mkdir(parents=True)
+    for name in native.CODECS:
+        (codec_root / name).write_bytes(b'codec')
+    arch = f'darwin-{native.platform.machine()}'
+    for rel in ('shared/native/libsodium', 'runtime_modules/shared/native/libsodium'):
+        p = bundle / rel / arch / 'libsodium.dylib'
+        p.parent.mkdir(parents=True)
+        p.write_bytes(b'sodium')
+    (bundle / 'libportaudio.2.dylib').write_bytes(b'pa')
+    manifest = json.loads(Path(native.__file__).with_name('macos_appstore_native.json').read_text())
+    for pkg in manifest['packages']:
+        (bundle / 'runtime/native-audio-licenses' / pkg['name']).mkdir(parents=True)
+
+    monkeypatch.setattr(native, 'minimum_macos', lambda path: (14, 0))
+    monkeypatch.setattr(native, '_has_only_bundled_deps', lambda path, allowed: True)
+    assert native.already_staged(bundle) is True
+
+    monkeypatch.setattr(native, 'minimum_macos', lambda path: (15, 0) if path.name == 'libsodium.dylib' else (14, 0))
+    assert native.already_staged(bundle) is False

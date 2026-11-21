@@ -36,7 +36,7 @@ class OllamaService:
         self.client = None
         self.ollama_available = False
         self.api_base = 'http://localhost:11434'
-        self.default_model = 'ministral-3:8b'
+        self.default_model = 'qwen3.5:4b'
         self.reload_from_env(reset_client=False)
 
     @staticmethod
@@ -56,7 +56,7 @@ class OllamaService:
         self.api_base = os.getenv('OLLAMA_API_BASE', 'http://localhost:11434')
         # from __debug_provenance_d__ import to
         self.default_model = self._normalize_model_name(
-            os.getenv('OLLAMA_MODEL', 'ministral-3:8b')
+            os.getenv('OLLAMA_MODEL', 'qwen3.5:4b')
         )
         if reset_client:
             self.client = None
@@ -72,7 +72,7 @@ class OllamaService:
 
         desired_api_base = os.getenv('OLLAMA_API_BASE', self.api_base or 'http://localhost:11434')
         desired_model = self._normalize_model_name(
-            os.getenv('OLLAMA_MODEL', self.default_model or 'ministral-3:8b')
+            os.getenv('OLLAMA_MODEL', self.default_model or 'qwen3.5:4b')
         )
 
         if desired_model != self.default_model:

@@ -5599,7 +5599,7 @@ def _build_resilient_fallback_model():
         logger.warning("LITELLM_MODEL not set during fallback; attempting Ollama")
 
     # Default / PROVIDER_OLLAMA
-    base_model = os.getenv("OLLAMA_MODEL", "ministral-3:8b")
+    base_model = os.getenv("OLLAMA_MODEL", "qwen3.5:4b")
     if "/" not in base_model:
         base_model = f"ollama_chat/{base_model}"
     api_base = os.getenv("OLLAMA_API_BASE", os.getenv("OLLAMA_API_URL", "http://localhost:11434"))
@@ -6146,6 +6146,31 @@ def initialize_root_agent():
                 len(tools),
             )
 
+        async def _root_empty_response_after_model_callback(callback_context: Any, llm_response: Any) -> Any:
+            """Prevent local thinking models from surfacing ADK's empty-parts STOP error."""
+            content = getattr(llm_response, "content", None)
+            parts = list(getattr(content, "parts", None) or []) if content is not None else []
+            has_meaningful_part = False
+            for part in parts:
+                if getattr(part, "function_call", None) is not None or getattr(part, "function_response", None) is not None:
+                    has_meaningful_part = True
+                    break
+                text = getattr(part, "text", None)
+                if isinstance(text, str) and text.strip() and not bool(getattr(part, "thought", False)):
+                    has_meaningful_part = True
+                    break
+            if has_meaningful_part:
+                return None
+            invocation_id = _get_invocation_id(callback_context)
+            recorded = _get_recorded_root_tool_result(callback_context.state, invocation_id)
+            if recorded:
+                logger.info("Recovered empty root model turn from verified specialist result (invocation=%s)", invocation_id)
+                return create_text_llm_response(
+                    recorded,
+                    custom_metadata={"response_author": root_prompt.AGENT_NAME, "recovered_empty_stop": True},
+                )
+            return None
+
         # Create root agent with memory callback if available
         agent_kwargs = {
             "name": root_prompt.AGENT_NAME,
@@ -6155,6 +6180,7 @@ def initialize_root_agent():
             "before_model_callback": _root_before_model_callback,
             "before_tool_callback": [_root_before_tool_callback],
             "after_tool_callback": [_root_after_tool_callback],
+            "after_model_callback": [_root_empty_response_after_model_callback],
             "on_model_error_callback": _make_context_overflow_error_callback(root_prompt.AGENT_NAME),
             "sub_agents": sub_agents,
             "tools": tools

@@ -450,54 +450,71 @@ def register_routes(
         )
         server_name = (server.STATE.config.get("server", {}).get("name") or "AutoYou-Server") if server.STATE.config else "AutoYou-Server"
         server_name_display = server.html.escape(server_name)
+        is_default_server_name = server_name.strip().lower() in {"", "autoyou", "autoyou-server"}
+        friendly_product_name = "AutoYou" if is_default_server_name else server_name_display
+        default_bootstrap_password = str(getattr(server, "DEFAULT_SERVER_PASSWORD", "autoyou123") or "autoyou123")
+        default_bootstrap_password_display = server.html.escape(default_bootstrap_password)
         if default_password_setup:
-            login_title = f"Finish setup for {server_name_display}"
+            login_eyebrow = "First-time setup"
+            login_title = f"Set up {friendly_product_name}"
             login_tagline = (
-                "Start with the default settings, then sign in to AutoYou Cloud on this computer "
-                "and your phone. You can also choose your own server password."
+                "Choose a password to protect your settings on this computer. "
+                "Everything runs locally by default — no account required."
             )
             password_label = "Server password"
-            password_placeholder = "Generate a new password or enter the bootstrap default"
-            submit_label = "Start"
+            password_placeholder = "Enter or generate a password"
+            submit_label = "Start AutoYou"
         elif first_run:
-            login_title = f"Set up {server_name_display}"
-            login_tagline = "Choose a server password to encrypt this AutoYou install."
-            password_label = "Server password to start"
-            password_placeholder = "Generate or enter a server password"
-            submit_label = "Start"
-        else:
-            login_title = f"Unlock {server_name_display}"
-            login_tagline = "Enter your server password to unlock this AutoYou install."
+            login_eyebrow = "First-time setup"
+            login_title = f"Set up {friendly_product_name}"
+            login_tagline = (
+                "Create a password to encrypt your settings on this computer. "
+                "Everything stays private locally by default."
+            )
             password_label = "Server password"
-            password_placeholder = "Enter server password"
+            password_placeholder = "Enter or generate a password"
+            submit_label = "Start AutoYou"
+        else:
+            login_eyebrow = "Local server"
+            login_title = f"Unlock {friendly_product_name}"
+            login_tagline = "Enter your password to unlock this AutoYou server."
+            password_label = "Server password"
+            password_placeholder = "Enter your password"
             submit_label = "Unlock"
-        startup_headline = "Loading encrypted configuration to start" if first_run else "Loading encrypted configuration"
+        startup_headline = "Starting AutoYou" if setup_password_mode else "Unlocking AutoYou"
         startup_detail = (
-            "Loading the encrypted runtime and starting services."
-            if first_run else
-            "Loading the encrypted runtime."
+            "Encrypting your configuration and starting local services."
+            if setup_password_mode else
+            "Decrypting your configuration and loading local services."
         )
         login_failure_message = (
             "Could not start the encrypted configuration. Check the password and try again."
             if first_run else
             "Could not decrypt the configuration. Check the password and try again."
         )
-        # Default-password notice - shown CONSISTENTLY on both the first-run "Set up"
-        # page and subsequent "Unlock" pages. Previously it only rendered once the
-        # config existed (used_default_password), so a fresh first run showed no
-        # warning while the very next run did - confusing on a clean install.
+        # Default-password notice - shown consistently on both first-run and
+        # bootstrap-default setup pages with accurate local-first guidance.
         if default_password_setup:
             warn_default = (
-                "<div class='ayu-login-chip ayu-login-chip-warn'>Default password "
-                "<code>autoyou123</code> is active. Secure Cloud Pair works with the same paid account "
-                "on this computer and the current phone app. Public links require a custom password. "
-                "If you change the password, use Set up your phone after unlock to scan the matching settings.</div>"
+                "<div class='ayu-bootstrap-note'>"
+                "<div class='ayu-bootstrap-note-head'>"
+                f"<span>Bootstrap default: <code>{default_bootstrap_password_display}</code></span>"
+                "<button id='use-default-password' class='ayu-inline-pill-btn' type='button'>Use default</button>"
+                "</div>"
+                "<p>Use this temporary password for quick local testing on this computer, or set a strong custom password below. "
+                "Public links require a custom password, and you can connect your phone from the dashboard after setup.</p>"
+                "</div>"
             )
         elif first_run:
             warn_default = (
-                "<div class='ayu-login-chip ayu-login-chip-warn'>First run - the bootstrap default "
-                "password is <code>autoyou123</code>. Generate or type your own strong password "
-                "to set it now. Then scan the phone setup QR from Overview so your mobile password matches.</div>"
+                "<div class='ayu-bootstrap-note'>"
+                "<div class='ayu-bootstrap-note-head'>"
+                f"<span>Bootstrap default: <code>{default_bootstrap_password_display}</code></span>"
+                "<button id='use-default-password' class='ayu-inline-pill-btn' type='button'>Use default</button>"
+                "</div>"
+                "<p>Create your own strong password below, or start with the temporary bootstrap default for local testing. "
+                "Public links require a custom password.</p>"
+                "</div>"
             )
         else:
             warn_default = ""
@@ -522,270 +539,280 @@ def register_routes(
         )
         native_unlock_html = (
             f"""
+              <div class='ayu-divider'><span>or</span></div>
               <div class='ayu-native-unlock'>
                 <button id='native-unlock' class='ayu-login-secondary' type='button'>
                   <svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='2' stroke='currentColor'><path stroke-linecap='round' stroke-linejoin='round' d='M16.5 10.5V7.5a4.5 4.5 0 0 0-9 0v3m-.75 0h10.5A1.75 1.75 0 0 1 19 12.25v6A1.75 1.75 0 0 1 17.25 20H6.75A1.75 1.75 0 0 1 5 18.25v-6a1.75 1.75 0 0 1 1.75-1.75Z'/></svg>
                   <span>Unlock with {server.html.escape(native_credential_name)}</span>
                 </button>
-                <p>The password stays hidden. Your computer may ask permission to release the saved AutoYou password.</p>
+                <p>Your password stays hidden. Your system may ask permission to release it.</p>
                 {agreement_pending_html}
               </div>
             """
             if native_unlock_available
             else ""
         )
-        legal_acceptance_html = (
+        legal_links_row_html = """
+                <div class='ayu-legal-links-bar'>
+                  <span class='ayu-legal-links'>
+                    <a href='https://www.autoyou.me/terms/' target='_blank' rel='noreferrer'>Terms (EULA)</a>
+                    <span aria-hidden='true'>&middot;</span>
+                    <a href='/LICENSE' target='_blank'>License</a>
+                    <span aria-hidden='true'>&middot;</span>
+                    <a href='https://www.autoyou.me/privacy/' target='_blank' rel='noreferrer'>Privacy</a>
+                  </span>
+                  <button type='button' class='ayu-legal-toggle' onclick="const box=document.getElementById('ayu-legal-disclosure'); if(box){const open=box.classList.toggle('open'); this.setAttribute('aria-expanded', open ? 'true' : 'false');}" aria-expanded='false' aria-controls='ayu-legal-body'>
+                    <span>Notices</span>
+                    <svg class='ayu-legal-chevron' xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='2.25' stroke='currentColor'><path stroke-linecap='round' stroke-linejoin='round' d='m19.5 8.25-7.5 7.5-7.5-7.5'/></svg>
+                  </button>
+                </div>
+                <div class='ayu-legal-body' id='ayu-legal-body'>
+                  <div class='ayu-legal-content'>
+                    <strong>Responsibility notice:</strong> You are responsible for the data, accounts, prompts, models, automations, messages, third-party services, and operations you connect to AutoYou. Use AutoYou only with lawful authority, required consents, and compliance with applicable laws. AutoYou is provided as-is; OpenStorey LLC, the AutoYou owner board, and contributors disclaim warranties and limit liability to the maximum extent permitted by law. Release notices: <a href='/NOTICE.txt' target='_blank'>NOTICE</a>, <a href='/THIRD-PARTY-NOTICES.md' target='_blank'>Third-Party Notices</a>, and <a href='/sbom.cdx.json' target='_blank'>SBOM</a>.
+                  </div>
+                </div>
+        """
+        if legal_acceptance_required:
+            legal_section_html = f"""
+              <div id='ayu-legal-disclosure' class='ayu-legal-card'>
+                <label class='ayu-legal-acceptance' for='terms-accepted'>
+                  <input id='terms-accepted' type='checkbox' name='terms_accepted' value='1' required>
+                  <span>I accept the current Terms of Use (EULA), License, responsibility terms, warranty disclaimer, and liability limits for personal, non-commercial use. Enterprise Use requires a separate written agreement with OpenStorey.</span>
+                </label>
+                {legal_links_row_html}
+              </div>
             """
-              <label class='ayu-legal-acceptance' for='terms-accepted'>
-                <input id='terms-accepted' type='checkbox' name='terms_accepted' value='1' required>
-                <span>I accept the current Terms of Use (EULA), License, responsibility terms, warranty disclaimer, and liability limits. I understand that this runtime acceptance permits personal, non-commercial use only; Enterprise Use requires a separate written agreement with OpenStorey.</span>
-              </label>
+        else:
+            legal_section_html = f"""
+              <div id='ayu-legal-disclosure' class='ayu-legal-compact'>
+                {legal_links_row_html}
+              </div>
             """
-            if legal_acceptance_required
-            else ""
-        )
         reset_panel_html = """
-              <div class='ayu-reset-panel'>
-                <div class='ayu-reset-illustration' aria-hidden='true'>
-                  <svg viewBox='0 0 120 88' role='img'>
-                    <rect x='20' y='18' width='80' height='48' rx='9' fill='currentColor' opacity='.10'/>
-                    <rect x='30' y='28' width='60' height='28' rx='6' fill='currentColor' opacity='.18'/>
-                    <path d='M42 42h36M47 50h26' stroke='currentColor' stroke-width='4' stroke-linecap='round' opacity='.46'/>
-                    <path d='M84 22l12-12M92 22l8-8M78 66l-10 12M86 66l-14 14' stroke='currentColor' stroke-width='4' stroke-linecap='round'/>
-                    <circle cx='60' cy='42' r='37' fill='none' stroke='currentColor' stroke-width='4' opacity='.28'/>
-                  </svg>
-                </div>
-                <div>
-                  <strong>Start over on this computer</strong>
-                  <p>Reset removes local AutoYou settings, sessions, saved pairing details, agent registries, and stored credential entries. The app then shuts down so the next launch is a fresh setup.</p>
-                </div>
-                <button id='open-reset-modal' class='ayu-reset-link' type='button'>Reset</button>
+              <div class='ayu-reset-footer'>
+                <span>Start over on this computer</span>
+                <button id='open-reset-modal' class='ayu-reset-link' type='button'>Reset&hellip;</button>
               </div>
         """
 
         body = f"""
         <style>
         #ayu-login-root {{
-          --ayu-bg-start:#faf9ff; --ayu-bg:#f5f6fa; --ayu-bg-end:#eef2ff;
-          --ayu-bg-accent:rgba(124,58,237,.14); --ayu-bg-accent-soft:rgba(59,130,246,.12);
-          --ayu-surface:rgba(255,255,255,.86); --ayu-surface-strong:#ffffff; --ayu-surface-muted:rgba(248,250,252,.92);
-          --ayu-border:rgba(143,155,179,.25); --ayu-border-strong:rgba(124,58,237,.22);
-          --ayu-text:#19162a; --ayu-muted:#615d78; --ayu-faint:#8a88a2;
-          --ayu-primary:#6d28d9; --ayu-primary-strong:#4c1d95;
-          --ayu-amber:#b45309; --ayu-amber-soft:#fff7ed; --ayu-red:#b91c1c;
-          --ayu-shadow:0 30px 80px rgba(39,31,82,.12); --ayu-shadow-soft:0 14px 40px rgba(39,31,82,.08);
-          --ayu-modal-backdrop:rgba(17,24,39,.54);
-          --ayu-font-body:"Avenir Next","Segoe UI","Helvetica Neue",sans-serif;
-          --ayu-font-display:"Optima","Avenir Next",sans-serif;
+          --ayu-bg-start:#f1f5f9; --ayu-bg:#eef2f7; --ayu-bg-end:#e6ecf4;
+          --ayu-bg-accent:rgba(37,99,235,.09); --ayu-bg-accent-soft:rgba(99,102,241,.06);
+          --ayu-surface:#ffffff; --ayu-surface-strong:#ffffff; --ayu-surface-muted:#f8fafc;
+          --ayu-border:#e2e8f0; --ayu-border-strong:#cbd5e1;
+          --ayu-text:#0f172a; --ayu-muted:#475569; --ayu-faint:#64748b;
+          --ayu-primary:#2563eb; --ayu-primary-hover:#1d4ed8; --ayu-primary-soft:#eff6ff; --ayu-primary-border:#bfdbfe;
+          --ayu-amber:#92400e; --ayu-amber-soft:#fffbeb; --ayu-amber-border:#fde68a;
+          --ayu-red:#dc2626; --ayu-red-soft:#fef2f2; --ayu-red-border:#fecaca;
+          --ayu-shadow:0 20px 48px -14px rgba(15,23,42,.10), 0 4px 12px -2px rgba(15,23,42,.04);
+          --ayu-modal-backdrop:rgba(15,23,42,.45);
+          --ayu-font-body:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+          --ayu-font-display:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",Roboto,"Helvetica Neue",sans-serif;
           --ayu-font-mono:"SFMono-Regular","SF Mono",Menlo,Monaco,Consolas,monospace;
         }}
         :root[data-theme="dark"] #ayu-login-root {{
-          --ayu-bg-start:#040814; --ayu-bg:#08101d; --ayu-bg-end:#0a1224;
-          --ayu-bg-accent:rgba(59,130,246,.15); --ayu-bg-accent-soft:rgba(124,58,237,.18);
-          --ayu-surface:rgba(10,16,31,.86); --ayu-surface-strong:#0f172a; --ayu-surface-muted:rgba(15,23,42,.94);
-          --ayu-border:rgba(143,155,179,.18); --ayu-border-strong:rgba(96,165,250,.24);
-          --ayu-text:#eef2ff; --ayu-muted:#bac5dd; --ayu-faint:#91a3c4;
-          --ayu-primary:#8b5cf6; --ayu-primary-strong:#ddd6fe;
-          --ayu-amber:#fdba74; --ayu-amber-soft:rgba(245,158,11,.16); --ayu-red:#fca5a5;
-          --ayu-shadow:0 32px 90px rgba(2,6,23,.5); --ayu-shadow-soft:0 18px 48px rgba(2,6,23,.34);
+          --ayu-bg-start:#070c16; --ayu-bg:#0b1120; --ayu-bg-end:#0f172a;
+          --ayu-bg-accent:rgba(59,130,246,.12); --ayu-bg-accent-soft:rgba(99,102,241,.10);
+          --ayu-surface:#111827; --ayu-surface-strong:#0f172a; --ayu-surface-muted:#172033;
+          --ayu-border:#1f2937; --ayu-border-strong:#334155;
+          --ayu-text:#f8fafc; --ayu-muted:#94a3b8; --ayu-faint:#64748b;
+          --ayu-primary:#3b82f6; --ayu-primary-hover:#2563eb; --ayu-primary-soft:rgba(59,130,246,.14); --ayu-primary-border:rgba(59,130,246,.28);
+          --ayu-amber:#fbbf24; --ayu-amber-soft:rgba(245,158,11,.12); --ayu-amber-border:rgba(245,158,11,.28);
+          --ayu-red:#f87171; --ayu-red-soft:rgba(239,68,68,.12); --ayu-red-border:rgba(239,68,68,.28);
+          --ayu-shadow:0 24px 64px -12px rgba(2,6,23,.65);
           --ayu-modal-backdrop:rgba(2,6,23,.72);
         }}
         body:has(#ayu-login-root) {{
+          margin:0 !important;
+          padding:0 !important;
           background:
-            radial-gradient(circle at top left, var(--ayu-bg-accent), transparent 34%),
-            radial-gradient(circle at right 18%, var(--ayu-bg-accent-soft), transparent 28%),
-            linear-gradient(180deg, var(--ayu-bg-start) 0%, var(--ayu-bg) 42%, var(--ayu-bg-end) 100%) !important;
+            radial-gradient(ellipse 80% 45% at 50% -10%, var(--ayu-bg-accent), transparent 65%),
+            linear-gradient(180deg, var(--ayu-bg-start) 0%, var(--ayu-bg) 50%, var(--ayu-bg-end) 100%) !important;
+          min-height:100vh;
         }}
         body:has(#ayu-login-root) .container {{ max-width:none !important; margin:0 !important; padding:0 !important; width:100% !important; }}
-                #ayu-login-root {{ min-height:100vh; display:flex; align-items:center; justify-content:center; padding:clamp(18px,3vw,32px); box-sizing:border-box; color:var(--ayu-text); font-family:var(--ayu-font-body); }}
-                #ayu-login-root *, #ayu-login-root *:before, #ayu-login-root *:after {{ box-sizing:border-box; }}
-                #ayu-login-root .ayu-login-card {{ width:min(940px,100%); background:var(--ayu-surface); backdrop-filter:blur(18px); border:1px solid var(--ayu-border); border-radius:24px; box-shadow:var(--ayu-shadow); padding:0; display:grid; grid-template-columns:minmax(0,.95fr) minmax(360px,440px); gap:0; overflow:hidden; }}
-                #ayu-login-root .ayu-login-intro {{ min-height:520px; padding:32px; display:grid; align-content:space-between; gap:24px; border-right:1px solid var(--ayu-border); background:linear-gradient(145deg,rgba(255,255,255,.72),rgba(236,253,245,.44)); }}
-                :root[data-theme="dark"] #ayu-login-root .ayu-login-intro {{ background:linear-gradient(145deg,rgba(15,23,42,.76),rgba(20,83,45,.16)); }}
-                #ayu-login-root .ayu-login-main {{ padding:32px; display:grid; gap:14px; align-content:center; }}
-                #ayu-login-root .ayu-login-brand {{ display:flex; align-items:center; gap:14px; }}
-                #ayu-login-root .brand-lockup {{ display:flex; align-items:center; gap:13px; }}
-                #ayu-login-root .brand-logo {{ width:42px; height:42px; object-fit:contain; }}
-                #ayu-login-root .brand-meta {{ display:flex; flex-direction:column; line-height:1.2; }}
-                #ayu-login-root .brand-kicker {{ font-size:11px; letter-spacing:0; text-transform:uppercase; color:var(--ayu-faint); font-weight:700; }}
-                #ayu-login-root .brand-name {{ font-family:var(--ayu-font-display); font-size:16px; font-weight:700; color:var(--ayu-text); }}
-                #ayu-login-root .ayu-login-eyebrow {{ font-size:11px; font-weight:800; letter-spacing:0; text-transform:uppercase; color:var(--ayu-faint); }}
-                #ayu-login-root .ayu-login-title {{ margin:6px 0 0; font-family:var(--ayu-font-display); font-size:32px; line-height:1.08; letter-spacing:0; color:var(--ayu-text); }}
-                #ayu-login-root .ayu-login-tagline {{ margin:8px 0 0; color:var(--ayu-muted); font-size:14px; line-height:1.55; }}
-                #ayu-login-root .ayu-login-illustration {{ color:var(--ayu-primary); min-height:180px; display:grid; place-items:center; }}
-                #ayu-login-root .ayu-login-illustration svg {{ width:min(260px,80%); height:auto; filter:drop-shadow(0 20px 38px rgba(39,31,82,.16)); }}
-                #ayu-login-root .ayu-login-chip {{ display:flex; align-items:flex-start; gap:8px; font-size:12.5px; line-height:1.5; padding:11px 13px; border-radius:14px; }}
-        #ayu-login-root .ayu-login-chip code {{ font-family:var(--ayu-font-mono); font-size:.92em; }}
-        #ayu-login-root .ayu-login-chip-warn {{ background:var(--ayu-amber-soft); color:var(--ayu-amber); border:1px solid rgba(180,83,9,.22); }}
-        #ayu-login-root form {{ display:grid; gap:9px; }}
-        #ayu-login-root label {{ font-size:12px; font-weight:700; color:var(--ayu-text); }}
-        #ayu-login-root .ayu-login-input {{ width:100%; border:1px solid var(--ayu-border); background:var(--ayu-surface-strong); color:var(--ayu-text); border-radius:14px; padding:13px 15px; font:inherit; transition:border-color .18s ease, box-shadow .18s ease; }}
-        #ayu-login-root .ayu-login-input:focus {{ outline:none; border-color:rgba(109,40,217,.45); box-shadow:0 0 0 4px rgba(109,40,217,.12); }}
+        #ayu-login-root {{ min-height:100vh; display:flex; align-items:center; justify-content:center; padding:clamp(14px,2.5vw,28px); box-sizing:border-box; color:var(--ayu-text); font-family:var(--ayu-font-body); }}
+        #ayu-login-root *, #ayu-login-root *:before, #ayu-login-root *:after {{ box-sizing:border-box; }}
+        #ayu-login-root button {{ min-height:0; min-width:0; width:auto; margin:0; padding:0; box-shadow:none; transform:none; line-height:1.25; }}
+        #ayu-login-root button:hover, #ayu-login-root button:focus, #ayu-login-root button:active {{ box-shadow:none; transform:none; }}
+        #ayu-login-root .ayu-login-card {{ width:min(460px,100%); background:var(--ayu-surface); border:1px solid var(--ayu-border); border-radius:20px; box-shadow:var(--ayu-shadow); padding:24px 26px 18px; display:grid; gap:15px; }}
+        #ayu-login-root .ayu-login-header {{ display:grid; gap:12px; }}
+        #ayu-login-root .ayu-login-top {{ display:flex; align-items:center; justify-content:space-between; gap:12px; }}
+        #ayu-login-root .ayu-brand-compact {{ display:flex; align-items:center; gap:10px; min-width:0; }}
+        #ayu-login-root .ayu-brand-compact img {{ width:34px; height:34px; border-radius:9px; object-fit:contain; flex-shrink:0; }}
+        #ayu-login-root .ayu-brand-wordmark {{ font-family:var(--ayu-font-display); font-size:15px; font-weight:700; letter-spacing:-.01em; color:var(--ayu-text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
+        #ayu-login-root .ayu-login-badge {{ display:inline-flex; align-items:center; padding:4px 10px; border-radius:999px; font-size:11.5px; font-weight:600; background:var(--ayu-primary-soft); color:var(--ayu-primary); border:1px solid var(--ayu-primary-border); white-space:nowrap; flex-shrink:0; }}
+        #ayu-login-root .ayu-login-title {{ margin:0; font-family:var(--ayu-font-display); font-size:23px; font-weight:700; line-height:1.2; letter-spacing:-.025em; color:var(--ayu-text); }}
+        #ayu-login-root .ayu-login-tagline {{ margin:5px 0 0; color:var(--ayu-muted); font-size:13.5px; line-height:1.48; }}
+        #ayu-login-root .ayu-bootstrap-note {{ display:grid; gap:6px; padding:11px 13px; border-radius:12px; background:var(--ayu-amber-soft); border:1px solid var(--ayu-amber-border); }}
+        #ayu-login-root .ayu-bootstrap-note-head {{ display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; font-size:12.5px; font-weight:600; color:var(--ayu-amber); }}
+        #ayu-login-root .ayu-bootstrap-note-head code {{ font-family:var(--ayu-font-mono); font-size:12px; font-weight:700; padding:2px 7px; border-radius:6px; background:rgba(146,64,14,.10); color:var(--ayu-amber); }}
+        :root[data-theme="dark"] #ayu-login-root .ayu-bootstrap-note-head code {{ background:rgba(251,191,36,.16); }}
+        #ayu-login-root .ayu-bootstrap-note p {{ margin:0; font-size:12px; line-height:1.48; color:var(--ayu-muted); }}
+        #ayu-login-root .ayu-inline-pill-btn {{ appearance:none; border:1px solid var(--ayu-amber-border); background:var(--ayu-surface-strong); color:var(--ayu-amber); border-radius:8px; padding:5px 10px; font:inherit; font-size:11.5px; font-weight:600; cursor:pointer; transition:background .15s ease, border-color .15s ease; }}
+        #ayu-login-root .ayu-inline-pill-btn:hover, #ayu-login-root .ayu-inline-pill-btn:focus-visible {{ outline:none; border-color:var(--ayu-amber); background:var(--ayu-surface-muted); }}
+        #ayu-login-root form {{ display:grid; gap:11px; }}
+        #ayu-login-root .ayu-field-group {{ display:grid; gap:6px; }}
+        #ayu-login-root label {{ font-size:13px; font-weight:600; color:var(--ayu-text); }}
+        #ayu-login-root .ayu-login-input {{ width:100%; height:42px; border:1px solid var(--ayu-border-strong); background:var(--ayu-surface-strong); color:var(--ayu-text); border-radius:10px; padding:0 13px; font:inherit; font-size:14px; transition:border-color .15s ease, box-shadow .15s ease; }}
+        #ayu-login-root .ayu-login-input::placeholder {{ color:var(--ayu-faint); }}
+        #ayu-login-root .ayu-login-input:focus {{ outline:none; border-color:var(--ayu-primary); box-shadow:0 0 0 3px rgba(37,99,235,.15); }}
         #ayu-login-root .ayu-login-password-row {{ display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center; }}
-        #ayu-login-root .ayu-login-icon-btn {{ width:44px; height:44px; border-radius:14px; border:1px solid var(--ayu-border); background:var(--ayu-surface-strong); color:var(--ayu-muted); display:grid; place-items:center; cursor:pointer; transition:transform .18s ease, border-color .18s ease, color .18s ease; }}
-        #ayu-login-root .ayu-login-icon-btn:hover, #ayu-login-root .ayu-login-icon-btn:focus-visible {{ transform:translateY(-1px); border-color:var(--ayu-border-strong); color:var(--ayu-text); outline:none; }}
-        #ayu-login-root .ayu-login-icon-btn svg {{ width:18px; height:18px; }}
-        #ayu-login-root .ayu-login-password-tools {{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; }}
-        #ayu-login-root .ayu-login-tool-btn {{ appearance:none; border:1px solid var(--ayu-border); border-radius:999px; padding:9px 12px; cursor:pointer; font:inherit; font-size:12px; font-weight:700; color:var(--ayu-text); background:var(--ayu-surface-strong); display:inline-flex; align-items:center; gap:7px; transition:transform .18s ease, border-color .18s ease; }}
-        #ayu-login-root .ayu-login-tool-btn:hover, #ayu-login-root .ayu-login-tool-btn:focus-visible {{ transform:translateY(-1px); border-color:var(--ayu-border-strong); outline:none; }}
-        #ayu-login-root .ayu-login-tool-btn svg {{ width:15px; height:15px; }}
-                #ayu-login-root .ayu-login-submit {{ appearance:none; border:0; margin-top:5px; border-radius:999px; padding:13px 18px; cursor:pointer; font:inherit; font-weight:700; font-size:14px; color:#fff; background:linear-gradient(135deg,#6d28d9,#4f46e5); box-shadow:0 14px 30px rgba(79,70,229,.22); transition:transform .18s ease, box-shadow .18s ease, opacity .18s ease; }}
-                #ayu-login-root .ayu-login-submit:hover {{ transform:translateY(-1px); box-shadow:0 18px 36px rgba(79,70,229,.3); }}
-                #ayu-login-root .ayu-login-submit:disabled {{ cursor:wait; opacity:.7; transform:none; box-shadow:none; }}
-                #ayu-login-root .ayu-login-secondary {{ width:100%; appearance:none; border:1px solid var(--ayu-border); border-radius:999px; padding:12px 16px; cursor:pointer; font:inherit; font-weight:800; font-size:13px; color:var(--ayu-text); background:var(--ayu-surface-strong); display:flex; justify-content:center; align-items:center; gap:8px; transition:transform .18s ease, border-color .18s ease, opacity .18s ease; }}
-                #ayu-login-root .ayu-login-secondary:hover, #ayu-login-root .ayu-login-secondary:focus-visible {{ transform:translateY(-1px); border-color:var(--ayu-border-strong); outline:none; }}
-                #ayu-login-root .ayu-login-secondary:disabled {{ cursor:wait; opacity:.7; transform:none; }}
-                #ayu-login-root .ayu-login-secondary svg {{ width:16px; height:16px; }}
-                #ayu-login-root .ayu-native-unlock {{ display:grid; gap:7px; }}
-                #ayu-login-root .ayu-native-unlock p {{ margin:0; font-size:12px; line-height:1.45; color:var(--ayu-muted); }}
-                #ayu-login-root .ayu-login-error {{ font-size:13px; line-height:1.5; padding:11px 13px; border-radius:14px; background:rgba(185,28,28,.1); color:var(--ayu-red); border:1px solid rgba(185,28,28,.2); }}
-                #ayu-login-root .ayu-login-error.hidden {{ display:none; }}
-                #ayu-login-root .ayu-reset-panel {{ display:grid; grid-template-columns:auto 1fr auto; gap:12px; align-items:center; padding:13px; border:1px solid var(--ayu-border); border-radius:16px; background:var(--ayu-surface-muted); }}
-                #ayu-login-root .ayu-reset-illustration {{ width:54px; height:44px; color:var(--ayu-red); display:grid; place-items:center; }}
-                #ayu-login-root .ayu-reset-illustration svg {{ width:54px; height:44px; }}
-                #ayu-login-root .ayu-reset-panel strong {{ display:block; font-size:12.5px; color:var(--ayu-text); }}
-                #ayu-login-root .ayu-reset-panel p {{ margin:3px 0 0; font-size:11.5px; line-height:1.4; color:var(--ayu-muted); }}
-                #ayu-login-root .ayu-reset-link {{ appearance:none; border:1px solid rgba(185,28,28,.26); border-radius:999px; padding:8px 12px; cursor:pointer; font:inherit; font-size:12px; font-weight:800; color:var(--ayu-red); background:rgba(185,28,28,.08); }}
-                #ayu-login-root .ayu-reset-link:hover, #ayu-login-root .ayu-reset-link:focus-visible {{ outline:none; border-color:rgba(185,28,28,.46); }}
-                #ayu-login-root .ayu-reset-modal {{ position:fixed; inset:0; z-index:1500; display:flex; align-items:center; justify-content:center; padding:24px; background:var(--ayu-modal-backdrop); backdrop-filter:blur(10px); }}
-                #ayu-login-root .ayu-reset-modal.hidden {{ display:none; }}
-                #ayu-login-root .ayu-reset-modal-panel {{ width:min(480px,100%); background:var(--ayu-surface-strong); border:1px solid var(--ayu-border); border-radius:22px; box-shadow:var(--ayu-shadow); padding:24px; display:grid; gap:16px; }}
-                #ayu-login-root .ayu-reset-modal-head {{ display:grid; grid-template-columns:auto 1fr; gap:14px; align-items:center; }}
-                #ayu-login-root .ayu-reset-modal-icon {{ width:52px; height:52px; border-radius:16px; display:grid; place-items:center; color:var(--ayu-red); background:rgba(185,28,28,.08); }}
-                #ayu-login-root .ayu-reset-modal-icon svg {{ width:28px; height:28px; }}
-                #ayu-login-root .ayu-reset-modal h2 {{ margin:0; font-family:var(--ayu-font-display); font-size:22px; letter-spacing:0; }}
-                #ayu-login-root .ayu-reset-modal p {{ margin:5px 0 0; color:var(--ayu-muted); font-size:13px; line-height:1.5; }}
-                #ayu-login-root .ayu-reset-modal ul {{ margin:0; padding-left:18px; color:var(--ayu-muted); font-size:12.5px; line-height:1.55; }}
-                #ayu-login-root .ayu-reset-modal-actions {{ display:flex; flex-wrap:wrap; justify-content:flex-end; gap:9px; }}
-                #ayu-login-root .ayu-reset-cancel, #ayu-login-root .ayu-reset-confirm {{ appearance:none; border-radius:999px; padding:11px 15px; cursor:pointer; font:inherit; font-size:13px; font-weight:800; }}
-                #ayu-login-root .ayu-reset-cancel {{ border:1px solid var(--ayu-border); background:var(--ayu-surface-muted); color:var(--ayu-text); }}
-                #ayu-login-root .ayu-reset-confirm {{ border:0; background:var(--ayu-red); color:#fff; }}
-                #ayu-login-root .ayu-reset-confirm:disabled {{ cursor:wait; opacity:.72; }}
-                #ayu-login-root .startup-overlay {{ position:fixed; inset:0; z-index:1400; display:flex; align-items:center; justify-content:center; padding:24px; background:var(--ayu-modal-backdrop); backdrop-filter:blur(10px); }}
+        #ayu-login-root .ayu-login-icon-btn {{ width:42px; height:42px; padding:0; border-radius:10px; border:1px solid var(--ayu-border-strong); background:var(--ayu-surface-strong); color:var(--ayu-muted); display:inline-flex; align-items:center; justify-content:center; cursor:pointer; transition:border-color .15s ease, color .15s ease, background .15s ease; }}
+        #ayu-login-root .ayu-login-icon-btn:hover, #ayu-login-root .ayu-login-icon-btn:focus-visible {{ border-color:var(--ayu-primary); color:var(--ayu-text); background:var(--ayu-surface-muted); outline:none; }}
+        #ayu-login-root .ayu-login-icon-btn svg {{ width:18px; height:18px; display:block; flex-shrink:0; }}
+        #ayu-login-root .ayu-login-password-tools {{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:2px; }}
+        #ayu-login-root .ayu-login-tool-btn {{ appearance:none; border:1px solid var(--ayu-border); border-radius:9px; padding:7px 11px; cursor:pointer; font:inherit; font-size:12px; font-weight:600; color:var(--ayu-text); background:var(--ayu-surface-muted); display:inline-flex; align-items:center; gap:6px; transition:border-color .15s ease, background .15s ease; }}
+        #ayu-login-root .ayu-login-tool-btn:hover, #ayu-login-root .ayu-login-tool-btn:focus-visible {{ border-color:var(--ayu-border-strong); background:var(--ayu-surface-strong); outline:none; }}
+        #ayu-login-root .ayu-login-tool-btn svg {{ width:14px; height:14px; color:var(--ayu-muted); flex-shrink:0; }}
+        #ayu-login-root .ayu-legal-card {{ border:1px solid var(--ayu-border); border-radius:12px; background:var(--ayu-surface-muted); overflow:hidden; }}
+        #ayu-login-root .ayu-legal-compact {{ border-radius:10px; }}
+        #ayu-login-root .ayu-legal-acceptance {{ display:flex; gap:10px; align-items:flex-start; margin:0; padding:11px 13px; font-size:12px; font-weight:400; line-height:1.45; color:var(--ayu-muted); cursor:pointer; }}
+        #ayu-login-root .ayu-legal-acceptance input[type='checkbox'] {{ appearance:auto; width:18px; min-width:18px; max-width:18px; height:18px; min-height:18px; max-height:18px; flex:0 0 18px; margin:1px 0 0; padding:0; cursor:pointer; accent-color:var(--ayu-primary); }}
+        #ayu-login-root .ayu-legal-links-bar {{ display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; padding:8px 13px; font-size:11.5px; color:var(--ayu-faint); }}
+        #ayu-login-root .ayu-legal-card .ayu-legal-links-bar {{ border-top:1px solid var(--ayu-border); }}
+        #ayu-login-root .ayu-legal-compact .ayu-legal-links-bar {{ padding:2px 2px; }}
+        #ayu-login-root .ayu-legal-links {{ display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap; }}
+        #ayu-login-root .ayu-legal-links a, #ayu-login-root .ayu-legal-content a {{ color:var(--ayu-primary); font-weight:500; text-decoration:none; }}
+        #ayu-login-root .ayu-legal-links a:hover, #ayu-login-root .ayu-legal-content a:hover {{ text-decoration:underline; }}
+        #ayu-login-root .ayu-legal-toggle {{ appearance:none; border:0; background:transparent; padding:3px 6px; border-radius:6px; cursor:pointer; font:inherit; font-size:11.5px; font-weight:600; color:var(--ayu-muted); display:inline-flex; align-items:center; gap:4px; }}
+        #ayu-login-root .ayu-legal-toggle:hover, #ayu-login-root .ayu-legal-toggle:focus-visible {{ outline:none; background:rgba(148,163,184,.14); color:var(--ayu-text); }}
+        #ayu-login-root .ayu-legal-chevron {{ width:13px; height:13px; transition:transform .2s ease; flex-shrink:0; }}
+        #ayu-legal-disclosure.open .ayu-legal-chevron {{ transform:rotate(180deg); }}
+        #ayu-legal-disclosure .ayu-legal-body {{ max-height:0; overflow:hidden; transition:max-height .28s ease; }}
+        #ayu-legal-disclosure.open .ayu-legal-body {{ max-height:260px; }}
+        #ayu-legal-disclosure .ayu-legal-content {{ padding:10px 13px 12px; font-size:11.5px; line-height:1.52; color:var(--ayu-muted); border-top:1px solid var(--ayu-border); }}
+        #ayu-legal-disclosure .ayu-legal-content strong {{ color:var(--ayu-text); font-weight:600; }}
+        #ayu-login-root .ayu-login-submit {{ width:100%; height:44px; appearance:none; border:0; border-radius:11px; padding:0 18px; cursor:pointer; font:inherit; font-weight:600; font-size:14.5px; color:#ffffff; background:var(--ayu-primary); box-shadow:0 1px 2px rgba(15,23,42,.08), 0 8px 20px -6px rgba(37,99,235,.42); transition:background .15s ease, opacity .15s ease; }}
+        #ayu-login-root .ayu-login-submit:hover {{ background:var(--ayu-primary-hover); box-shadow:0 2px 4px rgba(15,23,42,.10), 0 10px 22px -6px rgba(37,99,235,.48); }}
+        #ayu-login-root .ayu-login-submit:disabled {{ cursor:wait; opacity:.7; }}
+        #ayu-login-root .ayu-divider {{ display:flex; align-items:center; gap:10px; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:var(--ayu-faint); }}
+        #ayu-login-root .ayu-divider:before, #ayu-login-root .ayu-divider:after {{ content:""; flex:1; height:1px; background:var(--ayu-border); }}
+        #ayu-login-root .ayu-login-secondary {{ width:100%; height:42px; appearance:none; border:1px solid var(--ayu-border-strong); border-radius:11px; padding:0 16px; cursor:pointer; font:inherit; font-weight:600; font-size:13.5px; color:var(--ayu-text); background:var(--ayu-surface-strong); display:flex; justify-content:center; align-items:center; gap:8px; transition:border-color .15s ease, background .15s ease, opacity .15s ease; }}
+        #ayu-login-root .ayu-login-secondary:hover, #ayu-login-root .ayu-login-secondary:focus-visible {{ border-color:var(--ayu-primary); background:var(--ayu-surface-muted); outline:none; }}
+        #ayu-login-root .ayu-login-secondary:disabled {{ cursor:wait; opacity:.7; }}
+        #ayu-login-root .ayu-login-secondary svg {{ width:16px; height:16px; color:var(--ayu-muted); flex-shrink:0; }}
+        #ayu-login-root .ayu-native-unlock {{ display:grid; gap:6px; }}
+        #ayu-login-root .ayu-native-unlock p {{ margin:0; font-size:12px; line-height:1.45; color:var(--ayu-faint); text-align:center; }}
+        #ayu-login-root .ayu-login-error {{ font-size:13px; line-height:1.5; padding:10px 12px; border-radius:10px; background:var(--ayu-red-soft); color:var(--ayu-red); border:1px solid var(--ayu-red-border); }}
+        #ayu-login-root .ayu-login-error.hidden {{ display:none; }}
+        #ayu-login-root .ayu-reset-footer {{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding-top:12px; border-top:1px solid var(--ayu-border); font-size:12px; color:var(--ayu-faint); }}
+        #ayu-login-root .ayu-reset-link {{ appearance:none; border:1px solid transparent; border-radius:8px; padding:5px 10px; cursor:pointer; font:inherit; font-size:12px; font-weight:600; color:var(--ayu-red); background:transparent; transition:background .15s ease, border-color .15s ease; }}
+        #ayu-login-root .ayu-reset-link:hover, #ayu-login-root .ayu-reset-link:focus-visible {{ outline:none; background:var(--ayu-red-soft); border-color:var(--ayu-red-border); }}
+        #ayu-login-root .ayu-reset-modal {{ position:fixed; inset:0; z-index:1500; display:flex; align-items:center; justify-content:center; padding:24px; background:var(--ayu-modal-backdrop); backdrop-filter:blur(8px); }}
+        #ayu-login-root .ayu-reset-modal.hidden {{ display:none; }}
+        #ayu-login-root .ayu-reset-modal-panel {{ width:min(450px,100%); background:var(--ayu-surface-strong); border:1px solid var(--ayu-border); border-radius:18px; box-shadow:var(--ayu-shadow); padding:24px; display:grid; gap:14px; }}
+        #ayu-login-root .ayu-reset-modal-head {{ display:grid; grid-template-columns:auto 1fr; gap:12px; align-items:start; }}
+        #ayu-login-root .ayu-reset-modal-icon {{ width:42px; height:42px; border-radius:12px; display:grid; place-items:center; color:var(--ayu-red); background:var(--ayu-red-soft); border:1px solid var(--ayu-red-border); }}
+        #ayu-login-root .ayu-reset-modal-icon svg {{ width:22px; height:22px; }}
+        #ayu-login-root .ayu-reset-modal h2 {{ margin:0; font-family:var(--ayu-font-display); font-size:18px; font-weight:700; letter-spacing:-.015em; color:var(--ayu-text); }}
+        #ayu-login-root .ayu-reset-modal p {{ margin:4px 0 0; color:var(--ayu-muted); font-size:13px; line-height:1.5; }}
+        #ayu-login-root .ayu-reset-modal ul {{ margin:0; padding-left:18px; color:var(--ayu-muted); font-size:12.5px; line-height:1.55; display:grid; gap:4px; }}
+        #ayu-login-root .ayu-reset-modal-actions {{ display:flex; flex-wrap:wrap; justify-content:flex-end; gap:8px; margin-top:4px; }}
+        #ayu-login-root .ayu-reset-cancel, #ayu-login-root .ayu-reset-confirm {{ appearance:none; border-radius:10px; padding:9px 14px; cursor:pointer; font:inherit; font-size:13px; font-weight:600; }}
+        #ayu-login-root .ayu-reset-cancel {{ border:1px solid var(--ayu-border-strong); background:var(--ayu-surface-strong); color:var(--ayu-text); }}
+        #ayu-login-root .ayu-reset-cancel:hover {{ background:var(--ayu-surface-muted); }}
+        #ayu-login-root .ayu-reset-confirm {{ border:0; background:var(--ayu-red); color:#ffffff; }}
+        #ayu-login-root .ayu-reset-confirm:hover {{ opacity:.92; }}
+        #ayu-login-root .ayu-reset-confirm:disabled {{ cursor:wait; opacity:.72; }}
+        #ayu-login-root .startup-overlay {{ position:fixed; inset:0; z-index:1400; display:flex; align-items:center; justify-content:center; padding:24px; background:var(--ayu-modal-backdrop); backdrop-filter:blur(8px); }}
         #ayu-login-root .startup-overlay.hidden {{ display:none; }}
-        #ayu-login-root .startup-panel {{ width:min(460px,100%); max-height:min(92vh,860px); overflow:auto; background:var(--ayu-surface-strong); border:1px solid var(--ayu-border); border-radius:28px; padding:30px; box-shadow:var(--ayu-shadow); display:grid; gap:20px; }}
-        #ayu-login-root .startup-headline {{ margin:10px 0 0; font-family:var(--ayu-font-display); font-size:22px; font-weight:700; color:var(--ayu-text); }}
-        #ayu-login-root .startup-detail {{ margin:6px 0 0; color:var(--ayu-muted); font-size:13.5px; line-height:1.55; }}
-        #ayu-login-root .progress-track {{ width:100%; height:8px; border-radius:999px; background:rgba(143,155,179,.18); overflow:hidden; }}
-        #ayu-login-root .progress-fill {{ height:100%; width:10%; border-radius:inherit; background:linear-gradient(135deg,#6d28d9,#2563eb); transition:width .35s ease; }}
+        #ayu-login-root .startup-panel {{ width:min(440px,100%); max-height:min(92vh,840px); overflow:auto; background:var(--ayu-surface-strong); border:1px solid var(--ayu-border); border-radius:20px; padding:26px; box-shadow:var(--ayu-shadow); display:grid; gap:18px; }}
+        #ayu-login-root .ayu-login-brand {{ display:flex; align-items:center; gap:12px; }}
+        #ayu-login-root .brand-lockup {{ display:flex; align-items:center; gap:10px; }}
+        #ayu-login-root .brand-logo {{ width:34px; height:34px; object-fit:contain; border-radius:8px; }}
+        #ayu-login-root .brand-meta {{ display:flex; flex-direction:column; line-height:1.2; }}
+        #ayu-login-root .brand-kicker {{ font-size:10.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--ayu-faint); font-weight:700; }}
+        #ayu-login-root .brand-name {{ font-family:var(--ayu-font-display); font-size:14.5px; font-weight:700; color:var(--ayu-text); }}
+        #ayu-login-root .ayu-login-eyebrow {{ font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--ayu-primary); }}
+        #ayu-login-root .startup-headline {{ margin:4px 0 0; font-family:var(--ayu-font-display); font-size:20px; font-weight:700; letter-spacing:-.02em; color:var(--ayu-text); }}
+        #ayu-login-root .startup-detail {{ margin:5px 0 0; color:var(--ayu-muted); font-size:13px; line-height:1.5; }}
+        #ayu-login-root .progress-track {{ width:100%; height:7px; border-radius:999px; background:var(--ayu-border); overflow:hidden; }}
+        #ayu-login-root .progress-fill {{ height:100%; width:10%; border-radius:inherit; background:var(--ayu-primary); transition:width .35s ease; }}
         #ayu-login-root .startup-meta {{ display:flex; align-items:center; justify-content:space-between; font-size:12px; color:var(--ayu-faint); font-weight:600; }}
-        #ayu-login-root .boot-sweep-card {{ background:var(--ayu-surface-muted); border:1px solid var(--ayu-border); border-radius:20px; padding:18px; display:flex; flex-direction:column; gap:11px; }}
-                #ayu-login-root .boot-sweep-card .eyebrow {{ font-size:11px; font-weight:800; letter-spacing:0; text-transform:uppercase; color:var(--ayu-faint); }}
-        #ayu-login-root .boot-sweep-card h3 {{ margin:2px 0 0; font-family:var(--ayu-font-display); font-size:16px; font-weight:700; color:var(--ayu-text); }}
-        #ayu-login-root .boot-sweep-copy {{ margin:0; color:var(--ayu-muted); font-size:12.5px; line-height:1.5; }}
-        #ayu-login-root .boot-sweep-board {{ position:relative; height:200px; border-radius:16px; overflow:hidden; border:1px solid var(--ayu-border); background:linear-gradient(180deg,var(--ayu-surface-strong),var(--ayu-surface-muted)); }}
-        #ayu-login-root .boot-sweep-board:before {{ content:""; position:absolute; inset:0; background-image:linear-gradient(rgba(143,155,179,.08) 1px,transparent 1px),linear-gradient(90deg,rgba(143,155,179,.08) 1px,transparent 1px); background-size:24px 24px; pointer-events:none; }}
-        #ayu-login-root .boot-sweep-node {{ position:absolute; width:18px; height:18px; min-width:0; min-height:0; line-height:0; border:0; padding:0; margin:0; border-radius:999px; background:radial-gradient(circle at 32% 30%,#ddd6fe,#8b5cf6 60%,#6d28d9 100%); box-shadow:0 6px 14px rgba(109,40,217,.28); cursor:pointer; transform:translate(-50%,-50%); animation:ayuLoginSweep 1.5s ease-in-out infinite; touch-action:manipulation; }}
-        #ayu-login-root .boot-sweep-node:after {{ content:""; position:absolute; inset:-7px; border-radius:999px; border:1px solid rgba(109,40,217,.28); }}
+        #ayu-login-root .boot-sweep-card {{ background:var(--ayu-surface-muted); border:1px solid var(--ayu-border); border-radius:16px; padding:16px; display:flex; flex-direction:column; gap:10px; }}
+        #ayu-login-root .boot-sweep-card .eyebrow {{ font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--ayu-faint); }}
+        #ayu-login-root .boot-sweep-card h3 {{ margin:2px 0 0; font-family:var(--ayu-font-display); font-size:15px; font-weight:700; color:var(--ayu-text); }}
+        #ayu-login-root .boot-sweep-copy {{ margin:0; color:var(--ayu-muted); font-size:12.5px; line-height:1.48; }}
+        #ayu-login-root .boot-sweep-board {{ position:relative; height:180px; border-radius:12px; overflow:hidden; border:1px solid var(--ayu-border); background:var(--ayu-surface-strong); }}
+        #ayu-login-root .boot-sweep-board:before {{ content:""; position:absolute; inset:0; background-image:linear-gradient(rgba(148,163,184,.12) 1px,transparent 1px),linear-gradient(90deg,rgba(148,163,184,.12) 1px,transparent 1px); background-size:24px 24px; pointer-events:none; }}
+        #ayu-login-root .boot-sweep-node {{ position:absolute; width:18px; height:18px; min-width:0; min-height:0; line-height:0; border:0; padding:0; margin:0; border-radius:999px; background:radial-gradient(circle at 32% 30%,#93c5fd,#3b82f6 60%,#2563eb 100%); box-shadow:0 6px 14px rgba(37,99,235,.28); cursor:pointer; transform:translate(-50%,-50%); animation:ayuLoginSweep 1.5s ease-in-out infinite; touch-action:manipulation; }}
+        #ayu-login-root .boot-sweep-node:after {{ content:""; position:absolute; inset:-7px; border-radius:999px; border:1px solid rgba(37,99,235,.28); }}
         @keyframes ayuLoginSweep {{ 0%,100% {{ transform:translate(-50%,-50%) scale(1); }} 50% {{ transform:translate(-50%,-50%) scale(1.12); }} }}
         #ayu-login-root .boot-sweep-score {{ display:flex; gap:10px; }}
-        #ayu-login-root .score-pill {{ flex:1; background:var(--ayu-surface-strong); border:1px solid var(--ayu-border); border-radius:14px; padding:11px 13px; display:flex; flex-direction:column; gap:2px; }}
-        #ayu-login-root .score-pill strong {{ font-size:20px; font-weight:800; color:var(--ayu-text); font-family:var(--ayu-font-display); }}
+        #ayu-login-root .score-pill {{ flex:1; background:var(--ayu-surface-strong); border:1px solid var(--ayu-border); border-radius:11px; padding:10px 12px; display:flex; flex-direction:column; gap:2px; }}
+        #ayu-login-root .score-pill strong {{ font-size:18px; font-weight:700; color:var(--ayu-text); font-family:var(--ayu-font-display); }}
         #ayu-login-root .score-pill span {{ font-size:11px; color:var(--ayu-faint); }}
-        #ayu-login-root .boot-sweep-note {{ font-size:11.5px; color:var(--ayu-faint); line-height:1.5; }}
-                @media (max-width:820px) {{ #ayu-login-root .ayu-login-card {{ width:min(460px,100%); grid-template-columns:1fr; }} #ayu-login-root .ayu-login-intro {{ min-height:0; border-right:0; border-bottom:1px solid var(--ayu-border); padding:24px 24px 18px; }} #ayu-login-root .ayu-login-illustration {{ display:none; }} #ayu-login-root .ayu-login-main {{ padding:24px; }} }}
-                @media (max-width:560px) {{ #ayu-login-root {{ padding:14px; }} #ayu-login-root .ayu-login-title {{ font-size:28px; }} #ayu-login-root .startup-panel {{ padding:24px; }} #ayu-login-root .ayu-reset-panel {{ grid-template-columns:1fr auto; }} #ayu-login-root .ayu-reset-illustration {{ display:none; }} }}
+        #ayu-login-root .boot-sweep-note {{ font-size:11.5px; color:var(--ayu-faint); line-height:1.45; }}
+        @media (max-width:520px) {{ #ayu-login-root {{ padding:14px; }} #ayu-login-root .ayu-login-card {{ padding:22px 18px 16px; border-radius:16px; }} #ayu-login-root .ayu-login-title {{ font-size:21px; }} #ayu-login-root .startup-panel {{ padding:20px; }} }}
         @media (prefers-reduced-motion:reduce) {{ #ayu-login-root .boot-sweep-node {{ animation:none; }} #ayu-login-root .progress-fill {{ transition:none; }} }}
-                </style>
-                <div id="ayu-login-root">
-                  <div class='ayu-login-card'>
-                    <section class='ayu-login-intro'>
-                      <div>
-                        <div class='ayu-login-brand'>{login_brand_html}</div>
-                        <div>
-                          <div class='ayu-login-eyebrow'>Secure boot</div>
-                          <h1 class='ayu-login-title'>{login_title}</h1>
-                          <p class='ayu-login-tagline'>{login_tagline}</p>
-                        </div>
-                        {warn_default}
-                      </div>
-                      <div class='ayu-login-illustration' aria-hidden='true'>
-                        <svg viewBox='0 0 260 200' role='img'>
-                          <rect x='44' y='44' width='172' height='104' rx='22' fill='currentColor' opacity='.10'/>
-                          <rect x='64' y='64' width='132' height='66' rx='14' fill='currentColor' opacity='.16'/>
-                          <path d='M92 96h76M108 116h44' stroke='currentColor' stroke-width='8' stroke-linecap='round' opacity='.38'/>
-                          <path d='M130 58V42a30 30 0 0 1 60 0v16' fill='none' stroke='currentColor' stroke-width='10' stroke-linecap='round' opacity='.62'/>
-                          <circle cx='130' cy='97' r='58' fill='none' stroke='currentColor' stroke-width='8' opacity='.22'/>
-                          <path d='M188 146l28 28M216 146l-28 28' stroke='currentColor' stroke-width='8' stroke-linecap='round'/>
-                        </svg>
-                      </div>
-                    </section>
-                    <section class='ayu-login-main'>
-                      <form id='login-form' method='post' action='/login'>
-                        <input id='unused-server-username' type='text' name='username' value='admin' autocomplete='username' style='display:none' aria-hidden='true' tabindex='-1'>
-                        <label for='server-password'>{password_label}</label>
-                        <div class='ayu-login-password-row'>
-                          <input id='server-password' class='ayu-login-input' type='password' name='password' placeholder='{password_placeholder}' autocomplete='{"new-password" if setup_password_mode else "current-password"}' required>
-                          <button id='toggle-password' class='ayu-login-icon-btn' type='button' aria-label='Show password' title='Show password'>
-                            <svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='2' stroke='currentColor'><path stroke-linecap='round' stroke-linejoin='round' d='M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.964-7.178Z'/><path stroke-linecap='round' stroke-linejoin='round' d='M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z'/></svg>
-                          </button>
-                        </div>
-                        {"<div class='ayu-login-password-tools'><button id='generate-password' class='ayu-login-tool-btn' type='button'><svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='2' stroke='currentColor'><path stroke-linecap='round' stroke-linejoin='round' d='M15.59 14.37a6 6 0 1 1-5.84-10.38m5.84 10.38 4.13 4.13m-4.13-4.13 4.13-4.13M12 8v4l2.5 1.5'/></svg><span>Generate random password</span></button><button id='copy-password' class='ayu-login-tool-btn' type='button'><svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='2' stroke='currentColor'><path stroke-linecap='round' stroke-linejoin='round' d='M8 16H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2m-6 12h8a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-8a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2Z'/></svg><span>Copy</span></button></div>" if setup_password_mode else ""}
-              <style>
-                #ayu-legal-disclosure {{ margin-top:10px; border-radius:16px; overflow:hidden; border:1px solid var(--ayu-border); background:var(--ayu-surface-muted); }}
-                #ayu-legal-disclosure .ayu-legal-bar {{ display:flex; align-items:center; gap:10px; padding:12px 15px; cursor:pointer; user-select:none; -webkit-user-select:none; transition:background .18s ease; }}
-                #ayu-legal-disclosure .ayu-legal-bar:hover {{ background:var(--ayu-bg-accent); }}
-                #ayu-legal-disclosure .ayu-legal-icon {{ width:28px; height:28px; border-radius:8px; background:linear-gradient(135deg,rgba(109,40,217,.14),rgba(59,130,246,.10)); display:grid; place-items:center; flex-shrink:0; }}
-                #ayu-legal-disclosure .ayu-legal-icon svg {{ width:14px; height:14px; color:var(--ayu-primary); }}
-                #ayu-legal-disclosure .ayu-legal-summary {{ flex:1; font-size:12.5px; color:var(--ayu-text); line-height:1.4; }}
-                #ayu-legal-disclosure .ayu-legal-summary a {{ color:var(--ayu-primary); font-weight:700; text-decoration:none; border-bottom:1px dashed currentColor; }}
-                #ayu-legal-disclosure .ayu-legal-summary a:hover {{ border-bottom-style:solid; }}
-                #ayu-legal-disclosure .ayu-legal-chevron {{ width:18px; height:18px; flex-shrink:0; color:var(--ayu-faint); transition:transform .25s ease; }}
-                #ayu-legal-disclosure.open .ayu-legal-chevron {{ transform:rotate(180deg); }}
-                #ayu-legal-disclosure .ayu-legal-body {{ max-height:0; overflow:hidden; transition:max-height .35s cubic-bezier(.4,0,.2,1); }}
-                #ayu-legal-disclosure.open .ayu-legal-body {{ max-height:280px; }}
-                #ayu-legal-disclosure .ayu-legal-content {{ padding:0 15px 14px; font-size:11px; line-height:1.55; color:var(--ayu-muted); text-align:justify; border-top:1px solid var(--ayu-border); margin-top:0; padding-top:12px; }}
-                        #ayu-legal-disclosure .ayu-legal-content strong {{ color:var(--ayu-text); font-weight:700; letter-spacing:0; }}
-                #ayu-login-root .ayu-legal-acceptance {{ display:flex; gap:10px; align-items:center; margin-top:10px; padding:12px 13px; border-radius:14px; border:1px solid var(--ayu-border); background:var(--ayu-surface-muted); font-size:12px; line-height:1.45; color:var(--ayu-text); cursor:pointer; }}
-                #ayu-login-root .ayu-legal-acceptance input[type='checkbox'] {{ appearance:auto; width:18px; min-width:18px; max-width:18px; height:18px; min-height:18px; max-height:18px; flex:0 0 18px; margin:0; padding:0; cursor:pointer; accent-color:var(--ayu-primary); }}
-              </style>
-              <div id='ayu-legal-disclosure'>
-                <div class='ayu-legal-bar' onclick="this.parentElement.classList.toggle('open')" role='button' tabindex='0' aria-expanded='false' aria-controls='ayu-legal-body'>
-                  <span class='ayu-legal-icon'><svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='2' stroke='currentColor'><path stroke-linecap='round' stroke-linejoin='round' d='M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z'/></svg></span>
-                  <span class='ayu-legal-summary'>By continuing you agree to the <a href='https://www.autoyou.me/terms/' target='_blank' rel='noreferrer'>Terms&nbsp;of&nbsp;Use&nbsp;(EULA)</a>, <a href='/LICENSE' target='_blank'>License&nbsp;Terms</a>, <a href='https://www.autoyou.me/privacy/' target='_blank' rel='noreferrer'>Privacy&nbsp;Policy</a>, user responsibility, warranty disclaimer, and liability limits.</span>
-                  <svg class='ayu-legal-chevron' xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='2.5' stroke='currentColor'><path stroke-linecap='round' stroke-linejoin='round' d='m19.5 8.25-7.5 7.5-7.5-7.5'/></svg>
+        </style>
+        <div id="ayu-login-root">
+          <main class='ayu-login-card'>
+            <header class='ayu-login-header'>
+              <div class='ayu-login-top'>
+                <div class='ayu-brand-compact'>
+                  <img src='/assets/logo.png' alt='AutoYou logo'>
+                  <span class='ayu-brand-wordmark'>{friendly_product_name}</span>
                 </div>
-                <div class='ayu-legal-body' id='ayu-legal-body'>
-                  <div class='ayu-legal-content'>
-                    <strong>RESPONSIBILITY NOTICE:</strong> You are responsible for the data, accounts, prompts, models, automations, messages, third-party services, and operations you connect to AutoYou. Use AutoYou only with lawful authority, required consents, and compliance with applicable privacy, telecom, platform, export, intellectual-property, and consumer-protection rules. AutoYou is provided as-is; OpenStorey LLC, the AutoYou owner board, and contributors disclaim warranties and limit liability to the maximum extent permitted by law. Bundled release notices are available at <a href='/NOTICE.txt' target='_blank'>NOTICE</a>, <a href='/THIRD-PARTY-NOTICES.md' target='_blank'>Third-Party Notices</a>, and <a href='/sbom.cdx.json' target='_blank'>SBOM</a>. If you do not agree, do not use this software.
-                  </div>
+                <span class='ayu-login-badge'>{login_eyebrow}</span>
+              </div>
+              <div>
+                <h1 class='ayu-login-title'>{login_title}</h1>
+                <p class='ayu-login-tagline'>{login_tagline}</p>
+              </div>
+              {warn_default}
+            </header>
+            <form id='login-form' method='post' action='/login'>
+              <input id='unused-server-username' type='text' name='username' value='admin' autocomplete='username' style='display:none' aria-hidden='true' tabindex='-1'>
+              <div class='ayu-field-group'>
+                <label for='server-password'>{password_label}</label>
+                <div class='ayu-login-password-row'>
+                  <input id='server-password' class='ayu-login-input' type='password' name='password' placeholder='{password_placeholder}' autocomplete='{"new-password" if setup_password_mode else "current-password"}' required>
+                  <button id='toggle-password' class='ayu-login-icon-btn' type='button' aria-label='Show password' title='Show password'>
+                    <svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='2' stroke='currentColor'><path stroke-linecap='round' stroke-linejoin='round' d='M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.964-7.178Z'/><path stroke-linecap='round' stroke-linejoin='round' d='M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z'/></svg>
+                  </button>
+                </div>
+                {"<div class='ayu-login-password-tools'><button id='generate-password' class='ayu-login-tool-btn' type='button'><svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='2' stroke='currentColor'><path stroke-linecap='round' stroke-linejoin='round' d='M15.75 5.25a3 3 0 0 1 3 3m3 0a6 6 0 0 1-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1 1 21.75 8.25Z'/></svg><span>Generate random password</span></button><button id='copy-password' class='ayu-login-tool-btn' type='button'><svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='2' stroke='currentColor'><path stroke-linecap='round' stroke-linejoin='round' d='M8 16H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2m-6 12h8a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-8a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2Z'/></svg><span>Copy</span></button></div>" if setup_password_mode else ""}
+              </div>
+              {legal_section_html}
+              <button id='login-submit' class='ayu-login-submit' type='submit'>{submit_label}</button>
+            </form>
+            {native_unlock_html}
+            <div id='login-error' class='ayu-login-error hidden' role='alert'></div>
+            {reset_panel_html}
+          </main>
+          <div id='reset-modal' class='ayu-reset-modal hidden' role='dialog' aria-modal='true' aria-labelledby='reset-title'>
+            <div class='ayu-reset-modal-panel'>
+              <div class='ayu-reset-modal-head'>
+                <div class='ayu-reset-modal-icon' aria-hidden='true'>
+                  <svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='2' stroke='currentColor'><path stroke-linecap='round' stroke-linejoin='round' d='M12 9v3.75m0 3.75h.008M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z'/></svg>
+                </div>
+                <div>
+                  <h2 id='reset-title'>Reset AutoYou on this computer?</h2>
+                  <p>This removes local setup and shuts the server down. Launch AutoYou again to start fresh.</p>
                 </div>
               </div>
-              {legal_acceptance_html}
-                        <button id='login-submit' class='ayu-login-submit' type='submit'>{submit_label}</button>
-                      </form>
-                      {native_unlock_html}
-                      <div id='login-error' class='ayu-login-error hidden' role='alert'></div>
-                      {reset_panel_html}
-                    </section>
-                  </div>
-                  <div id='reset-modal' class='ayu-reset-modal hidden' role='dialog' aria-modal='true' aria-labelledby='reset-title'>
-                    <div class='ayu-reset-modal-panel'>
-                      <div class='ayu-reset-modal-head'>
-                        <div class='ayu-reset-modal-icon' aria-hidden='true'>
-                          <svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='2' stroke='currentColor'><path stroke-linecap='round' stroke-linejoin='round' d='M12 9v3.75m0 3.75h.008M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z'/></svg>
-                        </div>
-                        <div>
-                          <h2 id='reset-title'>Reset AutoYou on this computer?</h2>
-                          <p>This removes local setup and then shuts the server down. Launch AutoYou again to set it up from the beginning.</p>
-                        </div>
-                      </div>
-                      <ul>
-                        <li>Saved server password and system credential entries are cleared.</li>
-                        <li>Local sessions, pairing records, agent registries, and runtime databases are removed.</li>
-                        <li>Installed application files and source code are left alone.</li>
-                      </ul>
-                      <label for='reset-confirmation'>Type RESET to continue</label>
-                      <input id='reset-confirmation' class='ayu-login-input' type='text' autocomplete='off' spellcheck='false'>
-                      <div id='reset-status' class='ayu-login-error hidden' role='alert'></div>
-                      <div class='ayu-reset-modal-actions'>
-                        <button id='cancel-reset' class='ayu-reset-cancel' type='button'>Cancel</button>
-                        <button id='confirm-reset' class='ayu-reset-confirm' type='button'>Erase and Shut Down</button>
-                      </div>
-                    </div>
-                  </div>
+              <ul>
+                <li>Saved server password and system credential entries are cleared.</li>
+                <li>Local sessions, pairing records, agent registries, and runtime databases are removed.</li>
+                <li>Installed application files and source code are left alone.</li>
+              </ul>
+              <div class='ayu-field-group'>
+                <label for='reset-confirmation'>Type RESET to continue</label>
+                <input id='reset-confirmation' class='ayu-login-input' type='text' placeholder='RESET' autocomplete='off' spellcheck='false'>
+              </div>
+              <div id='reset-status' class='ayu-login-error hidden' role='alert'></div>
+              <div class='ayu-reset-modal-actions'>
+                <button id='cancel-reset' class='ayu-reset-cancel' type='button'>Cancel</button>
+                <button id='confirm-reset' class='ayu-reset-confirm' type='button'>Erase and Shut Down</button>
+              </div>
+            </div>
+          </div>
 
-                  <div id='login-loading' class='startup-overlay hidden' aria-live='polite' aria-busy='true'>
+          <div id='login-loading' class='startup-overlay hidden' aria-live='polite' aria-busy='true'>
             <div class='startup-panel'>
               <div class='ayu-login-brand'>{login_brand_html}</div>
               <div>
@@ -841,23 +868,25 @@ def register_routes(
           const startupInitialDetail = {server.json.dumps(startup_detail)};
           const loginFailureMessage = {server.json.dumps(login_failure_message)};
           const setupPasswordMode = {server.json.dumps(setup_password_mode)};
+          const defaultBootstrapPassword = {server.json.dumps(default_bootstrap_password)};
           const passwordAlphabet = {server.json.dumps(server.SERVER_PASSWORD_GENERATOR_ALPHABET)};
           const passwordLength = {server.json.dumps(server.SERVER_PASSWORD_GENERATOR_LENGTH)};
-                  const passwordInput = document.getElementById('server-password');
-                  const togglePasswordButton = document.getElementById('toggle-password');
-                  const generatePasswordButton = document.getElementById('generate-password');
-                  const copyPasswordButton = document.getElementById('copy-password');
-                  const nativeUnlockButton = document.getElementById('native-unlock');
-                  const openResetButton = document.getElementById('open-reset-modal');
-                  const resetModal = document.getElementById('reset-modal');
-                  const cancelResetButton = document.getElementById('cancel-reset');
-                  const confirmResetButton = document.getElementById('confirm-reset');
-                  const resetConfirmationInput = document.getElementById('reset-confirmation');
-                  const resetStatusBox = document.getElementById('reset-status');
-                  if (nativeUnlockButton) {{
-                    const nativeLabel = nativeUnlockButton.querySelector('span');
-                    nativeUnlockButton.dataset.originalLabel = nativeLabel ? nativeLabel.textContent : 'Unlock with system credentials';
-                  }}
+          const passwordInput = document.getElementById('server-password');
+          const togglePasswordButton = document.getElementById('toggle-password');
+          const generatePasswordButton = document.getElementById('generate-password');
+          const copyPasswordButton = document.getElementById('copy-password');
+          const useDefaultPasswordButton = document.getElementById('use-default-password');
+          const nativeUnlockButton = document.getElementById('native-unlock');
+          const openResetButton = document.getElementById('open-reset-modal');
+          const resetModal = document.getElementById('reset-modal');
+          const cancelResetButton = document.getElementById('cancel-reset');
+          const confirmResetButton = document.getElementById('confirm-reset');
+          const resetConfirmationInput = document.getElementById('reset-confirmation');
+          const resetStatusBox = document.getElementById('reset-status');
+          if (nativeUnlockButton) {{
+            const nativeLabel = nativeUnlockButton.querySelector('span');
+            nativeUnlockButton.dataset.originalLabel = nativeLabel ? nativeLabel.textContent : 'Unlock with system credentials';
+          }}
 
           function generatePassword(length) {{
             const size = Math.max(16, Math.min(128, Number(length) || 24));
@@ -884,9 +913,13 @@ def register_routes(
             passwordInput.focus();
           }}
 
+          const eyeOpenSvg = "<svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='2' stroke='currentColor'><path stroke-linecap='round' stroke-linejoin='round' d='M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.964-7.178Z'/><path stroke-linecap='round' stroke-linejoin='round' d='M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z'/></svg>";
+          const eyeClosedSvg = "<svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='2' stroke='currentColor'><path stroke-linecap='round' stroke-linejoin='round' d='M3.98 8.223A10.477 10.477 0 0 0 1.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.894 7.894L21 21m-3.228-3.228-3.65-3.65m0 0a3 3 0 1 0-4.243-4.243m4.242 4.242L9.88 9.88'/></svg>";
+
           function setPasswordVisible(visible) {{
             if (!passwordInput || !togglePasswordButton) return;
             passwordInput.type = visible ? 'text' : 'password';
+            togglePasswordButton.innerHTML = visible ? eyeClosedSvg : eyeOpenSvg;
             togglePasswordButton.setAttribute('aria-label', visible ? 'Hide password' : 'Show password');
             togglePasswordButton.setAttribute('title', visible ? 'Hide password' : 'Show password');
           }}
@@ -894,6 +927,12 @@ def register_routes(
           if (togglePasswordButton) {{
             togglePasswordButton.addEventListener('click', () => {{
               setPasswordVisible(passwordInput ? passwordInput.type === 'password' : false);
+            }});
+          }}
+          if (useDefaultPasswordButton && setupPasswordMode) {{
+            useDefaultPasswordButton.addEventListener('click', () => {{
+              setPasswordValue(defaultBootstrapPassword);
+              setPasswordVisible(false);
             }});
           }}
           if (generatePasswordButton && setupPasswordMode) {{

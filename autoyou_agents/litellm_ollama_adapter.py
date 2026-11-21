@@ -2231,6 +2231,7 @@ def _normalize_ollama_message(
             or malformed_visible_answer
             or internal_reasoning_json
             or (normalized_content is None and isinstance(content, str) and content.strip())
+            or ((normalized_content is None or not str(normalized_content).strip()) and bool(reasoning_text))
         )
     ):
         routing_tool_name = _extract_agent_tool_name_from_planner_artifact(

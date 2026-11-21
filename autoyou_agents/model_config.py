@@ -138,6 +138,9 @@ def resolve_agent_harness_profile(model_name: Any = None) -> str:
     if identifier.startswith("gemma4"):
         return AGENT_HARNESS_EXPANDED
 
+    if identifier.startswith("qwen3.5"):
+        return AGENT_HARNESS_EXPANDED
+
     # Other families: the parameter count Ollama reports for this exact tag
     # beats the one in its name (a fine-tune or alias can carry any name).
     general_size = reported_size if reported_size is not None else named_size
@@ -153,19 +156,23 @@ def model_uses_compact_root_tool_routing(model_name: Any = None) -> bool:
     """Return whether the root should expose one specialist dispatcher.
 
     Callback complexity and root tool-schema capacity are separate concerns.
-    Models such as ``gemma4:e2b`` and ``gemma4:e4b`` need expanded specialist callbacks, but
-    is not reliable when the root advertises every installed specialist as a
-    separate JSON schema. Keep its root on the compact two-stage topology so
-    ordinary conversation remains a model-generated reply instead of needing a
-    deterministic greeting shortcut.
+    Models such as ``gemma4:e2b``, ``gemma4:e4b``, and small ``qwen3.5`` tags
+    (``qwen3.5:4b`` / ``qwen3.5:9b``) need expanded specialist callbacks, but
+    are far more reliable when the root advertises one ``route_to_specialist``
+    dispatcher instead of every installed specialist as a separate JSON schema.
 
     ``AUTOYOU_TWO_STAGE_ROUTER`` remains the explicit operator override at the
-    root-agent layer. Apart from the e2b/e4b exception, this preserves the existing
-    harness-profile routing behavior exactly.
+    root-agent layer.
     """
     identifier = _model_identifier(model_name)
     if re.match(r"^gemma4:e[24]b(?:$|[._-])", identifier):
         return True
+    if identifier.startswith("qwen3.5"):
+        named_size = _model_size_billions(identifier)
+        reported_size = _active_ollama_metadata_size_billions(identifier)
+        size = reported_size if reported_size is not None else named_size
+        if size is None or size <= 9.5:
+            return True
     return not model_uses_expanded_harness(model_name)
 
 # Kwargs that are Ollama-specific and must NOT be forwarded to cloud or
@@ -325,7 +332,7 @@ def _filter_ollama_kwargs(kwargs: Dict[str, Any]) -> Dict[str, Any]:
     return {k: v for k, v in kwargs.items() if k not in _OLLAMA_ONLY_KWARGS}
 
 def _configured_ollama_model_name() -> str:
-    return str(os.getenv("OLLAMA_MODEL", "ministral-3:8b") or "ministral-3:8b").strip()
+    return str(os.getenv("OLLAMA_MODEL", "qwen3.5:4b") or "qwen3.5:4b").strip()
 
 def _load_model_behavior_config() -> Dict[str, Any]:
     try:

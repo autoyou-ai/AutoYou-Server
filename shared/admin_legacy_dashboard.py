@@ -4410,8 +4410,8 @@ async def build_legacy_dashboard_html(bot_status: str = "Unknown", bot_name: str
           </div>
           <div style='margin-bottom:4px;'>
             <label style='display:block; margin-bottom:4px; font-weight:bold;'>Model</label>
-            <input type='text' name='ollama_model' placeholder='ministral-3:8b' value='{ollama_model}' style='width:100%;'>
-            <small class='muted'>Model name to use (e.g. ministral-3:8b, llama3.2, mistral)</small>
+            <input type='text' name='ollama_model' placeholder='qwen3.5:4b' value='{ollama_model}' style='width:100%;'>
+            <small class='muted'>Model name to use (e.g. qwen3.5:4b, qwen3.5:9b, gemma4:e4b)</small>
           </div>
         </div>
 
@@ -6959,7 +6959,7 @@ async def build_legacy_dashboard_html(bot_status: str = "Unknown", bot_name: str
 
         function downloadRecommendedModel() {
           const ollama = (window.autoyouWizardState || {}).ollama || {};
-          const modelName = ollama.recommended_model || 'ministral-3:8b';
+          const modelName = ollama.recommended_model || 'qwen3.5:4b';
           startModelDownload({ source: 'ollama', reference: modelName, title: modelName });
         }
 

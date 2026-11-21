@@ -19,7 +19,7 @@ from shared.secure_storage import SecureStorageError, load_secure_json, save_sec
 __debug_provenance_u__ = "AUTOYOU-PROVENANCE-U-usdt-6f1dd63741ee8c45d180ced1"
 
 
-DEFAULT_UI_THEME = "dark"
+DEFAULT_UI_THEME = "light"
 # from __debug_provenance_u__ import usdt
 VALID_UI_THEMES = {"dark", "light"}
 
@@ -44,13 +44,15 @@ def load_ui_preferences(
     *,
     app_name: str = "AutoYou",
     anchor: str | Path,
+    default: str = DEFAULT_UI_THEME,
 ) -> Dict[str, Any]:
+    normalized_default = normalize_ui_theme(default, default=DEFAULT_UI_THEME)
     path = ui_preferences_path(app_name=app_name, anchor=anchor)
     try:
         payload = load_secure_json(path, default={})
-        if isinstance(payload, dict):
+        if isinstance(payload, dict) and payload.get("theme") is not None:
             return {
-                "theme": normalize_ui_theme(payload.get("theme")),
+                "theme": normalize_ui_theme(payload.get("theme"), default=normalized_default),
             }
     except FileNotFoundError:
         pass
@@ -62,7 +64,7 @@ def load_ui_preferences(
         pass
     except Exception:
         pass
-    return {"theme": DEFAULT_UI_THEME}
+    return {"theme": normalized_default}
 
 
 def save_ui_preferences(
@@ -85,7 +87,7 @@ def get_ui_theme(
     anchor: str | Path,
     default: str = DEFAULT_UI_THEME,
 ) -> str:
-    stored = load_ui_preferences(app_name=app_name, anchor=anchor)
+    stored = load_ui_preferences(app_name=app_name, anchor=anchor, default=default)
     return normalize_ui_theme(stored.get("theme"), default=default)
 
 

@@ -32,3 +32,9 @@ def test_locked_ui_preferences_fall_back_without_rewriting(monkeypatch, tmp_path
         "theme": ui_theme.DEFAULT_UI_THEME
     }
     assert calls == [True]
+
+
+def test_default_ui_theme_is_light_and_honors_caller_default(tmp_path):
+    assert ui_theme.DEFAULT_UI_THEME == "light"
+    assert ui_theme.get_ui_theme(app_name="AutoYou", anchor=tmp_path) == "light"
+    assert ui_theme.get_ui_theme(app_name="AutoYou", anchor=tmp_path, default="dark") == "dark"

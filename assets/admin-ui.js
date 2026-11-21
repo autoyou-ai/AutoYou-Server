@@ -3386,7 +3386,7 @@
             } : null,
             overview: {
                 serverName: getByPath(cfg, "server.name", "AutoYou-Server"),
-                adminTheme: getByPath(bootstrap, "admin.theme", "dark"),
+                adminTheme: getByPath(bootstrap, "admin.theme", "light"),
                 bindHost: getByPath(cfg, "server.bind_host", "127.0.0.1"),
                 nativeUnlockEnabled: asBoolean(getByPath(cfg, "security.native_unlock_enabled", true), true),
                 softwareUpdatesEnabled: asBoolean(getByPath(cfg, "software_update.enabled", true), true)
@@ -8325,7 +8325,7 @@
             guidedPermissions();
             state.setup.progress = "Saving local settings...";
             renderApp();
-            await patchConfig({ server: { name: getByPath(state.forms, "overview.serverName", "AutoYou-Server") }, ui_theme: getByPath(state.forms, "overview.adminTheme", "dark") });
+            await patchConfig({ server: { name: getByPath(state.forms, "overview.serverName", "AutoYou-Server") }, ui_theme: getByPath(state.forms, "overview.adminTheme", "light") });
             var response = await applySetupRecipe(false);
             var recipe = response.recipe;
             var choices = recipe.agent_choices || { enable: (recipe.recommended_agents || []).map(function (agent) { return agent.name; }), disable: [] };
@@ -8545,7 +8545,7 @@
         } else if (currentStep.id === "name-theme") {
             currentStepBody = "<div class=\"ayu-note\">Name this server and choose the admin theme first. The name appears during pairing, in client headers, logs, and exported setup QR codes.</div>" + renderStatusRows([
                 { label: "Server name", value: getByPath(state.forms, "overview.serverName", getByPath(cfg, "server.name", "AutoYou-Server")) },
-                { label: "Admin shell theme", value: prettyLabel(getByPath(state.forms, "overview.adminTheme", "dark")) }
+                { label: "Admin shell theme", value: prettyLabel(getByPath(state.forms, "overview.adminTheme", "light")) }
             ]) + "<div class=\"ayu-soft-divider\"></div>" + field("Server name", input("overview.serverName", { placeholder: "AutoYou-Server" }), "Shown to clients during pairing and in exported setup QR codes.") + field("Admin shell theme", select("overview.adminTheme", [{ value: "dark", label: "Dark" }, { value: "light", label: "Light" }]), "Changes the admin shell only. Agent Websites follows each device's system appearance.") + "<div class=\"ayu-inline-actions\">" + button("Save name & theme", "save-overview", "primary", "save") + "</div><div class=\"ayu-note ayu-note-blue\"><strong>Next step:</strong> Continue to Security & 2FA to harden the admin baseline.<div class=\"ayu-inline-actions\">" + button("Continue to Security & 2FA", "setup-next", "secondary", "shield", "sm") + "</div></div>";
         } else if (currentStep.id === "security-basics") {
             currentStepBody = "<div class=\"ayu-note ayu-note-" + escapeHtml(passwordChanged ? "green" : "blue") + "\">" + escapeHtml(passwordChanged ? "A custom pairing password is saved for this server." : "Default password autoyou123 is active for first setup. Rotate it here when ready.") + "</div>" + renderStatusRows([
@@ -11014,7 +11014,7 @@
 
     function renderContextBar() {
         var name = getByPath(state.bootstrap, "admin.server_name", "AutoYou-Server");
-        var theme = getByPath(state.forms, "overview.adminTheme", "dark");
+        var theme = getByPath(state.forms, "overview.adminTheme", "light");
         return "<header class=\"ayu-contextbar\"><span>Server / <strong>" + escapeHtml(currentTitle()) + "</strong></span><div class=\"ayu-inline-actions\"><span class=\"ayu-context-name\">" + escapeHtml(shortText(name, 30)) + "</span>" + button(theme === "dark" ? "Light theme" : "Dark theme", "toggle-admin-theme", "ghost", "eye", "sm") + "</div></header>";
     }
 
@@ -11849,7 +11849,7 @@
             return;
         }
         if (action === "toggle-admin-theme") {
-            var nextTheme = getByPath(state.forms, "overview.adminTheme", "dark") === "dark" ? "light" : "dark";
+            var nextTheme = getByPath(state.forms, "overview.adminTheme", "light") === "dark" ? "light" : "dark";
             await patchConfig({ ui_theme: nextTheme }, "Appearance updated.");
             return;
         }
@@ -12077,7 +12077,7 @@
         if (action === "save-overview") {
             await patchConfig({
                 server: { name: getByPath(state.forms, "overview.serverName", "AutoYou-Server") },
-                ui_theme: getByPath(state.forms, "overview.adminTheme", "dark")
+                ui_theme: getByPath(state.forms, "overview.adminTheme", "light")
             }, "Server identity updated.");
             return;
         }

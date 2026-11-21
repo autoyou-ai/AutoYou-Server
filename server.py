@@ -1650,15 +1650,15 @@ from shared.ollama_context_policy import recommend_ollama_num_ctx
 def _pick_default_wizard_model() -> str:
     """Return the recommended starter model based on available system RAM.
 
-    >= 16 GB total RAM  ->  ministral-3:8b  (better quality)
-    <  16 GB total RAM  ->  ministral-3:3b  (lighter footprint)
+    > 24 GB total RAM   ->  qwen3.5:9b  (higher capability)
+    <= 24 GB total RAM  ->  qwen3.5:4b  (fast, multimodal, comfortable on 16 GB machines)
     """
     try:
         import psutil as _psutil
         total_gb = _psutil.virtual_memory().total / (1024 ** 3)
-        return "ministral-3:8b" if total_gb > 16.0 else "ministral-3:3b"
+        return "qwen3.5:9b" if total_gb > 24.0 else "qwen3.5:4b"
     except Exception:
-        return "ministral-3:3b"
+        return "qwen3.5:4b"
 
 def _configured_ollama_model_for_behavior() -> str:
     try:

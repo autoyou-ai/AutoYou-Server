@@ -1390,7 +1390,63 @@ def paraphrase_scenarios() -> list[Scenario]:
     return scenarios
 
 
-SUITES = {"continuity": continuity_scenarios, "paraphrase": paraphrase_scenarios}
+REMOTE_DESKTOP_AGENT = "autoyou_remote_desktop_agent"
+
+
+def personal_harness_scenarios() -> list[Scenario]:
+    """End-to-end personal offline harness scenarios tuned for local models such as qwen3.5:4b."""
+    return [
+        Scenario(
+            name="harness_greeting_nonempty",
+            description="Basic conversational greeting must respond cleanly without empty parts.",
+            turns=(
+                ScenarioTurn(
+                    "hi",
+                    ROOT_AGENT,
+                    must_match=(r"[A-Za-z]{2}",),
+                    must_not_match=(r"(?i)finish_reason=STOP|empty parts|internal error",),
+                ),
+            ),
+        ),
+        Scenario(
+            name="harness_internet_open_parse_and_followup",
+            description="Opening a news site and asking to parse headlines must return real headlines, not 'navigate_page completed successfully.', and follow-up must summarize them.",
+            needs_network=True,
+            turns=(
+                ScenarioTurn(
+                    "@internet Open bbc.com and parse latest news",
+                    INTERNET_AGENT,
+                    must_match=(r"(?i)(?:bbc|news|headline|source|http)",),
+                    must_not_match=(r"(?i)^navigate_page completed successfully\.?$|finish_reason=STOP|empty parts",),
+                ),
+                ScenarioTurn(
+                    "What was the news?",
+                    must_match=(r"[A-Za-z]{12}",),
+                    must_not_match=(r"(?i)finish_reason=STOP|empty parts|internal error",),
+                ),
+            ),
+        ),
+        Scenario(
+            name="harness_desktop_automation_status",
+            description="Native cross-platform desktop automation status and window listing work via remote_desktop_agent.",
+            turns=(
+                ScenarioTurn(
+                    "@remote_desktop check desktop automation status and list running windows",
+                    REMOTE_DESKTOP_AGENT,
+                    must_match=(r"(?i)(?:macos|windows|linux|wsl|docker|window|backend|cua-driver|headless)",),
+                    must_not_match=(r"(?i)finish_reason=STOP|empty parts|internal error",),
+                ),
+            ),
+        ),
+    ]
+
+
+SUITES = {
+    "continuity": continuity_scenarios,
+    "paraphrase": paraphrase_scenarios,
+    "personal_harness": personal_harness_scenarios,
+    "qwen35": personal_harness_scenarios,
+}
 
 
 def _fill_token(text: str, token: str) -> str:

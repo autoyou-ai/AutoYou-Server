@@ -135,6 +135,11 @@ def test_totp_login_cookie_bearer_and_logout(prompt_site):
 def test_missing_totp_configuration_never_opens_history(prompt_site, monkeypatch):
     client, _ = prompt_site
     monkeypatch.setattr(security, "_totp_capabilities", lambda: {"totp_configured": False})
+    home = client.get("/")
+    assert home.status_code == 200
+    assert 'id="autoyou-auth-gate"' in home.text
+    assert "needs 2FA setup" in home.text
+    assert 'id="autoyou-auth-code"' not in home.text
     assert client.post("/api/auth/login", json={"totp_code": "654321"}).status_code == 400
     assert client.get("/api/prompts").status_code == 401
 

@@ -92,13 +92,13 @@ def test_a_missing_default_model_is_named_with_the_command_to_get_it(monkeypatch
     monkeypatch.setattr(bootstrap, "run_command", lambda command, **kwargs: ran.append(command))
 
     bootstrap.ensure_default_ollama_model("synthetic-ollama", pull=False)
-    assert "ollama pull ministral-3:8b" in capsys.readouterr().out
+    assert "ollama pull qwen3.5:4b" in capsys.readouterr().out
     assert ran == []
 
     bootstrap.ensure_default_ollama_model("synthetic-ollama", pull=True)
-    assert ran == [["synthetic-ollama", "pull", "ministral-3:8b"]]
+    assert ran == [["synthetic-ollama", "pull", "qwen3.5:4b"]]
 
-    monkeypatch.setattr(bootstrap, "ollama_installed_models", lambda: ["ministral-3:8b"])
+    monkeypatch.setattr(bootstrap, "ollama_installed_models", lambda: ["qwen3.5:4b"])
     bootstrap.ensure_default_ollama_model("synthetic-ollama", pull=True)
     assert len(ran) == 1
 
