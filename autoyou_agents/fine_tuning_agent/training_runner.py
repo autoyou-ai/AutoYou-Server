@@ -768,6 +768,16 @@ def train_adapter(args: argparse.Namespace) -> int:
         _log(message)
         return 4
 
+    if _truthy(os.getenv("AUTOYOU_FAST_LINEAR_ATTENTION", "1")):
+        try:
+            from . import linear_attention
+
+            patched = linear_attention.install()
+            if patched.get("patched"):
+                _log(f"FAST_LINEAR_ATTENTION patched={','.join(m.rsplit('.', 1)[-1] for m in patched['patched'])}")
+        except Exception as exc:  # a slower path beats no run
+            _log(f"FAST_LINEAR_ATTENTION unavailable: {exc}")
+
     # Plan-driven settings. Every one has a safe default so a legacy job row
     # that carries none of them behaves as it always did.
     global _TRUST_REMOTE_CODE
