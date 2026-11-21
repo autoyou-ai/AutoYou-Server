@@ -806,6 +806,18 @@ def train_adapter(args: argparse.Namespace) -> int:
         torch.set_num_threads(cpu_threads)
     precision = str(getattr(args, "precision", "auto") or "auto").lower()
     attn_choice = str(getattr(args, "attn_implementation", "auto") or "auto").lower()
+    if attn_choice == "auto" and accelerator == "rocm":
+        # A job started without a plan must not walk into the failure the planner avoids:
+        # on the AMD APUs SDPA raises hipErrorInvalidValue on the first forward.
+        try:
+            from .hardware import prefers_eager_attention
+
+            properties = torch.cuda.get_device_properties(torch.cuda.current_device())
+            if prefers_eager_attention("rocm", str(getattr(properties, "name", "")), getattr(properties, "gcnArchName", None)):
+                attn_choice = "eager"
+                _log("ATTENTION eager (SDPA kernels fail on this AMD APU)")
+        except Exception:
+            pass
     progress_file = Path(args.progress_file) if getattr(args, "progress_file", "") else None
 
     tokenizer = None

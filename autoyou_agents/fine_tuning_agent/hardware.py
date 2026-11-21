@@ -157,6 +157,17 @@ class HardwareReport:
         }
 
 
+def prefers_eager_attention(backend: str, name: str = "", arch: Optional[str] = None) -> bool:
+    """True where SDPA's kernels are known to fail and eager attention is the reliable path.
+
+    The AMD APUs (Strix Halo and its siblings, gfx1150-1153) raise
+    ``hipErrorInvalidValue`` in an elementwise kernel right after the SDPA call, on
+    the first forward. The planner chooses eager for them; a job started without a
+    plan must get the same answer.
+    """
+    return backend == "rocm" and classify_family(backend, name=name, arch=arch) == "strix_halo"
+
+
 # ----------------------------------------------------------------- classify
 def classify_family(backend: str, name: str = "", arch: Optional[str] = None,
                     capability: Optional[tuple] = None, machine: str = "") -> str:

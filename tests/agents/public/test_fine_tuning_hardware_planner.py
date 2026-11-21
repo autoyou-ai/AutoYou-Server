@@ -88,6 +88,16 @@ def test_family_classification(backend, name, arch, capability, expected):
     assert hardware.classify_family(backend, name, arch, capability) == expected
 
 
+def test_eager_attention_is_preferred_only_on_the_amd_apu_generation():
+    """SDPA raises hipErrorInvalidValue on these APUs; a job with no plan must still avoid it."""
+    assert hardware.prefers_eager_attention("rocm", "AMD Radeon(TM) 8060S Graphics", "gfx1151:sramecc-:xnack-")
+    assert hardware.prefers_eager_attention("rocm", "", "gfx1150")
+    assert not hardware.prefers_eager_attention("rocm", "AMD Radeon RX 7900 XTX", "gfx1100")
+    assert not hardware.prefers_eager_attention("rocm", "AMD Instinct MI300X", "gfx942")
+    assert not hardware.prefers_eager_attention("cuda", "NVIDIA GeForce RTX 4090", None)
+    assert not hardware.prefers_eager_attention("cpu")
+
+
 def test_unified_memory_is_a_property_of_the_family():
     assert hardware.HardwareReport("Linux", "aarch64", 20, 128 * GIB, None, "cuda", (), "dgx_spark").unified_memory
     assert hardware.HardwareReport("Darwin", "arm64", 12, 64 * GIB, None, "mps", (), "apple_silicon").unified_memory

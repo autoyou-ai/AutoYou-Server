@@ -169,6 +169,13 @@ Agent tools: `get_training_hardware_report`, `check_base_model_license`,
   non-thinking mode and the prompt and completion are tokenized separately, as
   generation does, so training never teaches a token the model cannot emit.
 - Checkpoints are saved every 50 steps so a killed job can resume.
+- Hybrid models (Qwen3.5) run three of every four layers as gated linear attention.
+  Where the CUDA-only `fla` / `causal_conv1d` kernels are absent (ROCm on Windows,
+  Intel XPU, Apple MPS, CPU) `linear_attention.py` swaps in faster, value- and
+  gradient-identical versions of the PyTorch scan (2.5x) and the short causal
+  convolution; set `AUTOYOU_FAST_LINEAR_ATTENTION=0` to use transformers' own.
+- The progress line (`AUTOYOU_PROGRESS`) reports seconds per step counted from the end
+  of the first step, so warm-up is not averaged into the ETA.
 
 Capability status reports missing dependencies and unavailable hardware rather
 than silently pretending a host can train. It never returns raw dataset
