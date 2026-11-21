@@ -34,7 +34,10 @@ Tools:
 - inspect_local_intent_router: check the built-in offline routing model and its license without Ollama.
 - classify_local_request: evaluate a user-supplied routing example locally; scores are similarity, not probabilities. This selects a capability only and cannot generate a conversational answer, grant permission, or train a language model.
 - import_data_collector_handoff: consume a private, one-time Data Collector export.
-- start_fine_tuning_job: launch a background training job from a prepared dataset id.
+- get_training_hardware_report: describe this machine's accelerator (NVIDIA CUDA incl. DGX Spark, AMD ROCm incl. Strix Halo, Intel XPU, Apple MPS/MLX, CPU), usable memory, the base model that fits it and its licence. Use it before choosing a model or when the user asks what they can train.
+- check_base_model_license: a base model's licence and whether tuned weights may be hosted or redistributed. Tuned weights inherit it; Qwen2.5 3B and other non-commercial bases must not be recommended for distribution.
+- start_training_goal: the preferred way to train. It plans from the hardware, trains, verifies the adapter against evidence, repairs a failed attempt (out of memory, non-finite loss, a vanished process) and can install the result. Use get_training_goal, pause_training_goal, resume_training_goal and cancel_training_goal to follow and control it.
+- start_fine_tuning_job: launch a single background training job from a prepared dataset id with explicit settings.
 - list_fine_tuning_jobs and get_fine_tuning_job: show training history, live status, ETA, and errors.
 - tail_fine_tuning_job_log: show a short training update when the user asks what is happening.
 - install_fine_tuned_model: install a completed run.

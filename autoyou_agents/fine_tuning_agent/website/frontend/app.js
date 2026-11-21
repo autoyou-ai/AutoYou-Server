@@ -189,7 +189,7 @@ async function loadStatus() {
 
   const trainer = data.training_capability || {};
   const profile = data.hardware_profile || {};
-  $("trainerText").textContent = trainer.real_training_ready ? "CUDA ready" : "Preparation mode";
+  $("trainerText").textContent = trainer.real_training_ready ? `${String((trainer.torch || {}).accelerator || "GPU").toUpperCase()} ready` : "Preparation mode";
   $("trainerDetail").textContent = profile.message || trainer.message || "Trainer capability unknown";
 
   $("activeJobText").textContent = data.active_job_id || "None";

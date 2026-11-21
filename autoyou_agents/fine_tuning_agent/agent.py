@@ -19,16 +19,24 @@ from google.adk.agents import Agent
 from autoyou_agents.shared_tools.datetime_tool import get_current_datetime
 
 from .fine_tuning_tool import (
+    cancel_training_goal as _cancel_training_goal,
+    check_base_model_license as _check_base_model_license,
     create_dataset_from_datacollector_handoff as _create_dataset_from_datacollector_handoff,
     create_dataset_from_folder as _create_dataset_from_folder,
     cancel_fine_tuning_job as _cancel_fine_tuning_job,
     delete_dataset as _delete_dataset,
     delete_fine_tuning_job as _delete_fine_tuning_job,
     get_fine_tuning_status as _get_fine_tuning_status,
+    get_hardware_report as _get_hardware_report,
+    get_training_goal_status as _get_training_goal_status,
     get_training_job as _get_training_job,
     install_fine_tuned_model as _install_fine_tuned_model,
     list_datasets as _list_datasets,
+    list_training_goals as _list_training_goals,
     list_training_jobs as _list_training_jobs,
+    pause_training_goal as _pause_training_goal,
+    resume_training_goal as _resume_training_goal,
+    start_training_goal as _start_training_goal,
     start_training_job as _start_training_job,
     tail_fine_tuning_job_log as _tail_fine_tuning_job_log,
 )
@@ -156,6 +164,92 @@ def cancel_fine_tuning_job(job_id: str) -> dict:
     """Request a safe stop for a queued or running fine-tuning job."""
     return _cancel_fine_tuning_job(job_id)
 
+
+def get_training_hardware_report(vision: bool = False) -> dict:
+    """Describe this machine's accelerator and memory, the base model that fits it, and a training plan.
+
+    Covers NVIDIA CUDA (including DGX Spark), AMD ROCm (including Strix Halo), Intel XPU, Apple
+    MPS/MLX and CPU. The report names the licence of the suggested base model: tuned weights inherit it.
+
+    Args:
+        vision: Plan for a dataset that contains images.
+    """
+    return _get_hardware_report(vision=bool(vision))
+
+
+def check_base_model_license(model_id: str, allow_network: bool = False) -> dict:
+    """Check a base model's licence and whether tuned weights may be hosted or redistributed.
+
+    Args:
+        model_id: Hugging Face model id.
+        allow_network: Read the model card when the id is not in the built-in catalog.
+    """
+    return _check_base_model_license(model_id, allow_network=bool(allow_network))
+
+
+def start_training_goal(
+    dataset_id: str,
+    model_name: Optional[str] = None,
+    training_model_id: Optional[str] = None,
+    target_eval_loss: Optional[float] = None,
+    max_attempts: Optional[int] = None,
+    max_hours: Optional[float] = None,
+    install: bool = False,
+    require_permissive_license: bool = False,
+) -> dict:
+    """Run a goal-driven training job: plan from the hardware, train, verify, repair, optionally install.
+
+    Unlike start_fine_tuning_job, a goal checks the finished adapter against evidence (files exist,
+    loss is finite, an optional target loss is met) and, when an attempt fails, changes the plan to
+    match why it failed (out of memory shrinks it, a non-finite loss lowers the learning rate, a
+    vanished process resumes from its newest checkpoint) before trying again.
+
+    Args:
+        dataset_id: Prepared dataset id from `list_fine_tuning_datasets`.
+        model_name: Ollama model name to create when installing.
+        training_model_id: Base model; the one recommended for this hardware when omitted.
+        target_eval_loss: Optional eval loss the adapter must reach.
+        max_attempts: How many attempts before giving up (default 3).
+        max_hours: Wall-clock limit for the whole goal (default 24).
+        install: Install into Ollama after a verified run.
+        require_permissive_license: Refuse a base model whose licence forbids redistribution.
+    """
+    return _start_training_goal(
+        dataset_id,
+        model_name=model_name,
+        training_model_id=training_model_id,
+        target_eval_loss=target_eval_loss,
+        max_attempts=int(max_attempts or 3),
+        max_hours=float(max_hours or 24.0),
+        install=bool(install),
+        require_permissive_license=bool(require_permissive_license),
+    )
+
+
+def get_training_goal(goal_run_id: str) -> dict:
+    """Get a training goal's stages, attempts, plan, verification results and report path."""
+    return _get_training_goal_status(goal_run_id)
+
+
+def list_training_goal_runs(limit: Optional[int] = 10) -> dict:
+    """List recent training goals."""
+    return _list_training_goals(limit=limit or 10)
+
+
+def pause_training_goal(goal_run_id: str) -> dict:
+    """Stop a goal at the next safe point, keeping its work so `resume_training_goal` can continue it."""
+    return _pause_training_goal(goal_run_id)
+
+
+def resume_training_goal(goal_run_id: str) -> dict:
+    """Continue a paused, interrupted or failed goal from its first incomplete stage."""
+    return _resume_training_goal(goal_run_id)
+
+
+def cancel_training_goal(goal_run_id: str) -> dict:
+    """Cancel a goal and stop its trainer."""
+    return _cancel_training_goal(goal_run_id)
+
 def list_fine_tuning_jobs(limit: Optional[int] = 10) -> dict:
     """List recent fine-tuning jobs."""
     return _list_training_jobs(limit=limit or 10)
@@ -233,6 +327,14 @@ def create_fine_tuning_agent(model_config: Any) -> Agent:
         import_data_collector_handoff,
         start_fine_tuning_job,
         cancel_fine_tuning_job,
+        get_training_hardware_report,
+        check_base_model_license,
+        start_training_goal,
+        get_training_goal,
+        list_training_goal_runs,
+        pause_training_goal,
+        resume_training_goal,
+        cancel_training_goal,
         list_fine_tuning_jobs,
         get_fine_tuning_job,
         tail_fine_tuning_job_log,

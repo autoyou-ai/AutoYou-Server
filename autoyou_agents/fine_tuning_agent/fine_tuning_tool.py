@@ -70,6 +70,11 @@ from .training_runner import (
     DEFAULT_VISION_MIN_PIXELS,
     _accelerator_backend,
 )
+from . import hardware as _hardware
+from . import model_registry as _model_registry
+from . import planner as _planner
+from . import progress as _progress
+from . import training_goal as _training_goal
 
 __debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-revenue-7aa8b418bc4ca938aa55663f"
 
@@ -2187,6 +2192,56 @@ def _job_from_id(job_id: str) -> Optional[Dict[str, Any]]:
         row = conn.execute("SELECT * FROM training_jobs WHERE id = ?", (str(job_id or "").strip(),)).fetchone()
     return _row_to_dict(row)
 
+
+def _plan_cli_arguments(config: Dict[str, Any], progress_path: Path) -> List[str]:
+    """Trainer flags for the plan-driven settings a job carries.
+
+    A job row written before these existed carries none of them, and each flag
+    is simply omitted so the runner's defaults reproduce the old behaviour.
+    """
+    args: List[str] = ["--progress-file", str(progress_path)]
+    if config.get("precision"):
+        args.extend(["--precision", str(config["precision"])])
+    if config.get("attn_implementation"):
+        args.extend(["--attn-implementation", str(config["attn_implementation"])])
+    if "gradient_checkpointing" in config and config["gradient_checkpointing"] is not None:
+        args.append("--gradient-checkpointing" if config["gradient_checkpointing"] else "--no-gradient-checkpointing")
+    if config.get("dataloader_workers") is not None:
+        args.extend(["--dataloader-workers", str(int(config["dataloader_workers"]))])
+    if config.get("cpu_threads"):
+        args.extend(["--cpu-threads", str(int(config["cpu_threads"]))])
+    if config.get("max_grad_norm"):
+        args.extend(["--max-grad-norm", str(float(config["max_grad_norm"]))])
+    if config.get("resume"):
+        args.extend(["--resume", "auto" if config["resume"] is True else str(config["resume"])])
+    if config.get("executor") == "mlx":
+        args.extend(["--executor", "mlx"])
+    return args
+
+
+def _job_environment() -> Dict[str, str]:
+    """Allocator/runtime variables for the hardware this interpreter trains on."""
+    try:
+        return dict(_planner._backend_env(_hardware.probe_hardware()))
+    except Exception as exc:  # advice only; never stop a job over an environment probe
+        logging.getLogger(__name__).debug("Job environment probe failed: %s", exc)
+        return {}
+
+
+def _read_trainer_progress(progress_path: Path) -> Optional[Dict[str, Any]]:
+    """The newest AUTOYOU_PROGRESS update the trainer has appended, or None."""
+    try:
+        if not progress_path.is_file():
+            return None
+        with open(progress_path, "rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            size = handle.tell()
+            handle.seek(max(0, size - 8192))
+            tail = handle.read().decode("utf-8", errors="replace")
+    except OSError:
+        return None
+    return _progress.last_progress(tail.splitlines())
+
 def _normalize_job_config(config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     config = dict(config or {})
     profile = _recommended_training_profile()
@@ -2209,7 +2264,16 @@ def _normalize_job_config(config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     # preparation run. An explicit prepare_only value still wins below.
     prepare_only_default = bool(profile["prepare_only"]) and not allow_cpu_training
 
+    # Plan-driven settings (see planner.py) pass through when a goal or caller
+    # supplies them; a job that carries none behaves exactly as before.
+    plan_settings = {
+        key: config[key]
+        for key in ("precision", "attn_implementation", "gradient_checkpointing", "dataloader_workers",
+                    "cpu_threads", "max_grad_norm", "resume", "executor", "backend")
+        if key in config and config[key] not in (None, "")
+    }
     return {
+        **plan_settings,
         "training_model_id": str(configured_value("training_model_id", DEFAULT_TRAINING_MODEL)).strip(),
         "ollama_base_model": str(configured_value("ollama_base_model", DEFAULT_OLLAMA_BASE_MODEL)).strip(),
         "epochs": float(configured_value("epochs", 1.0)),
@@ -2366,6 +2430,8 @@ def _run_training_job(job_id: str) -> None:
             cmd.append("--prepare-only")
         if config.get("allow_cpu_training"):
             cmd.append("--allow-cpu-training")
+        progress_path = Path(job["log_path"]).parent / "progress.jsonl"
+        cmd.extend(_plan_cli_arguments(config, progress_path))
 
         env = os.environ.copy()
         project_root = str(Path(__file__).resolve().parents[2])
@@ -2373,7 +2439,11 @@ def _run_training_job(job_id: str) -> None:
         env.setdefault("HF_HOME", str(HF_CACHE_DIR))
         env.setdefault("TRANSFORMERS_CACHE", str(HF_CACHE_DIR / "transformers"))
         env.setdefault("HF_HUB_CACHE", str(HF_CACHE_DIR / "hub"))
-        env.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+        # Allocator and runtime variables come from the hardware, not from one
+        # global default: expandable segments help NVIDIA's allocator and stop
+        # runs at a fixed ~30 GiB on a unified-memory AMD APU.
+        for key, value in _job_environment().items():
+            env.setdefault(key, value)
         started_at = time.time()
         expected = _estimate_total_seconds(dataset.get("sample_count", 1), int(config.get("max_steps") or DEFAULT_MAX_STEPS), bool(config.get("prepare_only")))
         _append_job_log(log_path, "Command: " + " ".join(cmd))
@@ -2413,6 +2483,15 @@ def _run_training_job(job_id: str) -> None:
             elapsed = max(1, int(time.time() - started_at))
             progress = min(92.0, 2.0 + (elapsed / max(1, expected)) * 88.0)
             eta = max(0, expected - elapsed)
+            # The trainer reports its real step; the elapsed-time guess above is
+            # only the fallback for the minutes before the first step.
+            reported = _read_trainer_progress(progress_path)
+            if reported:
+                percent = _progress.progress_percent(reported)
+                if percent is not None:
+                    progress = min(95.0, percent)
+                if reported.get("eta_seconds") is not None:
+                    eta = int(reported["eta_seconds"])
             _update_job(job_id, progress_percent=round(progress, 1), eta_seconds=eta)
             _sleep(1)
         try:
@@ -2699,6 +2778,28 @@ def list_ollama_models() -> Dict[str, Any]:
         "raw": completed.stdout[-2000:],
     }
 
+def _safe_hardware_dict() -> Dict[str, Any]:
+    try:
+        return _hardware_report().to_dict()
+    except Exception as exc:  # a status call must never fail on a probe
+        return {"error": str(exc)}
+
+
+_HARDWARE_CACHE: Dict[str, Any] = {"at": 0.0, "report": None}
+
+
+def _hardware_report(max_age_seconds: float = 30.0) -> "_hardware.HardwareReport":
+    """The hardware report, cached briefly: importing torch to read it is slow
+    and a status call asks several times."""
+    now = time.time()
+    cached = _HARDWARE_CACHE.get("report")
+    if cached is not None and now - float(_HARDWARE_CACHE.get("at") or 0.0) < max_age_seconds:
+        return cached
+    report = _hardware.probe_hardware()
+    _HARDWARE_CACHE.update({"at": now, "report": report})
+    return report
+
+
 def _dependency_status() -> Dict[str, bool]:
     return {
         name: importlib.util.find_spec(name) is not None
@@ -2714,8 +2815,9 @@ def _mlx_capability_status() -> Dict[str, Any]:
     installed = bool(importlib.util.find_spec("mlx") and importlib.util.find_spec("mlx_lm"))
     if native_apple_silicon and installed:
         message = (
-            "MLX and mlx-lm are detected for Apple Silicon text LoRA. "
-            "AutoYou currently keeps it separate from the Torch-to-Ollama adapter installer."
+            "MLX and mlx-lm are detected for Apple Silicon text LoRA. Jobs train with mlx-lm and the adapter is "
+            "converted to the PEFT layout, so the GGUF-adapter and Ollama install path treats it like a Torch job. "
+            "Image datasets still use Torch's MPS backend."
         )
     elif native_apple_silicon:
         message = "Apple Silicon is detected. Install optional mlx and mlx-lm[train] to enable an MLX text-LoRA environment."
@@ -2727,7 +2829,7 @@ def _mlx_capability_status() -> Dict[str, Any]:
         "available": native_apple_silicon and installed,
         "detected": installed,
         "native_apple_silicon": native_apple_silicon,
-        "executor_integrated": False,
+        "executor_integrated": True,
         "text_lora_supported": native_apple_silicon and installed,
         "vision_lora_supported": False,
         "message": message,
@@ -2810,9 +2912,14 @@ def _training_capability_status() -> Dict[str, Any]:
                     "rocm_build": str(getattr(torch.version, "hip", "") or "") or None,
                     "mps_available": mps_available,
                     "accelerator": accelerator,
-                    "accelerator_available": accelerator in {"cuda", "rocm", "mps"},
-                    "device_count": device_count,
-                    "devices": [str(torch.cuda.get_device_name(index)) for index in range(device_count)],
+                    "accelerator_available": accelerator in {"cuda", "rocm", "xpu", "mps"},
+                    "xpu_available": accelerator == "xpu",
+                    "device_count": device_count if accelerator != "xpu" else int(torch.xpu.device_count()),
+                    "devices": (
+                        [str(torch.xpu.get_device_name(index)) for index in range(int(torch.xpu.device_count()))]
+                        if accelerator == "xpu"
+                        else [str(torch.cuda.get_device_name(index)) for index in range(device_count)]
+                    ),
                     "wheel": torch_wheels.describe_torch_module(torch),
                 }
             )
@@ -2865,6 +2972,7 @@ def _training_capability_status() -> Dict[str, Any]:
             "message": "CPU LoRA training is supported for small models, but is intentionally not the default for the 8B profile.",
         },
         "mlx": _mlx_capability_status(),
+        "hardware": _safe_hardware_dict(),
         "nvidia_smi": nvidia_smi,
         "host_nvidia_not_exposed_to_torch": bool(nvidia_smi.get("available") and not torch_status.get("cuda_available")),
         "gpu_torch": gpu_torch,
@@ -2927,35 +3035,45 @@ def _training_modalities(capability: Optional[Dict[str, Any]] = None) -> Dict[st
 def _recommended_training_profile(capability: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Pick conservative LoRA defaults for the hardware that is actually visible."""
     capability = capability or _training_capability_status()
-    free_mb = 0
-    for gpu in capability.get("nvidia_smi", {}).get("gpus", []):
-        try:
-            free_mb = max(free_mb, int(float(gpu.get("memory_free_mb") or 0)))
-        except (TypeError, ValueError):
-            continue
     accelerator = str((capability.get("torch") or {}).get("accelerator") or "accelerator").upper()
-    if capability.get("real_training_ready") and free_mb >= 12 * 1024:
-        return {
-            "name": "balanced_accelerator",
-            "prepare_only": False,
-            "max_seq_length": 2048,
-            "batch_size": 1,
-            "gradient_accumulation_steps": 8,
-            "lora_rank": 16,
-            "lora_alpha": 32,
-            "message": f"{accelerator} with at least 12 GB free VRAM: balanced local LoRA defaults are selected.",
-        }
     if capability.get("real_training_ready"):
-        return {
-            "name": "constrained_accelerator",
-            "prepare_only": False,
-            "max_seq_length": 1024,
-            "batch_size": 1,
-            "gradient_accumulation_steps": 16,
-            "lora_rank": 8,
-            "lora_alpha": 16,
-            "message": f"{accelerator} is available with limited or unreported free memory: conservative local LoRA defaults are selected.",
-        }
+        # Sized from the hardware that is actually present - discrete VRAM, a
+        # unified-memory pool, or Apple's working set - rather than from
+        # nvidia-smi alone, which left every ROCm, MPS and XPU host on the most
+        # conservative profile however much memory it had.
+        try:
+            report = _hardware_report()
+            spec = _model_registry.recommend_base(report)
+            plan = _planner.plan_training(report, spec)
+            return {
+                "name": f"{report.family}_{plan.precision}",
+                "prepare_only": False,
+                "max_seq_length": plan.max_seq_length,
+                "batch_size": plan.batch_size,
+                "gradient_accumulation_steps": plan.gradient_accumulation_steps,
+                "lora_rank": plan.lora_rank,
+                "lora_alpha": plan.lora_alpha,
+                "recommended_base_model": spec.id,
+                "recommended_ollama_base": spec.ollama_tag,
+                "executor": plan.executor,
+                "message": (
+                    f"{accelerator} ({report.family.replace('_', ' ')}, {report.usable_bytes() / _hardware.GIB:.0f} GiB usable): "
+                    f"{plan.precision} LoRA, micro-batch {plan.batch_size}"
+                    f"{' with checkpointing' if plan.gradient_checkpointing else ''}; suggested base {spec.id}."
+                ),
+            }
+        except Exception as exc:  # advice only; fall back to the conservative profile
+            logging.getLogger(__name__).debug("Hardware-sized profile unavailable: %s", exc)
+            return {
+                "name": "constrained_accelerator",
+                "prepare_only": False,
+                "max_seq_length": 1024,
+                "batch_size": 1,
+                "gradient_accumulation_steps": 16,
+                "lora_rank": 8,
+                "lora_alpha": 16,
+                "message": f"{accelerator} is available but its memory could not be read: conservative local LoRA defaults are selected.",
+            }
     return {
         "name": "cpu_prepare",
         "prepare_only": True,
@@ -3015,5 +3133,122 @@ def get_fine_tuning_status() -> Dict[str, Any]:
             "lora_rank": profile["lora_rank"],
             "lora_alpha": profile["lora_alpha"],
             "prepare_only": profile["prepare_only"],
+            "recommended_training_model_id": profile.get("recommended_base_model"),
+            "recommended_ollama_base_model": profile.get("recommended_ollama_base"),
         },
     }
+
+
+# --------------------------------------------------------------------------
+# Hardware report, base-model licensing and the goal-driven training loop.
+# --------------------------------------------------------------------------
+GOAL_DIR = DATA_DIR / "goal_runs"
+
+
+def get_hardware_report(vision: bool = False) -> Dict[str, Any]:
+    """What this host can train on, which base model fits it, and the plan.
+
+    Includes the licence tier of the suggested base: tuned weights inherit it.
+    """
+    try:
+        report = _hardware_report()
+        spec = _model_registry.recommend_base(report, vision=bool(vision))
+        plan = _planner.plan_training(report, spec, vision=bool(vision))
+        return {
+            "status": "success",
+            "hardware": report.to_dict(),
+            "recommended_base": spec.to_dict(),
+            "license": _model_registry.license_status(spec.id),
+            "plan": plan.to_dict(),
+        }
+    except Exception as exc:
+        return {"status": "error", "message": internal_error_message("Hardware report", exc)}
+
+
+def check_base_model_license(model_id: str, allow_network: bool = False) -> Dict[str, Any]:
+    """The licence of a base model and whether tuned weights may be redistributed."""
+    result = _model_registry.license_status(str(model_id or "").strip(), allow_network=bool(allow_network))
+    return {"status": "success", **result}
+
+
+def _goal_store() -> "_training_goal.GoalStore":
+    return _training_goal.GoalStore(
+        GOAL_DIR,
+        write=lambda path, data: write_secure_file(path, data),
+        read=lambda path: read_secure_file(path),
+    )
+
+
+def _read_job_summary(job: Dict[str, Any]) -> Dict[str, Any]:
+    path = Path(str(job.get("output_dir") or "")) / "training_summary.json"
+    try:
+        return json.loads(read_secure_file(path).decode("utf-8-sig"))
+    except Exception:
+        return {}
+
+
+def _goal_ops() -> "_training_goal.GoalOps":
+    def start_job(dataset_id: str, model_name: Optional[str], title: Optional[str], config: Dict[str, Any]) -> Dict[str, Any]:
+        return start_training_job(dataset_id=dataset_id, model_name=model_name, title=title, config=config)
+
+    def log_tail(job_id: str, lines: int) -> str:
+        return str(tail_fine_tuning_job_log(job_id, lines=lines).get("log_tail") or "")
+
+    return _training_goal.GoalOps(
+        probe=_hardware_report,
+        get_dataset=get_dataset,
+        start_job=start_job,
+        get_job=_job_from_id,
+        cancel_job=cancel_fine_tuning_job,
+        read_log_tail=log_tail,
+        read_summary=_read_job_summary,
+        install=install_fine_tuned_model,
+        adapter_is_finite=_training_goal.check_adapter_finite,
+    )
+
+
+def start_training_goal(
+    dataset_id: str,
+    *,
+    model_name: Optional[str] = None,
+    title: Optional[str] = None,
+    training_model_id: Optional[str] = None,
+    ollama_base_model: Optional[str] = None,
+    max_attempts: int = 3,
+    max_hours: float = 24.0,
+    target_eval_loss: Optional[float] = None,
+    install: bool = False,
+    require_permissive_license: bool = False,
+    config: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Start a goal-driven training run: plan from the hardware, train, verify, repair, optionally install."""
+    if not get_dataset(dataset_id):
+        return {"status": "error", "message": f"Dataset {dataset_id} was not found."}
+    goal = _training_goal.TrainingGoalConfig(
+        dataset_id=dataset_id, model_name=model_name, title=title, training_model_id=training_model_id or None,
+        ollama_base_model=ollama_base_model or None, max_attempts=max(1, int(max_attempts)),
+        max_hours=float(max_hours), target_eval_loss=target_eval_loss, install=bool(install),
+        require_permissive_license=bool(require_permissive_license), config=dict(config or {}),
+    )
+    return _training_goal.start_training_goal(goal, _goal_ops(), _goal_store())
+
+
+def pause_training_goal(goal_run_id: str) -> Dict[str, Any]:
+    return _training_goal.pause_training_goal(str(goal_run_id or "").strip())
+
+
+def cancel_training_goal(goal_run_id: str) -> Dict[str, Any]:
+    return _training_goal.cancel_training_goal(str(goal_run_id or "").strip())
+
+
+def resume_training_goal(goal_run_id: str) -> Dict[str, Any]:
+    return _training_goal.resume_training_goal(str(goal_run_id or "").strip(), None, _goal_ops(), _goal_store())
+
+
+def get_training_goal_status(goal_run_id: str) -> Dict[str, Any]:
+    return _training_goal.get_training_goal_status(str(goal_run_id or "").strip(), _goal_store())
+
+
+def list_training_goals(limit: int = 10) -> Dict[str, Any]:
+    goals = _training_goal.list_training_goals(_goal_store())
+    return {"status": "success", "goals": goals[: _bounded_int(limit, default=10, minimum=1, maximum=100)]}

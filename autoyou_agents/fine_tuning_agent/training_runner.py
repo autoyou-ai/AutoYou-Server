@@ -31,6 +31,9 @@ from shared.secure_storage import (
     write_secure_file,
 )
 
+from .planner import EXIT_NON_FINITE_LOSS, EXIT_OUT_OF_MEMORY
+from .progress import format_progress
+
 __debug_provenance_k__ = "AUTOYOU-PROVENANCE-K-donations-b635b0c22bd7ab945ce40571"
 
 
@@ -49,6 +52,10 @@ DEFAULT_SYSTEM_PROMPT = (
 )
 DEFAULT_VISION_MIN_PIXELS = int(os.getenv("AUTOYOU_FINE_TUNING_VISION_MIN_PIXELS", str(256 * 28 * 28)))
 DEFAULT_VISION_MAX_PIXELS = int(os.getenv("AUTOYOU_FINE_TUNING_VISION_MAX_PIXELS", str(384 * 28 * 28)))
+
+#: trust_remote_code executes whatever Python a model repository ships. Official
+#: Qwen, Mistral and Gemma repositories need none, so it is off unless a job asks.
+_TRUST_REMOTE_CODE = False
 
 def _log(message: str) -> None:
     print(message, flush=True)
@@ -75,6 +82,9 @@ def _accelerator_backend(torch_module: Any) -> str:
     """Name the accelerator exposed by this interpreter, not by the host."""
     if bool(torch_module.cuda.is_available()):
         return "rocm" if getattr(torch_module.version, "hip", None) else "cuda"
+    xpu = getattr(torch_module, "xpu", None)
+    if xpu is not None and bool(xpu.is_available()):
+        return "xpu"
     mps = getattr(getattr(torch_module, "backends", None), "mps", None)
     if mps is not None and bool(mps.is_available()):
         return "mps"
@@ -188,6 +198,56 @@ def _build_masked_sample(messages: List[Dict[str, Any]], tokenizer: Any, max_len
         "attention_mask": [1] * len(input_ids),
         "labels": labels,
     }
+
+def _template_has_thinking(tokenizer: Any) -> bool:
+    """True when the chat template has a thinking mode (Qwen3.5, Qwen3, ...)."""
+    template = getattr(tokenizer, "chat_template", None)
+    if isinstance(template, dict):
+        template = "\n".join(str(value) for value in template.values())
+    return "enable_thinking" in str(template or "")
+
+
+def _build_template_sample(messages: List[Dict[str, Any]], tokenizer: Any, max_length: int) -> Optional[Dict[str, List[int]]]:
+    """Mask by the model's own chat template, supervising the final reply only.
+
+    The ChatML text the other builder hard-codes omits what a thinking template
+    adds around an answer (an empty ``<think>`` block), so a model trained on it
+    is served prompts it never saw. Here the template renders the prompt in
+    non-thinking mode and the completion is whatever follows it in the full
+    rendering. The two halves are tokenized separately and joined, which is what
+    generation does; tokenizing the whole conversation can merge across the
+    boundary and teach a token the model is never positioned to emit.
+    """
+    clean = [
+        {"role": str(m.get("role") or "").strip().lower(), "content": str(m.get("content") or "").strip()}
+        for m in messages
+        if str(m.get("content") or "").strip() and str(m.get("role") or "").strip().lower() in {"system", "user", "assistant"}
+    ]
+    if len(clean) < 2 or clean[-1]["role"] != "assistant":
+        return None
+    kwargs = {"enable_thinking": False} if _template_has_thinking(tokenizer) else {}
+    try:
+        prompt_text = tokenizer.apply_chat_template(clean[:-1], tokenize=False, add_generation_prompt=True, **kwargs)
+        full_text = tokenizer.apply_chat_template(clean, tokenize=False, add_generation_prompt=False, **kwargs)
+    except Exception:
+        return None
+    if not str(full_text).startswith(str(prompt_text)):
+        return None
+    prompt_ids = list(tokenizer.encode(str(prompt_text), add_special_tokens=False))
+    completion_ids = list(tokenizer.encode(str(full_text)[len(str(prompt_text)):], add_special_tokens=False))
+    if not completion_ids:
+        return None
+    if len(prompt_ids) + len(completion_ids) > max_length:
+        # Keep the end of the prompt and as much of the answer as fits.
+        completion_ids = completion_ids[: max(1, max_length // 2)]
+        prompt_ids = prompt_ids[-(max_length - len(completion_ids)):]
+    input_ids = prompt_ids + completion_ids
+    return {
+        "input_ids": input_ids,
+        "attention_mask": [1] * len(input_ids),
+        "labels": [-100] * len(prompt_ids) + completion_ids,
+    }
+
 
 @dataclass
 class ChatCollator:
@@ -389,7 +449,7 @@ def _normalized_model_config(model_id: str) -> Any:
     from transformers import AutoConfig
 
     try:
-        return AutoConfig.from_pretrained(model_id, trust_remote_code=True)
+        return AutoConfig.from_pretrained(model_id, trust_remote_code=_TRUST_REMOTE_CODE)
     except KeyError as exc:
         if str(exc).strip("'\"") != "ministral3":
             raise
@@ -432,7 +492,7 @@ def _load_vision_processor(model_id: str, args: argparse.Namespace) -> Any:
     # Qwen accepts these controls directly; Pixtral/Mistral processors can keep
     # their own defaults when an older transformers release does not expose them.
     kwargs = {
-        "trust_remote_code": True,
+        "trust_remote_code": _TRUST_REMOTE_CODE,
         "min_pixels": int(args.vision_min_pixels),
         "max_pixels": int(args.vision_max_pixels),
     }
@@ -443,22 +503,30 @@ def _load_vision_processor(model_id: str, args: argparse.Namespace) -> Any:
         kwargs.pop("max_pixels", None)
         return AutoProcessor.from_pretrained(model_id, **kwargs)
 
+#: Text-side linear leaves worth adapting. ``in_proj_qkv``, ``in_proj_z`` and
+#: ``out_proj`` are the gated linear-attention projections of the Qwen3.5 family
+#: - three of every four layers - which the classic q/k/v/o list leaves frozen.
+_LORA_LEAF_NAMES = frozenset({
+    "q_proj", "k_proj", "v_proj", "o_proj", "in_proj_qkv", "in_proj_z", "out_proj",
+    "gate_proj", "up_proj", "down_proj",
+})
+_NON_TEXT_MARKERS = ("vision", "visual", "merger", "mm_projector", "audio")
+
+
 def _target_modules_for_model(model: Any) -> List[str]:
-    target_leaf_names = {
-        "q_proj",
-        "k_proj",
-        "v_proj",
-        "o_proj",
-        "gate_proj",
-        "up_proj",
-        "down_proj",
-    }
+    """Full names of the text-side linear modules to adapt.
+
+    Explicit names, not leaf patterns: a pattern such as ``out_proj`` would also
+    match an audio or vision tower's module and PEFT would adapt it silently.
+    """
     text_targets = [
         name
-        for name, _module in model.named_modules()
-        if name.rsplit(".", 1)[-1] in target_leaf_names and "vision" not in name and "visual" not in name
+        for name, module in model.named_modules()
+        if name.rsplit(".", 1)[-1] in _LORA_LEAF_NAMES
+        and not any(marker in name for marker in _NON_TEXT_MARKERS)
+        and hasattr(module, "weight")
     ]
-    return text_targets or sorted(target_leaf_names)
+    return text_targets or sorted(_LORA_LEAF_NAMES)
 
 def _training_arguments(
     args: argparse.Namespace,
@@ -471,18 +539,26 @@ def _training_arguments(
 ) -> Dict[str, Any]:
     """Keyword arguments for transformers.TrainingArguments."""
     max_steps = int(args.max_steps or 0)
-    return {
+    save_steps = int(getattr(args, "save_steps", 0) or 0)
+    checkpointing = bool(getattr(args, "gradient_checkpointing", None))
+    config: Dict[str, Any] = {
         "output_dir": str(output_dir),
         "num_train_epochs": float(args.epochs),
         "max_steps": max_steps if max_steps > 0 else -1,
         "per_device_train_batch_size": int(args.batch_size),
         "gradient_accumulation_steps": int(args.gradient_accumulation_steps),
         "learning_rate": float(args.learning_rate),
+        "max_grad_norm": float(getattr(args, "max_grad_norm", 1.0) or 1.0),
         "logging_steps": 1,
-        "save_strategy": "epoch",
+        # Steps, not epochs: a job whose only checkpoint is its last has nothing
+        # to resume from when the process is killed halfway through.
+        "save_strategy": "steps" if save_steps > 0 else "epoch",
         eval_keyword: "steps" if has_eval else "no",
         "eval_steps": max(5, int(args.eval_steps)),
         "save_total_limit": 2,
+        "dataloader_num_workers": max(0, int(getattr(args, "dataloader_workers", 0) or 0)),
+        "gradient_checkpointing": checkpointing,
+        "disable_tqdm": True,
         "report_to": [],
         # The vision collator builds pixel_values and the token ids itself from
         # each row's text, prompt and images. Left at its default, Trainer
@@ -493,6 +569,111 @@ def _training_arguments(
         "fp16": bool(accelerator == "cuda" and not bf16_supported),
         "bf16": bool(bf16_supported),
     }
+    if save_steps > 0:
+        config["save_steps"] = save_steps
+    if checkpointing:
+        config["gradient_checkpointing_kwargs"] = {"use_reentrant": False}
+    return config
+
+
+def _make_trainer_callbacks(*, progress_file: Optional[Path], total_steps_hint: int):
+    """Progress reporting and a finite-loss guard, built lazily.
+
+    transformers is imported only when training actually starts, so the
+    callbacks are defined here rather than at module level.
+    """
+    import time
+
+    from transformers import TrainerCallback
+
+    def finite(value: Any) -> bool:
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return True
+        return number == number and number not in (float("inf"), float("-inf"))
+
+    class FiniteLossGuard(TrainerCallback):
+        """Stop on the first NaN/inf. Left running, a job ends with all-NaN
+        adapter weights and nothing says so until the install fails."""
+
+        tripped = False
+
+        def on_log(self, args: Any, state: Any, control: Any, logs: Optional[Dict[str, Any]] = None, **kwargs: Any) -> None:
+            for key in ("loss", "eval_loss", "grad_norm"):
+                if key in (logs or {}) and not finite((logs or {})[key]):
+                    FiniteLossGuard.tripped = True
+                    control.should_training_stop = True
+                    _log(f"NON_FINITE {key}={(logs or {})[key]} at step {state.global_step}; stopping")
+                    return
+
+    class ProgressReporter(TrainerCallback):
+        def __init__(self) -> None:
+            self.first_step: Optional[int] = None
+            self.started = time.time()
+            self.last_loss: Optional[float] = None
+            self.last_eval: Optional[float] = None
+            self.last_grad: Optional[float] = None
+            self.last_lr: Optional[float] = None
+
+        def _emit(self, line: str) -> None:
+            _log(line)
+            if progress_file is not None:
+                try:
+                    with open(progress_file, "a", encoding="utf-8") as handle:
+                        handle.write(line + "\n")
+                except OSError:
+                    pass
+
+        def on_log(self, args: Any, state: Any, control: Any, logs: Optional[Dict[str, Any]] = None, **kwargs: Any) -> None:
+            logs = logs or {}
+            self.last_loss = logs.get("loss", self.last_loss)
+            self.last_eval = logs.get("eval_loss", self.last_eval)
+            self.last_grad = logs.get("grad_norm", self.last_grad)
+            self.last_lr = logs.get("learning_rate", self.last_lr)
+
+        def on_step_end(self, args: Any, state: Any, control: Any, **kwargs: Any) -> None:
+            if self.first_step is None:
+                self.first_step = state.global_step - 1
+                self.started = time.time()
+            done = max(1, state.global_step - self.first_step)
+            per_step = (time.time() - self.started) / done
+            memory = None
+            try:
+                import torch
+
+                if torch.cuda.is_available():
+                    memory = torch.cuda.max_memory_allocated() / 2**30
+            except Exception:
+                pass
+            self._emit(format_progress(
+                step=state.global_step, total_steps=int(state.max_steps or total_steps_hint),
+                loss=self.last_loss, eval_loss=self.last_eval, learning_rate=self.last_lr,
+                grad_norm=self.last_grad, seconds_per_step=per_step, memory_gib=memory,
+            ))
+
+    return FiniteLossGuard, ProgressReporter
+
+
+def _looks_like_out_of_memory(exc: BaseException) -> bool:
+    text = f"{type(exc).__name__} {exc}".lower()
+    return any(marker in text for marker in (
+        "out of memory", "outofmemoryerror", "hiperroroutofmemory", "bad_alloc",
+        "out_of_device_memory", "failed to allocate", "unable to allocate",
+    ))
+
+
+def _newest_checkpoint(output_dir: Path) -> Optional[Path]:
+    candidates = [path for path in output_dir.glob("checkpoint-*") if path.is_dir()]
+
+    def number(path: Path) -> int:
+        try:
+            return int(path.name.rsplit("-", 1)[-1])
+        except ValueError:
+            return -1
+
+    return max(candidates, key=number) if candidates else None
+
 
 def prepare_only(args: argparse.Namespace) -> int:
     train_rows = _read_jsonl(Path(args.train_data))
@@ -587,6 +768,17 @@ def train_adapter(args: argparse.Namespace) -> int:
         _log(message)
         return 4
 
+    # Plan-driven settings. Every one has a safe default so a legacy job row
+    # that carries none of them behaves as it always did.
+    global _TRUST_REMOTE_CODE
+    _TRUST_REMOTE_CODE = bool(getattr(args, "trust_remote_code", False))
+    cpu_threads = int(getattr(args, "cpu_threads", 0) or 0)
+    if cpu_threads > 0:
+        torch.set_num_threads(cpu_threads)
+    precision = str(getattr(args, "precision", "auto") or "auto").lower()
+    attn_choice = str(getattr(args, "attn_implementation", "auto") or "auto").lower()
+    progress_file = Path(args.progress_file) if getattr(args, "progress_file", "") else None
+
     tokenizer = None
     processor = None
     if vision:
@@ -617,16 +809,24 @@ def train_adapter(args: argparse.Namespace) -> int:
     else:
         from transformers import AutoTokenizer
 
-        tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
+        tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=_TRUST_REMOTE_CODE)
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
 
+    # Straight to the device. "auto" lets accelerate decide to offload layers to
+    # the CPU when it thinks memory is short, which trains, slowly, without saying so.
+    gpu_index = torch.cuda.current_device() if accelerator in {"cuda", "rocm"} else None
     model_kwargs: Dict[str, Any] = {
-        "trust_remote_code": True,
-        "device_map": "auto" if accelerator in {"cuda", "rocm"} else None,
+        "trust_remote_code": _TRUST_REMOTE_CODE,
+        "device_map": {"": gpu_index} if gpu_index is not None else None,
+        "attn_implementation": attn_choice if attn_choice in {"eager", "sdpa"} else None,
     }
-    if accelerator == "cuda":
-        compute_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+    bf16_ok = bool(accelerator in {"cuda", "rocm"} and torch.cuda.is_bf16_supported())
+    # No precision in the job means the historical behaviour: 4-bit on CUDA,
+    # native half precision elsewhere.
+    use_nf4 = accelerator == "cuda" and precision in {"auto", "nf4"}
+    if use_nf4:
+        compute_dtype = torch.bfloat16 if bf16_ok else torch.float16
         try:
             model_kwargs["quantization_config"] = BitsAndBytesConfig(
                 load_in_4bit=True,
@@ -635,26 +835,41 @@ def train_adapter(args: argparse.Namespace) -> int:
             )
         except Exception as exc:
             _log(f"QUANTIZATION_WARNING {exc}")
-    elif accelerator == "rocm":
-        # ROCm exposes its GPU through torch.cuda, but bitsandbytes wheels are
-        # not portable across AMD installations. Load in the native dtype.
-        model_kwargs["torch_dtype"] = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
-    elif accelerator == "mps":
-        model_kwargs["torch_dtype"] = torch.float16
-    else:
-        model_kwargs["torch_dtype"] = torch.float32
-        model_kwargs["low_cpu_mem_usage"] = True
+            use_nf4 = False
+    if not use_nf4:
+        named = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}
+        if precision in named:
+            model_kwargs["torch_dtype"] = named[precision]
+        elif accelerator in {"cuda", "rocm"}:
+            # bitsandbytes wheels are not portable across AMD installations.
+            model_kwargs["torch_dtype"] = torch.bfloat16 if bf16_ok else torch.float16
+        elif accelerator == "xpu":
+            model_kwargs["torch_dtype"] = torch.bfloat16
+        elif accelerator == "mps":
+            model_kwargs["torch_dtype"] = torch.float16
+        else:
+            model_kwargs["torch_dtype"] = torch.float32
+            model_kwargs["low_cpu_mem_usage"] = True
+    effective_precision = "nf4" if use_nf4 else str(model_kwargs.get("torch_dtype", "")).replace("torch.", "")
 
     model_kwargs = {key: value for key, value in model_kwargs.items() if value is not None}
     # from __debug_provenance_k__ import donations
     model = _load_vision_training_model(model_id, model_kwargs) if vision else _load_training_model(model_id, model_kwargs)
-    if accelerator == "cuda":
+    if use_nf4:
         try:
             model = prepare_model_for_kbit_training(model)
         except Exception as exc:
             _log(f"PREPARE_KBIT_WARNING {exc}")
-    elif accelerator == "mps":
-        model.to("mps")
+    elif accelerator in {"mps", "xpu"}:
+        model.to(accelerator)
+    try:
+        text_config = model.config.get_text_config() if hasattr(model.config, "get_text_config") else model.config
+        text_config.use_cache = False
+    except Exception:
+        pass
+    if getattr(args, "gradient_checkpointing", None):
+        model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+        model.enable_input_require_grads()
 
     if vision:
         for name, parameter in model.named_parameters():
@@ -676,8 +891,10 @@ def train_adapter(args: argparse.Namespace) -> int:
     def build_dataset(rows: List[Dict[str, Any]], split_name: str) -> Dataset:
         processed = []
         skipped = 0
+        template_masking = _template_has_thinking(tokenizer)
         for row in rows:
-            sample = _build_masked_sample(list(row.get("messages") or []), tokenizer, int(args.max_seq_length))
+            builder = _build_template_sample if template_masking else _build_masked_sample
+            sample = builder(list(row.get("messages") or []), tokenizer, int(args.max_seq_length))
             if sample is None:
                 skipped += 1
             else:
@@ -706,6 +923,10 @@ def train_adapter(args: argparse.Namespace) -> int:
         else "evaluation_strategy"
     )
     bf16_supported = bool(accelerator in {"cuda", "rocm"} and torch.cuda.is_bf16_supported())
+    if precision == "bf16":
+        bf16_supported = accelerator in {"cuda", "rocm", "xpu"} or bf16_supported
+    elif precision in {"fp16", "fp32"}:
+        bf16_supported = False
     training_kwargs = _training_arguments(
         args,
         output_dir=output_dir,
@@ -714,7 +935,14 @@ def train_adapter(args: argparse.Namespace) -> int:
         bf16_supported=bf16_supported,
         eval_keyword=eval_keyword,
     )
+    allowed_training_keys = set(inspect.signature(TrainingArguments.__init__).parameters)
+    training_kwargs = {key: value for key, value in training_kwargs.items() if key in allowed_training_keys}
     training_args = TrainingArguments(**training_kwargs)
+    total_steps_hint = int(training_kwargs.get("max_steps") or 0)
+    if total_steps_hint <= 0:
+        per_step = max(1, int(args.batch_size) * int(args.gradient_accumulation_steps))
+        total_steps_hint = max(1, int(len(train_dataset) / per_step * float(args.epochs)))
+    finite_guard, progress_reporter = _make_trainer_callbacks(progress_file=progress_file, total_steps_hint=total_steps_hint)
     collator = (
         VisionCollator(processor=processor, max_seq_length=int(args.max_seq_length))
         if vision
@@ -727,13 +955,46 @@ def train_adapter(args: argparse.Namespace) -> int:
         eval_dataset=eval_dataset,
         data_collator=collator,
         processing_class=processor if vision else tokenizer,
+        callbacks=[finite_guard(), progress_reporter()],
     )
-    train_result = trainer.train()
+    resume_checkpoint: Optional[Path] = None
+    resume_request = str(getattr(args, "resume", "") or "").strip().lower()
+    if resume_request:
+        resume_checkpoint = Path(resume_request) if resume_request not in {"auto", "latest", "true"} else _newest_checkpoint(output_dir)
+        if resume_checkpoint is not None and not resume_checkpoint.is_dir():
+            resume_checkpoint = None
+        _log(f"RESUME checkpoint={resume_checkpoint.name if resume_checkpoint else 'none (starting fresh)'}")
+    try:
+        train_result = trainer.train(resume_from_checkpoint=str(resume_checkpoint) if resume_checkpoint else None)
+    except Exception as exc:
+        if _looks_like_out_of_memory(exc):
+            message = f"OUT_OF_MEMORY {str(exc)[:400]}"
+            _write_json(output_dir / "training_summary.json", {
+                "status": "failed", "reason": "out_of_memory", "message": message,
+                "accelerator": accelerator, "precision": effective_precision,
+                "batch_size": int(args.batch_size), "max_seq_length": int(args.max_seq_length),
+            })
+            _log(message)
+            return EXIT_OUT_OF_MEMORY
+        raise
+    if finite_guard.tripped:
+        _write_json(output_dir / "training_summary.json", {
+            "status": "failed", "reason": "non_finite_loss",
+            "message": "The loss became NaN or infinite; the last checkpoint is the safe point.",
+            "accelerator": accelerator, "precision": effective_precision,
+        })
+        return EXIT_NON_FINITE_LOSS
     model.save_pretrained(output_dir)
     if vision:
         processor.save_pretrained(output_dir / "processor")
     else:
         tokenizer.save_pretrained(output_dir / "tokenizer")
+    peak_memory = None
+    try:
+        if accelerator in {"cuda", "rocm"}:
+            peak_memory = round(torch.cuda.max_memory_allocated() / 2**30, 2)
+    except Exception:
+        pass
     _write_json(
         output_dir / "training_summary.json",
         {
@@ -744,6 +1005,12 @@ def train_adapter(args: argparse.Namespace) -> int:
             "ollama_base_model": args.ollama_base_model,
             "modality": "vision" if vision else "text",
             "image_samples": _image_sample_count(train_rows) + _image_sample_count(eval_rows),
+            "accelerator": accelerator,
+            "precision": effective_precision,
+            "attention": attn_choice,
+            "lora_modules": len(target_modules),
+            "peak_memory_gib": peak_memory,
+            "resumed_from": resume_checkpoint.name if resume_checkpoint else None,
             "metrics": train_result.metrics,
         },
     )
@@ -756,6 +1023,84 @@ def train_adapter(args: argparse.Namespace) -> int:
     )
     _log(f"COMPLETED adapter={output_dir.resolve()} modelfile={modelfile.resolve()}")
     return 0
+
+def train_with_mlx(args: argparse.Namespace) -> int:
+    """Train a text LoRA with mlx-lm on Apple silicon and hand back a PEFT adapter.
+
+    The adapter is converted to the PEFT layout so the GGUF-adapter conversion
+    and Ollama install that follow treat it like any Torch job. Not exercised on
+    real Apple hardware in this repository's test machine; see mlx_executor.
+    """
+    from . import mlx_executor
+
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    status = mlx_executor.mlx_status()
+    if not status["available"]:
+        _log("DEPENDENCY_ERROR MLX training needs Apple silicon with mlx and mlx-lm installed "
+             f"({status.get('install_hint') or 'native Apple silicon is required'}).")
+        return 2
+    train_rows = _read_jsonl(Path(args.train_data))
+    eval_rows = _read_jsonl(Path(args.eval_data)) if args.eval_data and Path(args.eval_data).is_file() else []
+    if _has_images(train_rows) or _has_images(eval_rows):
+        message = ("VISION_SETUP_ERROR MLX text LoRA cannot train image rows; use the Torch (MPS) executor "
+                   "for image datasets.")
+        _write_json(output_dir / "training_summary.json", {"status": "failed", "reason": "mlx_text_only", "message": message})
+        _log(message)
+        return 6
+    if not train_rows:
+        _log("DATA_ERROR no training samples found")
+        return 3
+    model_id = str(args.training_model_id or DEFAULT_TRAINING_MODEL)
+    work = output_dir.parent / "mlx"
+    counts = mlx_executor.export_mlx_dataset(train_rows, work / "data", valid_rows=eval_rows or None)
+    per_step = max(1, int(args.batch_size))
+    iters = int(args.max_steps) if int(args.max_steps or 0) > 0 else max(1, int(counts["train"] / per_step * float(args.epochs)))
+    config_path = mlx_executor.write_lora_config(
+        work / "lora.yaml", rank=int(args.lora_rank), alpha=int(args.lora_alpha), dropout=float(args.lora_dropout))
+    adapters = work / "adapters"
+    command = mlx_executor.build_mlx_lora_command(
+        python=sys.executable, model=model_id, data_dir=work / "data", adapter_dir=adapters, config_path=config_path,
+        iters=iters, batch_size=per_step, learning_rate=float(args.learning_rate),
+        max_seq_length=int(args.max_seq_length), grad_checkpoint=bool(getattr(args, "gradient_checkpointing", True) is not False),
+        save_every=max(10, int(getattr(args, "save_steps", 50) or 50)),
+        steps_per_eval=max(5, int(args.eval_steps)),
+    )
+    _log("MLX_COMMAND " + " ".join(command))
+    progress_file = Path(args.progress_file) if getattr(args, "progress_file", "") else None
+
+    def emit(line: str) -> None:
+        _log(line)
+        if progress_file is not None and line.startswith("AUTOYOU_PROGRESS"):
+            try:
+                with open(progress_file, "a", encoding="utf-8") as handle:
+                    handle.write(line + "\n")
+            except OSError:
+                pass
+
+    code = mlx_executor.run_mlx_training(command, total_steps=iters, emit=emit)
+    if code != 0:
+        _write_json(output_dir / "training_summary.json", {"status": "failed", "reason": "mlx_lm_failed", "return_code": code})
+        return code or 1
+    try:
+        converted = mlx_executor.mlx_adapter_to_peft(
+            adapters, output_dir, base_model=model_id, rank=int(args.lora_rank), alpha=int(args.lora_alpha),
+            dropout=float(args.lora_dropout))
+    except Exception as exc:
+        _log(f"MLX_CONVERT_ERROR {exc}")
+        _write_json(output_dir / "training_summary.json", {"status": "failed", "reason": "mlx_adapter_conversion", "message": str(exc)})
+        return 1
+    _write_json(output_dir / "training_summary.json", {
+        "status": "completed", "executor": "mlx", "train_samples": counts["train"], "eval_samples": counts["valid"],
+        "training_model_id": model_id, "ollama_base_model": args.ollama_base_model, "modality": "text",
+        "lora_modules": converted["tensors"] // 2, "metrics": {},
+    })
+    modelfile = _write_modelfile(output_dir=output_dir, ollama_dir=Path(args.ollama_dir),
+                                 ollama_model_name=args.ollama_model_name, ollama_base_model=args.ollama_base_model,
+                                 adapter_dir=output_dir)
+    _log(f"COMPLETED adapter={output_dir.resolve()} modelfile={modelfile.resolve()}")
+    return 0
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run AutoYou WhatsApp persona fine-tuning.")
@@ -780,6 +1125,24 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--vision-max-pixels", type=int, default=DEFAULT_VISION_MAX_PIXELS)
     parser.add_argument("--prepare-only", action="store_true")
     parser.add_argument("--allow-cpu-training", action="store_true")
+    # Plan-driven settings (see planner.py). Every default reproduces the
+    # behaviour a job had before they existed.
+    parser.add_argument("--precision", choices=["auto", "bf16", "fp16", "fp32", "nf4"], default="auto")
+    parser.add_argument("--attn-implementation", choices=["auto", "eager", "sdpa"], default="auto")
+    parser.add_argument("--gradient-checkpointing", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--dataloader-workers", type=int, default=0)
+    parser.add_argument("--cpu-threads", type=int, default=0)
+    parser.add_argument("--max-grad-norm", type=float, default=1.0)
+    parser.add_argument("--save-steps", type=int, default=50,
+                        help="checkpoint every N steps so a killed job can resume (0 = once per epoch)")
+    parser.add_argument("--resume", default="",
+                        help="'auto' continues the newest checkpoint in --output-dir; or a checkpoint path")
+    parser.add_argument("--progress-file", default="",
+                        help="append AUTOYOU_PROGRESS lines here as well as to the log")
+    parser.add_argument("--trust-remote-code", action="store_true",
+                        help="run Python shipped in the model repository (off by default)")
+    parser.add_argument("--executor", choices=["torch", "mlx"], default="torch",
+                        help="mlx trains text LoRA with mlx-lm on Apple silicon")
     return parser
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -791,6 +1154,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = build_parser().parse_args(argv)
     if args.prepare_only:
         return prepare_only(args)
+    if getattr(args, "executor", "torch") == "mlx":
+        return train_with_mlx(args)
     return train_adapter(args)
 
 if __name__ == "__main__":
