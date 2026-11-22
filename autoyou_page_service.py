@@ -357,7 +357,7 @@ class AutoYouPageService:
             return "/websites"
         if default_agent:
             return f"/agent/{default_agent}/"
-        return "/agent/page_agent/"
+        return "/websites"
 
     def _load_live_frontend_registry(self) -> Dict[str, Any]:
         """Resolve the admin website against this server's active listener."""

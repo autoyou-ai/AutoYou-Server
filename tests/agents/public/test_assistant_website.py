@@ -268,3 +268,11 @@ def test_the_first_page_load_warms_speech_once(site, monkeypatch):
     while not calls and _time.time() < deadline:
         _time.sleep(0.05)
     assert calls == [True]
+
+
+def test_assistant_mic_constraints_avoid_webkit_invalid_constraint():
+    app_js = (WEBSITE / "frontend" / "assets" / "app.js").read_text(encoding="utf-8")
+    assert "audio: { channelCount" not in app_js
+    assert "getMedia({ audio: true })" in app_js
+    assert "OverconstrainedError" in app_js
+    assert "No microphone detected" in app_js

@@ -248,6 +248,14 @@ async def api_auth_login(request: Request) -> JSONResponse:
 
 @app.get("/api/auth/status")
 async def api_auth_status(request: Request) -> JSONResponse:
+    helpers = _import_auth_helpers()
+    totp_capabilities = helpers.get("totp_capabilities")
+    totp_configured = False
+    if totp_capabilities:
+        try:
+            totp_configured = bool(totp_capabilities().get("totp_configured"))
+        except Exception:
+            pass
     auth_mode = "totp"
     try:
         from autoyou_agents.shared_tools.scheduler_mission_control import _get_agent_security_settings
@@ -255,7 +263,22 @@ async def api_auth_status(request: Request) -> JSONResponse:
         auth_mode = _get_agent_security_settings(_AGENT_NAME).get("auth_mode", "totp")
     except Exception:
         pass
-    return _json_response({"success": True, "authenticated": _check_auth(request), "auth_mode": auth_mode})
+    describe_auth_state = helpers.get("describe_auth_state")
+    if describe_auth_state:
+        try:
+            described = describe_auth_state(request, _AGENT_NAME)
+            if described.get("via") == "loopback_no_totp":
+                auth_mode = "open"
+        except Exception:
+            pass
+    return _json_response(
+        {
+            "success": True,
+            "authenticated": _check_auth(request),
+            "auth_mode": auth_mode,
+            "totp_configured": totp_configured,
+        }
+    )
 
 
 @app.post("/api/auth/logout")

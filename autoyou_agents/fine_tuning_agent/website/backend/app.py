@@ -307,6 +307,14 @@ async def api_auth_status(request: Request) -> JSONResponse:
         auth_mode = settings.get("auth_mode", "totp")
     except Exception:
         pass
+    describe_auth_state = helpers.get("describe_auth_state")
+    if describe_auth_state:
+        try:
+            described = describe_auth_state(request, _AGENT_NAME)
+            if described.get("via") == "loopback_no_totp":
+                auth_mode = "open"
+        except Exception:
+            pass
     return _json_response(
         {
             "success": True,

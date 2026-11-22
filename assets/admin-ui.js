@@ -5403,7 +5403,27 @@
     async function assistantOpenMic(onSamples) {
         if (window.isSecureContext === false) throw new Error("Microphone access needs trusted HTTPS or localhost. Install and trust this server's certificate on your phone.");
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error("This browser cannot use the microphone.");
-        var stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+        var stream;
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+        } catch (firstError) {
+            var errName = String((firstError && firstError.name) || "");
+            var errMsg = String((firstError && firstError.message) || "").toLowerCase();
+            if (errName === "OverconstrainedError" || errName === "ConstraintNotSatisfiedError" || errName === "TypeError" || errMsg.indexOf("constraint") !== -1) {
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                } catch (fallbackError) {
+                    var fbName = String((fallbackError && fallbackError.name) || "");
+                    var fbMsg = String((fallbackError && fallbackError.message) || "").toLowerCase();
+                    if (fbName === "NotFoundError" || fbName === "OverconstrainedError" || fbMsg.indexOf("constraint") !== -1) {
+                        throw new Error("No microphone detected on this computer. Connect a microphone and try again.");
+                    }
+                    throw fallbackError;
+                }
+            } else {
+                throw firstError;
+            }
+        }
         var Context = window.AudioContext || window.webkitAudioContext, context;
         try { context = new Context({ sampleRate: 16000 }); } catch (error) {
             try { context = new Context(); }
@@ -8683,7 +8703,7 @@
     // (workspace drafts, private agents) fall back to keywords in their name and
     // description.
     var AGENT_CATEGORIES = [
-        ["everyday", "Everyday", ["notes_agent", "tasks_agent", "notify_agent", "memory_agent", "persona_agent", "page_agent", "files_agent", "backup_agent", "location_agent"], /note|task|remind|notif|memor|persona|calendar|file|backup|location|feed|bookmark/],
+        ["everyday", "Everyday", ["notes_agent", "tasks_agent", "notify_agent", "memory_agent", "persona_agent", "page_agent", "files_agent", "backup_agent", "location_agent", "organizer_agent"], /note|task|remind|notif|memor|persona|calendar|file|backup|location|feed|bookmark|organiz/],
         ["assistant", "Assistant & control", ["assistant_agent", "remote_desktop_agent", "client_browser_control_agent"], /assistant|wake word|hands-free|remote desktop|screen shar|mouse|keyboard|window/],
         ["media", "Media & games", ["audio_agent", "tv_agent", "media_generation_agent", "voice_training_agent", "game_agent"], /audio|music|video|media|image|voice|tv_|game|play/],
         ["learning", "Learning", ["education_agent"], /educat|learn|lesson|study|tutor|course/],
@@ -8846,7 +8866,7 @@
             return String(route.agent_name || "");
         });
         var browser = getByPath(state.bootstrap, "status.browser", {});
-        var isHome = String(getByPath(browser, "default_website.agent_name", "") || "") === "agent_websites";
+        var isHome = String(getByPath(browser, "default_website.agent_name", "agent_websites") || "agent_websites") === "agent_websites";
         var strip = apps.length
             ? "<div class=\"ayu-apps-strip\">" + apps.map(agentAppTile).join("") + "</div>"
             : "<div class=\"ayu-empty\">No website apps are ready yet. Turn one on in Agents and it appears here and on every connected device.</div>";
@@ -9247,9 +9267,9 @@
 
     function renderBrowserRoutesPanelBody(routes, browser) {
         var defaultWebsite = getByPath(browser, "default_website", {});
-        var currentDefaultName = String(getByPath(defaultWebsite, "agent_name", "") || "");
+        var currentDefaultName = String(getByPath(defaultWebsite, "agent_name", "agent_websites") || "agent_websites");
         var directoryIsDefault = currentDefaultName === "agent_websites";
-        var defaultTitle = getByPath(defaultWebsite, "title", currentDefaultName) || "page_agent";
+        var defaultTitle = getByPath(defaultWebsite, "title", directoryIsDefault ? "Agent Apps" : currentDefaultName) || "Agent Apps";
         var note = "<div class=\"ayu-note ayu-note-blue\">Default website connected browser clients open: <strong>" + escapeHtml(defaultTitle) + "</strong></div>";
         var list = Array.isArray(routes) && routes.length
             ? "<div class=\"ayu-list\">" + routes.map(function (route) {

@@ -39,20 +39,19 @@ def test_resolve_default_falls_back_to_manifest_flag():
     # An unknown explicit choice falls through to the manifest-flagged default.
     assert _resolve_default_agent(frontends, "does_not_exist") == "notes_agent"
 
-def test_resolve_default_falls_back_to_page_agent():
+def test_resolve_default_falls_back_to_agent_websites():
     frontends = [{"agent_name": "page_agent"}, {"agent_name": "notes_agent"}]
-    assert _resolve_default_agent(frontends, None) == "page_agent"
+    assert _resolve_default_agent(frontends, None) == AGENT_WEBSITES_DIRECTORY
 
 def test_resolve_default_none_when_no_candidate():
-    assert _resolve_default_agent([{"agent_name": "x"}], None) is None
+    assert _resolve_default_agent([], None) is None
 
-def test_build_registry_defaults_to_page_agent():
+def test_build_registry_defaults_to_agent_websites():
     reg = build_frontend_registry(agents_root=AGENTS_ROOT)
-    assert reg["default_agent"] == "page_agent"
+    assert reg["default_agent"] == AGENT_WEBSITES_DIRECTORY
     by_name = {f["agent_name"]: f for f in reg["frontends"]}
-    assert by_name["page_agent"]["default"] is True
-    # Exactly one default.
-    assert sum(1 for f in reg["frontends"] if f.get("default")) == 1
+    assert by_name["page_agent"]["default"] is False
+    assert all(not f.get("default") for f in reg["frontends"])
 
 def test_build_registry_honors_override():
     reg = build_frontend_registry(agents_root=AGENTS_ROOT, default_agent="notes_agent")

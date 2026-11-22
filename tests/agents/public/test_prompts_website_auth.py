@@ -144,6 +144,23 @@ def test_missing_totp_configuration_never_opens_history(prompt_site, monkeypatch
     assert client.get("/api/prompts").status_code == 401
 
 
+def test_direct_loopback_opens_when_totp_unconfigured_while_remote_stays_closed(prompt_site, monkeypatch):
+    client, _ = prompt_site
+    monkeypatch.setattr(security, "_totp_capabilities", lambda: {"totp_configured": False})
+    local_headers = {"x-autoyou-local-loopback": "1", "Host": "127.0.0.1:8078"}
+    local_status = client.get("/api/auth/status", headers=local_headers)
+    assert local_status.status_code == 200
+    assert local_status.json()["auth"]["authenticated"] is True
+    assert local_status.json()["auth"]["via"] == "loopback_no_totp"
+    assert client.get("/api/prompts", headers=local_headers).status_code == 200
+    remote_headers = {
+        "x-autoyou-local-loopback": "1",
+        "x-autoyou-remote-browser": "1",
+        "Host": "127.0.0.1:8078",
+    }
+    assert client.get("/api/prompts", headers=remote_headers).status_code == 401
+
+
 @pytest.mark.parametrize("header_name", ("X-Prompt-Token", "Authorization"))
 def test_hook_tokens_allow_only_ingestion(prompt_site, header_name):
     client, db = prompt_site

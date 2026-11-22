@@ -621,8 +621,91 @@ def _agent_app_csrf_guard(exempt_paths: frozenset = frozenset({"/api/auth/login"
 
 
 def _totp_capabilities() -> Dict[str, Any]:
-    server = _runtime_server()
-    return server._describe_totp_capabilities(server.STATE.config or server._default_config())
+    try:
+        server = _runtime_server()
+        describe = getattr(server, "_describe_totp_capabilities", None)
+        if not callable(describe):
+            return {"totp_configured": False}
+        state = getattr(server, "STATE", None)
+        cfg = getattr(state, "config", None) if state is not None else None
+        if not cfg:
+            default_cfg_fn = getattr(server, "_default_config", None)
+            cfg = default_cfg_fn() if callable(default_cfg_fn) else {}
+        result = describe(cfg)
+        return result if isinstance(result, dict) else {"totp_configured": False}
+    except Exception:
+        return {"totp_configured": False}
+
+
+_REMOTE_OR_PROXY_REQUEST_HEADERS = (
+    "x-autoyou-remote-browser",
+    "x-autoyou-remote-access-role",
+    "x-autoyou-remote-role",
+    "x-autoyou-webrtc-session-id",
+    "x-autoyou-tunnel-client-ip",
+    "x-forwarded-for",
+    "forwarded",
+    "cf-connecting-ip",
+)
+
+_LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost"}
+
+
+def _extract_request_hostname(raw_host: str) -> str:
+    value = str(raw_host or "").strip().lower()
+    if not value:
+        return ""
+    if "," in value:
+        value = value.split(",", 1)[0].strip()
+    if value.startswith("["):
+        end_bracket = value.find("]")
+        if end_bracket > 1:
+            return value[1:end_bracket]
+    if ":" in value and value.count(":") == 1:
+        value = value.split(":", 1)[0].strip()
+    return value
+
+
+def _is_direct_same_machine_loopback_request(request: Optional[Request]) -> bool:
+    """Return True only when the HTTP request originates directly from loopback on this host.
+
+    Remote/WebRTC/LAN/Tunnelmole/reverse-proxy requests remain fail-closed even when their
+    upstream socket arrives via a local proxy.
+    """
+    if request is None:
+        return False
+    headers = getattr(request, "headers", None)
+    if headers is None:
+        return False
+    for header_name in _REMOTE_OR_PROXY_REQUEST_HEADERS:
+        if str(headers.get(header_name, "") or "").strip():
+            return False
+
+    explicit_test_loopback = str(headers.get("x-autoyou-local-loopback", "") or "").strip() == "1"
+    client = getattr(request, "client", None)
+    peer_host = str(getattr(client, "host", "") or "").strip().lower()
+    if peer_host.startswith("::ffff:"):
+        peer_host = peer_host[7:]
+
+    allowed_peers = set(_LOOPBACK_HOSTS)
+    if explicit_test_loopback:
+        allowed_peers.add("testclient")
+    if peer_host not in allowed_peers:
+        return False
+
+    allowed_hosts = set(_LOOPBACK_HOSTS)
+    if explicit_test_loopback:
+        allowed_hosts.add("testserver")
+
+    for host_header in ("host", "x-forwarded-host"):
+        raw_value = str(headers.get(host_header, "") or "").strip()
+        if not raw_value:
+            continue
+        parsed_host = _extract_request_hostname(raw_value)
+        if parsed_host not in allowed_hosts:
+            return False
+
+    return True
 
 
 def _describe_auth_state(request: Request, agent_name: str) -> Dict[str, Any]:
@@ -637,6 +720,20 @@ def _describe_auth_state(request: Request, agent_name: str) -> Dict[str, Any]:
             "authenticated": True,
             "via": "open",
             "totp_configured": totp_configured,
+        }
+
+    if (
+        not totp_configured
+        and not settings.get("per_agent_profile")
+        and _is_direct_same_machine_loopback_request(request)
+    ):
+        return {
+            **settings,
+            "auth_mode": "open",
+            "required": False,
+            "authenticated": True,
+            "via": "loopback_no_totp",
+            "totp_configured": False,
         }
 
     # Check per-agent mission session cookie
@@ -899,8 +996,9 @@ def _set_agent_session_cookie(
 async def _agent_website_login_response(request: Request, agent_name: str) -> JSONResponse:
     settings = _get_agent_security_settings(agent_name)
     server = _runtime_server()
-    if settings["auth_mode"] == "open":
-        return _json_response({"success": True, "auth": _describe_auth_state(request, agent_name)})
+    auth = _describe_auth_state(request, agent_name)
+    if settings["auth_mode"] == "open" or auth.get("via") == "loopback_no_totp":
+        return _json_response({"success": True, "authenticated": True, "auth": auth})
     try:
         payload = await request.json()
     except Exception:
@@ -2045,8 +2143,9 @@ def create_agent_website_app(
     async def website_login(request: Request):
         settings = _get_agent_security_settings(agent_name)
         server = _runtime_server()
-        if settings["auth_mode"] == "open":
-            return _json_response({"success": True, "auth": _describe_auth_state(request, agent_name)})
+        auth = _describe_auth_state(request, agent_name)
+        if settings["auth_mode"] == "open" or auth.get("via") == "loopback_no_totp":
+            return _json_response({"success": True, "authenticated": True, "auth": auth})
         try:
             payload = await request.json()
         except Exception:
@@ -2161,14 +2260,42 @@ def _delete_agent_chat_session(agent_name: str, token: Optional[str]) -> None:
 
 def _describe_chat_auth_state(request: Request, agent_name: str) -> Dict[str, Any]:
     settings = _get_agent_security_settings(agent_name)
+    totp_caps = _totp_capabilities()
+    totp_configured = bool(totp_caps.get("totp_configured"))
 
     if settings["auth_mode"] == "open":
-        return {**settings, "required": False, "authenticated": True, "via": "open"}
+        return {
+            **settings,
+            "required": False,
+            "authenticated": True,
+            "via": "open",
+            "totp_configured": totp_configured,
+        }
+
+    if (
+        not totp_configured
+        and not settings.get("per_agent_profile")
+        and _is_direct_same_machine_loopback_request(request)
+    ):
+        return {
+            **settings,
+            "auth_mode": "open",
+            "required": False,
+            "authenticated": True,
+            "via": "loopback_no_totp",
+            "totp_configured": False,
+        }
 
     cookie_name = _agent_chat_cookie_name(agent_name)
     cookie_token = request.cookies.get(cookie_name)
     if _agent_chat_session_is_valid(agent_name, cookie_token):
-        return {**settings, "required": True, "authenticated": True, "via": "chat_session"}
+        return {
+            **settings,
+            "required": True,
+            "authenticated": True,
+            "via": "chat_session",
+            "totp_configured": totp_configured,
+        }
 
     # Check Authorization: Bearer <token> header (for WebRTC tunnel clients
     # that cannot send cookies across the SCTP/HTTP proxy boundary)
@@ -2176,14 +2303,32 @@ def _describe_chat_auth_state(request: Request, agent_name: str) -> Dict[str, An
     if auth_header.startswith("Bearer "):
         bearer_token = auth_header[7:].strip()
         if _agent_chat_session_is_valid(agent_name, bearer_token):
-            return {**settings, "required": True, "authenticated": True, "via": "chat_session"}
+            return {
+                **settings,
+                "required": True,
+                "authenticated": True,
+                "via": "chat_session",
+                "totp_configured": totp_configured,
+            }
 
     # Opt-in shared cross-agent session (off by default; see
     # agent_websites.shared_session_enabled).
     if _shared_session_authenticates(request, settings):
-        return {**settings, "required": True, "authenticated": True, "via": "shared_session"}
+        return {
+            **settings,
+            "required": True,
+            "authenticated": True,
+            "via": "shared_session",
+            "totp_configured": totp_configured,
+        }
 
-    return {**settings, "required": True, "authenticated": False, "via": "none"}
+    return {
+        **settings,
+        "required": True,
+        "authenticated": False,
+        "via": "none",
+        "totp_configured": totp_configured,
+    }
 
 
 def _admin_ui_session_is_authenticated_for_open_http_monitor(request: Request) -> bool:
@@ -2273,8 +2418,9 @@ def create_agent_chat_app(
     async def chat_login(request: Request):
         settings = _get_agent_security_settings(agent_name)
         server = _runtime_server()
-        if settings["auth_mode"] == "open":
-            return _json_response({"success": True, "auth": _describe_chat_auth_state(request, agent_name)})
+        auth = _describe_chat_auth_state(request, agent_name)
+        if settings["auth_mode"] == "open" or auth.get("via") == "loopback_no_totp":
+            return _json_response({"success": True, "authenticated": True, "auth": auth})
         try:
             payload = await request.json()
         except Exception:

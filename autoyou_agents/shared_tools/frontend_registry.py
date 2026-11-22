@@ -75,7 +75,7 @@ def _resolve_default_agent(frontends: list, default_agent: Optional[str]) -> Opt
 
     Precedence: an explicit (config-driven) ``default_agent`` that is either the
     directory sentinel or a present website; else a manifest-flagged default;
-    else ``page_agent`` if present; else None.
+    else ``agent_websites`` if any frontends are present; else None.
     """
     names = {str(fe.get("agent_name")) for fe in frontends if isinstance(fe, dict)}
     if default_agent:
@@ -87,8 +87,8 @@ def _resolve_default_agent(frontends: list, default_agent: Optional[str]) -> Opt
     for fe in frontends:
         if isinstance(fe, dict) and fe.get("default"):
             return str(fe.get("agent_name"))
-    if "page_agent" in names:
-        return "page_agent"
+    if names:
+        return AGENT_WEBSITES_DIRECTORY
     return None
 
 

@@ -4711,6 +4711,7 @@ def _apply_default_autoyou_page_config(cfg: Dict[str, Any]) -> bool:
         "bookmarks": [],
         "theme": "light",
         "remote_access_role": REMOTE_ACCESS_EDITOR,
+        "default_agent_website": "agent_websites",
     }
     for key, value in defaults.items():
         if key not in autoyou_page:
@@ -12734,7 +12735,7 @@ async def _set_tunnelmole_website_hosting_from_payload(payload: Dict[str, Any]) 
     )
 
     if enabled:
-        if not selected_name and routes:
+        if (not selected_name or selected_name in _AGENT_WEBSITES_DIRECTORY_SENTINELS) and routes:
             selected_name = str(routes[0].get("agent_name") or "")
         if selected_name not in route_by_name:
             raise ValueError("Choose an installed website before turning on the public website.")
@@ -13040,7 +13041,7 @@ def _resolve_default_agent_website(cfg: Optional[Dict[str, Any]] = None) -> str:
     """Resolve the configured default/home agent website (operator-settable).
 
     Precedence: ``autoyou_page.default_agent_website`` then top-level
-    ``default_agent_website``; defaults to ``page_agent``. The sentinel
+    ``default_agent_website``; defaults to ``agent_websites``. The sentinel
     ``agent_websites`` means "land on the Agent Apps store page".
     """
     config = cfg if isinstance(cfg, dict) else (STATE.config or {})
@@ -13049,7 +13050,7 @@ def _resolve_default_agent_website(cfg: Optional[Dict[str, Any]] = None) -> str:
     value = str(page_cfg.get("default_agent_website") or config.get("default_agent_website") or "").strip()
     if value in _AGENT_WEBSITES_DIRECTORY_SENTINELS:
         return "agent_websites"
-    return value or "page_agent"
+    return value or "agent_websites"
 
 def _get_remote_browser_access_role(cfg: Optional[Dict[str, Any]] = None) -> str:
     effective_cfg = cfg if isinstance(cfg, dict) else (STATE.config or {})

@@ -101,7 +101,11 @@ def _check_auth(request: Request) -> bool:
             # manifest's public "open" state alone must not do so.
             if str(auth.get("auth_mode") or "").strip().lower() != "open":
                 return bool(auth.get("authenticated"))
-            if str(auth.get("via") or "").strip().lower() in {"mission_session", "shared_session"}:
+            if str(auth.get("via") or "").strip().lower() in {
+                "mission_session",
+                "shared_session",
+                "loopback_no_totp",
+            }:
                 return bool(auth.get("authenticated"))
         except Exception:
             pass
@@ -1125,7 +1129,25 @@ async def api_auth_login(request: Request) -> JSONResponse:
 @app.get("/api/auth/status")
 async def api_auth_status(request: Request) -> JSONResponse:
     authenticated = _check_auth(request)
-    return _json_response({"success": True, "authenticated": authenticated})
+    totp_configured = False
+    auth_mode = "open"
+    helpers = _import_auth_helpers()
+    describe_auth_state = helpers.get("describe_auth_state")
+    if describe_auth_state:
+        try:
+            auth = describe_auth_state(request, _AGENT_NAME)
+            totp_configured = bool(auth.get("totp_configured"))
+            auth_mode = str(auth.get("auth_mode") or auth_mode)
+        except Exception:
+            pass
+    return _json_response(
+        {
+            "success": True,
+            "authenticated": authenticated,
+            "auth_mode": auth_mode,
+            "totp_configured": totp_configured,
+        }
+    )
 
 
 @app.post("/api/auth/logout")

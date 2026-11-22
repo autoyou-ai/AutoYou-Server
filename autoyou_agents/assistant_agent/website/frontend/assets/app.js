@@ -303,9 +303,73 @@
     if (!getMedia) {
       return Promise.reject(new Error("This browser cannot use a microphone."));
     }
-    return getMedia({
-      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-    }).then(function (stream) {
+    function isConstraintError(error) {
+      if (!error) return false;
+      var name = String(error.name || "");
+      var message = String(error.message || "").toLowerCase();
+      return (
+        name === "OverconstrainedError" ||
+        name === "ConstraintNotSatisfiedError" ||
+        name === "TypeError" ||
+        message.indexOf("invalid constraint") !== -1 ||
+        message.indexOf("constraint") !== -1
+      );
+    }
+    function classifyMicError(error) {
+      var name = String((error && error.name) || "");
+      if (name === "NotAllowedError" || name === "SecurityError" || name === "PermissionDeniedError") {
+        var deniedErr = new Error("Microphone access is off. Allow Microphone in Permissions, then tap the robot.");
+        deniedErr.name = name;
+        deniedErr.code = "mic_denied";
+        return Promise.resolve(deniedErr);
+      }
+      if (name === "NotReadableError" || name === "AbortError" || name === "TrackStartError") {
+        var busyErr = new Error("The microphone is busy in another app. Close it there, then tap the robot.");
+        busyErr.name = name;
+        busyErr.code = "mic_busy";
+        return Promise.resolve(busyErr);
+      }
+      var looksMissing = name === "NotFoundError" || name === "DevicesNotFoundError" || isConstraintError(error);
+      if (looksMissing && navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+        return navigator.mediaDevices.enumerateDevices().then(function (devices) {
+          var hasMic = (devices || []).some(function (d) { return d && d.kind === "audioinput"; });
+          if (!hasMic) {
+            var noneErr = new Error("No microphone detected on this computer. Type a question below, or connect a microphone to talk.");
+            noneErr.name = "NotFoundError";
+            noneErr.code = "no_microphone";
+            return noneErr;
+          }
+          var fallbackErr = new Error("Microphone could not start. Check Permissions or reconnect your microphone, then tap the robot.");
+          fallbackErr.name = name || "Error";
+          fallbackErr.code = "mic_unavailable";
+          return fallbackErr;
+        }).catch(function () {
+          var noneErr = new Error("No microphone detected on this computer. Type a question below, or connect a microphone to talk.");
+          noneErr.name = "NotFoundError";
+          noneErr.code = "no_microphone";
+          return noneErr;
+        });
+      }
+      if (looksMissing) {
+        var missingErr = new Error("No microphone detected on this computer. Type a question below, or connect a microphone to talk.");
+        missingErr.name = "NotFoundError";
+        missingErr.code = "no_microphone";
+        return Promise.resolve(missingErr);
+      }
+      return Promise.resolve(error instanceof Error ? error : new Error(String((error && error.message) || "The microphone could not start.")));
+    }
+    // Avoid strict channelCount: 1 (WebKit/WKWebView rejects it with OverconstrainedError:
+    // "Invalid constraint" on stereo/multi-channel or mic-less Macs; onaudioprocess already
+    // reads mono channel 0). Fall back to plain { audio: true } before surfacing a friendly error.
+    var requestStream = getMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+    }).catch(function (firstError) {
+      if (!isConstraintError(firstError)) throw firstError;
+      return getMedia({ audio: true });
+    }).catch(function (finalError) {
+      return classifyMicError(finalError).then(function (friendly) { throw friendly; });
+    });
+    return requestStream.then(function (stream) {
       var Context = window.AudioContext || window.webkitAudioContext, ctx, source;
       try { ctx = new Context({ sampleRate: SR }); source = ctx.createMediaStreamSource(stream); }
       catch (error) {
@@ -434,7 +498,8 @@
   }
 
   // ---- Listening ---------------------------------------------------------------
-  function start() {
+  function start(opts) {
+    var isAuto = Boolean(opts && opts.auto);
     S.wantListening = true;
     if (S.pausedFor) {
       setPhase("paused");
@@ -484,10 +549,21 @@
       });
     }).catch(function (error) {
       closeCapture();
+      S.wantListening = false;
       setPhase("off");
-      var denied = error && (error.name === "NotAllowedError" || error.name === "SecurityError");
-      hint(denied ? "Microphone access was blocked. Allow it for this site, then tap the robot." : (error.message || "The microphone could not start."), "error");
-      chime("error");
+      var code = (error && error.code) || "";
+      var denied = code === "mic_denied" || (error && (error.name === "NotAllowedError" || error.name === "SecurityError"));
+      var noMic = code === "no_microphone" || (error && (error.name === "NotFoundError" || error.name === "DevicesNotFoundError"));
+      if (isAuto && noMic) {
+        hint("No microphone detected — type a question below, or connect a microphone to talk.");
+        return;
+      }
+      if (noMic) {
+        hint(error.message || "No microphone detected on this computer. Type a question below, or connect a microphone to talk.", "warn");
+        return;
+      }
+      hint(denied ? (error.message || "Microphone access is off. Allow Microphone in Permissions, then tap the robot.") : (error.message || "The microphone could not start."), isAuto ? "warn" : "error");
+      if (!isAuto) chime("error");
     }).then(function () {
       if (S.starting === opening) S.starting = null;
     });
@@ -2482,7 +2558,7 @@
     var param = params.get("autostart");
     var auto = param === "1" ? true : param === "0" ? false : (prefs.autoStart === null ? Boolean(status.auto_start) : Boolean(prefs.autoStart));
     if (auto && status.enabled && prefs.interaction === "wake_word") {
-      start();
+      start({ auto: true });
     } else if (!status.enabled) {
       hint("Assistant mode is off on the server. Turn it on in the Admin page.", "warn");
     } else {

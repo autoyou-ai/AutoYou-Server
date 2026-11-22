@@ -1082,14 +1082,14 @@ def test_page_service_root_redirects_to_directory(monkeypatch):
     assert legacy.status_code == 200
 
 
-def test_page_service_root_redirects_fallback_page_agent(monkeypatch):
+def test_page_service_root_redirects_fallback_agent_websites(monkeypatch):
     monkeypatch.setattr(
         autoyou_page_service,
         "load_frontend_registry",
         lambda: {"default_agent": None, "frontends": []},
     )
     service = autoyou_page_service.AutoYouPageService()
-    assert service._default_browser_path() == "/agent/page_agent/"
+    assert service._default_browser_path() == "/websites"
 
 
 @pytest.mark.parametrize(
