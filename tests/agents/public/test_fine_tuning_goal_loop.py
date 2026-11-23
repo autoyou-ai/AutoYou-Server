@@ -223,6 +223,50 @@ def test_a_vanished_process_resumes_the_same_plan(tmp_path, store):
     assert {k: v for k, v in first.items() if k != "resume"} == {k: v for k, v in second.items() if k != "resume"}
 
 
+SYSTEM_RESOURCES = {
+    "status": "failed", "return_code": 1, "summary": {},
+    "log": "Traceback (most recent call last):\nOSError: Insufficient system resources exist to complete the requested service. (os error 1450)",
+}
+
+
+def test_running_out_of_system_resources_waits_and_retries_the_same_plan(tmp_path, store):
+    """Found by a live run: another resident model left no commit headroom, and the goal ended as 'unknown'."""
+    clock = {"now": 0.0}
+    fake = FakeOps(tmp_path, [SYSTEM_RESOURCES, GOOD], clock=clock)
+    run = tg.run_training_goal(_config(resource_pause_seconds=10.0), fake.ops(), store)
+    assert run.status == "completed" and len(run.attempts) == 2
+    assert run.attempts[0]["failure_kind"] == "system_resources" and "(10s)" in run.attempts[0]["repair"]
+    first, second = (s["config"] for s in fake.started)
+    assert first["resume"] == "" and second["resume"] == "auto"
+    assert {k: v for k, v in first.items() if k != "resume"} == {k: v for k, v in second.items() if k != "resume"}
+    assert clock["now"] == 10.0  # it paused before the retry
+
+
+def test_system_resources_that_never_recover_end_with_the_hint_after_two_retries(tmp_path, store):
+    clock = {"now": 0.0}
+    fake = FakeOps(tmp_path, [SYSTEM_RESOURCES], clock=clock)
+    run = tg.run_training_goal(_config(max_attempts=6, resource_pause_seconds=10.0), fake.ops(), store)
+    assert run.status == "failed" and len(run.attempts) == 3
+    assert "no repair applies" in run.error and "ollama stop" in run.error
+    assert clock["now"] == 10.0 + 20.0  # the second retry waited twice as long
+
+
+def test_a_pause_request_during_the_resource_wait_is_honoured_and_resumable(tmp_path, store):
+    stop = threading.Event()
+    clock = {"now": 0.0}
+    fake = FakeOps(tmp_path, [SYSTEM_RESOURCES, GOOD], clock=clock)
+    base_sleep = fake.sleep
+
+    def sleep_then_stop(seconds):
+        base_sleep(seconds)
+        if clock["now"] >= 3.0:
+            stop.set()
+
+    run = tg.run_training_goal(_config(resource_pause_seconds=10.0), fake.ops(sleep=sleep_then_stop), store,
+                               stop_event=stop, cancel_flag=lambda: False)
+    assert run.status == "paused" and len(fake.started) == 1 and clock["now"] < 10.0
+
+
 def test_an_unreachable_base_model_is_named_and_not_retried(tmp_path, store):
     """Found by a live run: the runner could not find the base model in its cache and was offline."""
     crash = {"status": "failed", "return_code": 1, "summary": {},

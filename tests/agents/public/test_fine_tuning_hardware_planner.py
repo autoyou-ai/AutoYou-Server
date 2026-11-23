@@ -359,10 +359,28 @@ def test_plan_serialises_to_job_config():
         (1, "huggingface_hub.errors.LocalEntryNotFoundError: Cannot find the requested files in the disk cache and outgoing traffic has been disabled.", "model_unavailable"),
         (1, "Traceback (most recent call last):\n  File x\nValueError: bad", "unknown"),
         (None, "", "unknown"),
+        # Host resource exhaustion, seen live on Windows while other models were resident.
+        (1, "Traceback (most recent call last):\nOSError: Insufficient system resources exist to complete the requested service. (os error 1450)", "system_resources"),
+        (1, "OSError: [WinError 1455] The paging file is too small for this operation to complete", "system_resources"),
+        (1, "RuntimeError: [enforce fail at alloc_cpu.cpp:117] data. DefaultCPUAllocator: not enough memory: you tried to allocate 3221225472 bytes.", "system_resources"),
+        # ...and not for a real GPU out-of-memory, which the runner reports by its own exit code.
+        (planner.EXIT_OUT_OF_MEMORY, "OSError: (os error 1450)", "out_of_memory"),
+        (1, "torch.OutOfMemoryError: HIP out of memory. Tried to allocate 4.00 GiB", "out_of_memory"),
     ],
 )
 def test_failure_classification(code, log, kind):
     assert planner.classify_failure(code, log) == kind
+
+
+def test_running_out_of_system_resources_retries_the_same_plan_twice_then_hands_over_with_a_hint():
+    plan = planner.plan_training(_strix(), model_registry.lookup("Qwen/Qwen3.5-9B"))
+    first = planner.repair_plan(plan, "system_resources", attempt=1)
+    assert first.resume is True and first.history and "system resources" in first.history[-1]
+    # Nothing but the resume flag changed: shrinking the batch cannot help a host that is out of commit.
+    assert {**first.to_job_config(), "resume": False} == {**plan.to_job_config(), "resume": False}
+    assert planner.repair_plan(first, "system_resources", attempt=2) is not None
+    assert planner.repair_plan(first, "system_resources", attempt=3) is None
+    assert "ollama stop" in planner.FAILURE_HINTS["system_resources"]
 
 
 def test_a_missing_base_model_is_not_repaired_by_changing_the_plan_and_comes_with_a_hint():

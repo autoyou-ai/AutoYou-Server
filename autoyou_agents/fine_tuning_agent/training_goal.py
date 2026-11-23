@@ -82,6 +82,8 @@ class TrainingGoalConfig:
     vision: Optional[bool] = None                # None: decided from the dataset
     config: Dict[str, Any] = field(default_factory=dict)   # explicit overrides win over the plan
     poll_seconds: float = 5.0
+    # How long to wait before retrying after the computer ran out of system resources; the second retry waits twice as long.
+    resource_pause_seconds: float = 45.0
 
 
 @dataclass
@@ -269,6 +271,16 @@ def _bool_stop(stop_event: threading.Event, cancel_flag: Callable[[], bool]) -> 
         raise _Stop(cancel_flag())
 
 
+def _pause(seconds: float, ops: GoalOps, stop_event: threading.Event, cancel_flag: Callable[[], bool]) -> None:
+    """Wait in one-second slices so a pause or cancel is honoured promptly."""
+    remaining = max(0.0, float(seconds))
+    while remaining > 0:
+        _bool_stop(stop_event, cancel_flag)
+        step = min(1.0, remaining)
+        ops.sleep(step)
+        remaining -= step
+
+
 def _wait_for_job(job_id: str, run: TrainingGoalRun, config: TrainingGoalConfig, ops: GoalOps,
                   stop_event: threading.Event, cancel_flag: Callable[[], bool], store: GoalStore,
                   deadline: float) -> Dict[str, Any]:
@@ -423,6 +435,11 @@ def run_training_goal(
                 attempt["repair"] = nxt.history[-1] if nxt.history else "plan changed"
                 plan = nxt
                 run.plan = plan.to_dict()
+                if kind == "system_resources" and config.resource_pause_seconds > 0:
+                    wait = config.resource_pause_seconds * attempt_number
+                    attempt["repair"] += f" ({wait:g}s)"
+                    store.save(run)
+                    _pause(wait, ops, stop, cancelled)
                 store.save(run)
 
         # ---- install

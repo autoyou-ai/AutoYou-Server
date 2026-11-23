@@ -66,6 +66,15 @@ _MODEL_FETCH_RE = re.compile(
     r"(?:ConnectionError|Max retries exceeded).{0,160}huggingface",
     re.IGNORECASE,
 )
+# The host, not the job, ran out of memory commit or address space. Windows reports it as error 1450 when a model
+# file cannot be mapped and 1455 when the commit limit is reached; torch's CPU allocator words the same shortage
+# differently. Seen live: a 0.8B base could not be mapped while two other models were resident, because on this
+# class of machine the GPU's dedicated memory counts against the commit limit.
+_SYSTEM_RESOURCES_RE = re.compile(
+    r"os error 14(?:50|55)\b|WinError 14(?:50|55)\b|insufficient system resources|paging file is too small|"
+    r"DefaultCPUAllocator: not enough memory",
+    re.IGNORECASE,
+)
 _DEPENDENCY_RE = re.compile(r"DEPENDENCY_ERROR|ModuleNotFoundError|ImportError|No module named", re.IGNORECASE)
 _CONFIG_RE = re.compile(r"CPU_TRAINING_OPT_IN_REQUIRED|DATA_ERROR|VISION_SETUP_ERROR|SECURITY_ERROR|VISION_BASE_MODEL_ERROR")
 _TRACEBACK_RE = re.compile(r"Traceback \(most recent call last\)|^\s*(?:\w+Error|\w+Exception):", re.MULTILINE)
@@ -314,6 +323,7 @@ FAILURE_HINTS = {
     "config": "The job settings or data were rejected; read the log for the named setting.",
     "non_finite_loss": "Training went non-finite after the safer settings were tried; check the data for extreme samples.",
     "out_of_memory": "Out of memory after every reduction; use a smaller base model or a shorter sequence length.",
+    "system_resources": "The computer ran out of system resources (memory commit or kernel memory) while the job loaded or ran, not the job's own settings. On a GPU that shares memory with the system, models other programs keep loaded count against the same limit: unload them (for example `ollama stop <model>`), close memory-heavy programs, then resume the goal. If it keeps happening with little else running, restart the computer to release leaked kernel memory.",
 }
 
 
@@ -328,7 +338,12 @@ def classify_failure(return_code: Optional[int], log_tail: str = "") -> str:
     """
     text = str(log_tail or "")
     code = None if return_code is None else int(return_code)
-    if code == EXIT_OUT_OF_MEMORY or _OOM_RE.search(text):
+    if code == EXIT_OUT_OF_MEMORY:
+        return "out_of_memory"
+    # Before the generic out-of-memory words: shrinking the batch does nothing for a host that is out of commit.
+    if _SYSTEM_RESOURCES_RE.search(text):
+        return "system_resources"
+    if _OOM_RE.search(text):
         return "out_of_memory"
     if code == EXIT_NON_FINITE_LOSS or _NON_FINITE_RE.search(text):
         return "non_finite_loss"
@@ -351,6 +366,16 @@ def repair_plan(plan: TrainingPlan, failure: str, *, attempt: int = 1,
             return None
         return dataclasses.replace(
             plan, resume=True, history=[*plan.history, f"attempt {attempt}: process vanished; resuming the same plan from its newest checkpoint"],
+        )
+
+    if failure == "system_resources":
+        # Nothing in the plan is wrong, so change nothing: the same plan, resumed from its newest checkpoint if it
+        # had one, once the caller has given the host time to recover. Two retries, then the operator decides.
+        if attempt > 2:
+            return None
+        return dataclasses.replace(
+            plan, resume=True,
+            history=[*plan.history, f"attempt {attempt}: the computer ran out of system resources; retrying the same plan after a pause"],
         )
 
     if failure == "out_of_memory":
