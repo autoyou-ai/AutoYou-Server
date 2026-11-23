@@ -355,12 +355,20 @@ def test_plan_serialises_to_job_config():
         (1, "step 10 loss 1.2\nstep 20 loss 1.1\n", "killed"),            # vanished: no traceback
         (-9, "", "killed"),
         (3221225786, "", "killed"),                                       # Windows CTRL_C_EVENT / taskkill
+        (1, "OSError: We couldn't connect to 'https://huggingface.co' to load the files, and couldn't find them in the cached files.", "model_unavailable"),
+        (1, "huggingface_hub.errors.LocalEntryNotFoundError: Cannot find the requested files in the disk cache and outgoing traffic has been disabled.", "model_unavailable"),
         (1, "Traceback (most recent call last):\n  File x\nValueError: bad", "unknown"),
         (None, "", "unknown"),
     ],
 )
 def test_failure_classification(code, log, kind):
     assert planner.classify_failure(code, log) == kind
+
+
+def test_a_missing_base_model_is_not_repaired_by_changing_the_plan_and_comes_with_a_hint():
+    plan = planner.plan_training(_strix(), model_registry.lookup("Qwen/Qwen3.5-4B"))
+    assert planner.repair_plan(plan, "model_unavailable") is None
+    assert "HF_HOME" in planner.FAILURE_HINTS["model_unavailable"]
 
 
 def test_oom_repair_walks_the_ladder_to_the_end():

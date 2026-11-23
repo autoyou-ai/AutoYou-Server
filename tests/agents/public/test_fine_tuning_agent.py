@@ -162,6 +162,24 @@ def test_training_runner_command_reenters_the_packaged_launcher(monkeypatch, tmp
     ]
 
 
+def test_the_job_cache_follows_an_operator_chosen_hf_home(tmp_path: Path) -> None:
+    from autoyou_agents.fine_tuning_agent import fine_tuning_tool as tool
+
+    chosen = tmp_path / "my-hf"
+    env = {"HF_HOME": str(chosen)}
+    tool._apply_hf_cache_defaults(env)
+    assert Path(env["HF_HUB_CACHE"]) == chosen / "hub" and Path(env["TRANSFORMERS_CACHE"]) == chosen / "transformers"
+
+    default_env: dict = {}
+    tool._apply_hf_cache_defaults(default_env)
+    assert Path(default_env["HF_HOME"]) == tool.HF_CACHE_DIR
+    assert Path(default_env["HF_HUB_CACHE"]) == tool.HF_CACHE_DIR / "hub"
+
+    explicit = {"HF_HOME": str(chosen), "HF_HUB_CACHE": str(tmp_path / "hub-elsewhere")}
+    tool._apply_hf_cache_defaults(explicit)
+    assert explicit["HF_HUB_CACHE"] == str(tmp_path / "hub-elsewhere")
+
+
 def test_csv_sender_message_builds_owner_reply_samples() -> None:
     csv_text = "\n".join(
         [

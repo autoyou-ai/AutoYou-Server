@@ -49,7 +49,7 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 
 from .hardware import HardwareReport
 from .model_registry import license_status, lookup, recommend_base
-from .planner import TrainingPlan, classify_failure, plan_training, repair_plan
+from .planner import FAILURE_HINTS, TrainingPlan, classify_failure, plan_training, repair_plan
 
 STAGES = ("probe", "plan", "train", "install")
 #: Job settings an operator may set that the plan does not decide.
@@ -417,8 +417,9 @@ def run_training_goal(
                 nxt = repair_plan(plan, kind, attempt=attempt_number, report=report)
                 if nxt is None:
                     run.last_result = {"job_id": job_id, **verdict, "failure_kind": kind}
+                    hint = FAILURE_HINTS.get(kind, "")
                     raise RuntimeError(f"Attempt {attempt_number} failed ({kind}) and no repair applies: "
-                                       + "; ".join(verdict["failures"]))
+                                       + "; ".join(verdict["failures"]) + (f". {hint}" if hint else ""))
                 attempt["repair"] = nxt.history[-1] if nxt.history else "plan changed"
                 plan = nxt
                 run.plan = plan.to_dict()

@@ -2219,6 +2219,21 @@ def _plan_cli_arguments(config: Dict[str, Any], progress_path: Path) -> List[str
     return args
 
 
+def _apply_hf_cache_defaults(env: Dict[str, str]) -> None:
+    """Give a job the agent's own Hugging Face cache unless the operator chose one.
+
+    ``HF_HOME`` is the documented knob, but ``HF_HUB_CACHE`` and
+    ``TRANSFORMERS_CACHE`` override it, so defaulting them to the agent's
+    workspace made an operator's ``HF_HOME`` silently ineffective (a live run
+    could not find a model that was in the cache they named). They now follow
+    whichever ``HF_HOME`` the job ends up with.
+    """
+    env.setdefault("HF_HOME", str(HF_CACHE_DIR))
+    home = Path(env["HF_HOME"])
+    env.setdefault("TRANSFORMERS_CACHE", str(home / "transformers"))
+    env.setdefault("HF_HUB_CACHE", str(home / "hub"))
+
+
 def _job_environment() -> Dict[str, str]:
     """Allocator/runtime variables for the hardware this interpreter trains on."""
     try:
@@ -2436,9 +2451,7 @@ def _run_training_job(job_id: str) -> None:
         env = os.environ.copy()
         project_root = str(Path(__file__).resolve().parents[2])
         env["PYTHONPATH"] = project_root + os.pathsep + env.get("PYTHONPATH", "")
-        env.setdefault("HF_HOME", str(HF_CACHE_DIR))
-        env.setdefault("TRANSFORMERS_CACHE", str(HF_CACHE_DIR / "transformers"))
-        env.setdefault("HF_HUB_CACHE", str(HF_CACHE_DIR / "hub"))
+        _apply_hf_cache_defaults(env)
         # Allocator and runtime variables come from the hardware, not from one
         # global default: expandable segments help NVIDIA's allocator and stop
         # runs at a fixed ~30 GiB on a unified-memory AMD APU.

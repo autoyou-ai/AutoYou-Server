@@ -60,6 +60,12 @@ _OOM_RE = re.compile(
     re.IGNORECASE,
 )
 _NON_FINITE_RE = re.compile(r"non[-_ ]finite|\bnan\b.*loss|loss.*\bnan\b|loss.*\binf\b", re.IGNORECASE)
+_MODEL_FETCH_RE = re.compile(
+    r"couldn't connect to 'https://huggingface\.co'|LocalEntryNotFoundError|outgoing traffic has been disabled|"
+    r"Cannot find the requested files in the disk cache|RepositoryNotFoundError|GatedRepoError|"
+    r"(?:ConnectionError|Max retries exceeded).{0,160}huggingface",
+    re.IGNORECASE,
+)
 _DEPENDENCY_RE = re.compile(r"DEPENDENCY_ERROR|ModuleNotFoundError|ImportError|No module named", re.IGNORECASE)
 _CONFIG_RE = re.compile(r"CPU_TRAINING_OPT_IN_REQUIRED|DATA_ERROR|VISION_SETUP_ERROR|SECURITY_ERROR|VISION_BASE_MODEL_ERROR")
 _TRACEBACK_RE = re.compile(r"Traceback \(most recent call last\)|^\s*(?:\w+Error|\w+Exception):", re.MULTILINE)
@@ -301,6 +307,16 @@ def plan_training(
 
 
 # -------------------------------------------------------------------- repair
+#: What an operator can do about a failure the planner cannot repair by itself.
+FAILURE_HINTS = {
+    "model_unavailable": "The base model could not be loaded from the Hugging Face cache or downloaded. Check the network connection, accept the model's licence on huggingface.co if it is gated, or download it once and point HF_HOME at that cache.",
+    "dependency": "A training package is missing in the interpreter that runs the job; install the tuning component.",
+    "config": "The job settings or data were rejected; read the log for the named setting.",
+    "non_finite_loss": "Training went non-finite after the safer settings were tried; check the data for extreme samples.",
+    "out_of_memory": "Out of memory after every reduction; use a smaller base model or a shorter sequence length.",
+}
+
+
 def classify_failure(return_code: Optional[int], log_tail: str = "") -> str:
     """Name why a job died, so the right repair is tried.
 
@@ -316,6 +332,8 @@ def classify_failure(return_code: Optional[int], log_tail: str = "") -> str:
         return "out_of_memory"
     if code == EXIT_NON_FINITE_LOSS or _NON_FINITE_RE.search(text):
         return "non_finite_loss"
+    if _MODEL_FETCH_RE.search(text):
+        return "model_unavailable"
     if code in (EXIT_DEPENDENCY,) or _DEPENDENCY_RE.search(text):
         return "dependency"
     if code in (EXIT_DATA, EXIT_CPU_OPT_IN, EXIT_SECURITY, EXIT_VISION_SETUP) or _CONFIG_RE.search(text):

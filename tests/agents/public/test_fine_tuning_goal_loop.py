@@ -223,6 +223,15 @@ def test_a_vanished_process_resumes_the_same_plan(tmp_path, store):
     assert {k: v for k, v in first.items() if k != "resume"} == {k: v for k, v in second.items() if k != "resume"}
 
 
+def test_an_unreachable_base_model_is_named_and_not_retried(tmp_path, store):
+    """Found by a live run: the runner could not find the base model in its cache and was offline."""
+    crash = {"status": "failed", "return_code": 1, "summary": {},
+             "log": "Traceback (most recent call last):\nOSError: We couldn't connect to 'https://huggingface.co' to load the files"}
+    run = tg.run_training_goal(_config(), FakeOps(tmp_path, [crash]).ops(), store)
+    assert run.status == "failed" and run.attempts[0]["failure_kind"] == "model_unavailable"
+    assert len(run.attempts) == 1 and "HF_HOME" in run.error
+
+
 def test_a_traceback_is_not_mistaken_for_a_kill(tmp_path, store):
     crash = {"status": "failed", "return_code": 1, "log": "Traceback (most recent call last):\nValueError: bad row",
              "summary": {}}
