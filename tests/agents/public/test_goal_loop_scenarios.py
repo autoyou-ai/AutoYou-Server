@@ -13,7 +13,10 @@ checked here against a scripted fake backend - no server, model or network.
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License (see LICENSE)"
 
+import json
 import re
+import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -106,6 +109,23 @@ def test_claiming_success_without_a_side_effect_is_caught_by_the_probe(monkeypat
 
     assert not run.passed
     assert [f for f in run.failures if f.startswith("[assertion]") and "notes_total" in f]
+    assert run.probes == [gl.ProbeResult(gl.Probe("notes_total", delta=1), 0, 0)]
+
+
+def test_a_failed_baseline_probe_prevents_writing_a_note(monkeypatch, runtime, config):
+    backend = FakeBackend()
+
+    def chat(url, *, case, **kwargs):
+        if case.name.startswith("probe_"):
+            return gl.evaluate_turn(case, 500, {"response": "You have **0 notes**."})
+        return backend(url, case=case, **kwargs)
+
+    monkeypatch.setattr(gl, "_send_chat_turn", chat)
+    run = gl.run_scenario(config, runtime, _scenario("notes_save_previous_answer"), token="test", attempt=1)
+
+    assert not run.passed
+    assert not backend.sent
+    assert run.failures == ["[backend] could not read probe notes_total before the scenario"]
 
 
 def test_the_wrong_specialist_is_reported_as_a_misroute(monkeypatch, runtime, config):
@@ -174,7 +194,7 @@ def test_deterministic_scenarios_run_once_and_model_scenarios_repeat(monkeypatch
     backend = FakeBackend()
     monkeypatch.setattr(gl, "_send_chat_turn", backend)
     monkeypatch.setattr(gl, "ensure_runtime", lambda cfg: runtime)
-    monkeypatch.setattr(gl, "scan_recent_logs", lambda rt, since: [])
+    monkeypatch.setattr(gl, "scan_recent_logs", lambda rt, **kwargs: [])
     monkeypatch.setattr(gl, "OUTPUT_DIR", tmp_path)
     monkeypatch.setattr(gl, "write_secure_file", lambda path, data: None)
     cfg = gl.GoalLoopConfig(goal="", scenarios=("routing_sanity_no_overreach", "plain_chat_stays_conversational"), repeat=3)
@@ -185,6 +205,7 @@ def test_deterministic_scenarios_run_once_and_model_scenarios_repeat(monkeypatch
     for run in report.runs:
         counts[run.scenario] = counts.get(run.scenario, 0) + 1
     assert counts == {"routing_sanity_no_overreach": 1, "plain_chat_stays_conversational": 3}
+    assert len({run.session_id for run in report.runs}) == 4
 
 
 def test_offline_mode_skips_network_scenarios_and_log_errors_fail_the_suite(monkeypatch, runtime, tmp_path):
@@ -192,7 +213,7 @@ def test_offline_mode_skips_network_scenarios_and_log_errors_fail_the_suite(monk
     monkeypatch.setattr(gl, "ensure_runtime", lambda cfg: runtime)
     monkeypatch.setattr(gl, "OUTPUT_DIR", tmp_path)
     monkeypatch.setattr(gl, "write_secure_file", lambda path, data: None)
-    monkeypatch.setattr(gl, "scan_recent_logs", lambda rt, since: [{"file": "f.log", "line": 3, "text": "ERROR: boom"}])
+    monkeypatch.setattr(gl, "scan_recent_logs", lambda rt, **kwargs: [{"file": "f.log", "line": 3, "text": "ERROR: boom"}])
     cfg = gl.GoalLoopConfig(goal="", scenarios=("web_routing_still_works",), offline=True)
 
     report = gl.run_scenarios(cfg)
@@ -213,6 +234,86 @@ def test_failure_kinds_summarise_by_tag():
 
     assert report.failure_kinds() == {"rigid": 2, "misroute": 1, "assertion": 1}
     assert "Failures by kind: rigid=2" in gl.format_scenario_report(report)
+
+
+@pytest.mark.parametrize("edit", ["agent", "shared", "none", "partial"])
+def test_opted_in_scenario_repairs_reload_only_verified_agent_edits(tmp_path, monkeypatch, edit):
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+
+    def git(*args):
+        subprocess.run(["git", *args], cwd=checkout, check=True, capture_output=True)
+
+    git("init", "-q")
+    agent = checkout / "autoyou_agents" / "notes_agent.py"
+    agent.parent.mkdir()
+    agent.write_text("# initial agent\n", encoding="utf-8")
+    shared = checkout / "shared.py"
+    shared.write_text("# initial shared code\n", encoding="utf-8")
+    git("add", ".")
+    git("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "Test fixture")
+    agent.write_text("# existing agent change\n", encoding="utf-8")
+    shared.write_text("# unrelated work already in progress\n", encoding="utf-8")
+
+    log = tmp_path / "worker.log"
+    log.write_text("ERROR: prior run\n", encoding="utf-8")
+    runtime = gl.RuntimeStatus("http://127.0.0.1:8001", "http://127.0.0.1:8081", True, True, log_file=str(log))
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path))
+    monkeypatch.setattr(gl, "REPO_ROOT", checkout)
+    monkeypatch.setattr(gl, "ensure_runtime", lambda config: runtime)
+    monkeypatch.setattr(gl, "login_admin", lambda config, status: gl.AdminSession(True, status.admin_url))
+    backend = FakeBackend({"Save it to notes": ("Note created with ID 7", NOTES)})
+    repaired = []
+    reloads = []
+
+    def chat(url, *, case, session_id, **kwargs):
+        if case.name.startswith("repair_iteration_"):
+            repaired.append(session_id)
+            assert "probe notes_total changed by 0, expected 1" in case.message
+            if edit in {"agent", "partial"}:
+                agent.write_text("# repaired agent\n", encoding="utf-8")
+            elif edit == "shared":
+                shared.write_text("# repaired shared code\n", encoding="utf-8")
+            if edit == "partial":
+                raise TimeoutError("repair timed out after writing")
+            return gl.evaluate_turn(case, 200, {"response": "Repair attempted", "agent_name": "autoyou_coding_agent"})
+        return backend(url, case=case, session_id=session_id, **kwargs)
+
+    def reload(config, admin):
+        reloads.append(admin.admin_url)
+        del backend.replies["Save it to notes"]
+        return "ai_agent_restart: AI Agent Server restarted successfully"
+
+    monkeypatch.setattr(gl, "_send_chat_turn", chat)
+    monkeypatch.setattr(gl, "restart_ai_agent_runtime", reload)
+    config = gl.GoalLoopConfig(
+        goal="", scenarios=("notes_save_previous_answer",), suite="personal_harness",
+        allow_code_edits=True, repair_mode="agent", max_iterations=2, offline=True,
+    )
+    report = gl.run_scenarios(config)
+
+    assert len(repaired) == len(report.repair_attempts) == 1
+    assert report.passed is (edit == "agent")
+    assert len(reloads) == (1 if edit == "agent" else 0)
+    evidence = json.loads(gl.read_secure_file(Path(report.report_path)))
+    action = evidence["repair_attempts"][0]
+    assert "probe notes_total changed by 0" in action["repair_prompt"]
+    if edit == "agent":
+        assert action["change_scope"]["changed_paths"] == ["autoyou_agents/notes_agent.py"]
+        assert evidence["iterations"] == 2
+        assert evidence["runs"][0]["probes"][0]["after"] == 1
+        workflow_sessions = [sid for sid, message in backend.sent if message == "Save it to notes"]
+        assert len(set([*workflow_sessions, *repaired])) == 3
+    elif edit == "shared":
+        assert action["action"].startswith("main_restart_required")
+        assert evidence["iterations"] == 1
+    elif edit == "partial":
+        assert action["change_scope"]["changed_paths"] == ["autoyou_agents/notes_agent.py"]
+        assert action["action"].startswith("review_required: repair request failed")
+        assert evidence["iterations"] == 1
+    else:
+        assert action["action"] == "skipped: no code changes detected"
+        assert evidence["iterations"] == 1
 
 
 def test_scenario_catalog_is_well_formed():
