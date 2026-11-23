@@ -19,10 +19,10 @@ __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 
 import argparse
-import contextlib
 import dataclasses
 import datetime as _dt
 import hashlib
+import http.client
 import http.cookiejar
 import json
 import os
@@ -42,7 +42,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
 from shared.platform_runtime import get_service_data_dir, is_compiled
-from shared.secure_storage import append_secure_file, read_secure_file, write_secure_file
+from shared.secure_storage import read_secure_file, write_secure_file
 
 __debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-pay-1f80abcd8a8f9f23df7ec824"
 
@@ -340,9 +340,20 @@ def _port_in_use(host: str, port: int) -> bool:
 
 
 def _admin_is_reachable(admin_url: str, timeout: float = 2.0) -> bool:
+    """True when something answers AutoYou's status routes at ``admin_url``.
+
+    A refused or timed-out connection means nothing is serving there yet, which is
+    the normal case for a fresh test runtime, so it is an answer (False), not an
+    error. Windows takes about two seconds to refuse a closed loopback port and
+    reports it as a timeout; the check used to raise, and the goal loop died before
+    it could start the runtime it exists to start.
+    """
     client = _HttpJsonClient(admin_url, timeout)
     for path in ("/api/status", "/api/v1/status", "/api/login-startup-status"):
-        status, _, _ = client.request("GET", path)
+        try:
+            status, _, _ = client.request("GET", path)
+        except (urllib.error.URLError, OSError, http.client.HTTPException):
+            return False
         if 200 <= status < 300:
             return True
     return False
@@ -403,8 +414,70 @@ def _output_directory() -> Path:
     return Path(test_root) / "output" / OUTPUT_DIR.name if test_root else OUTPUT_DIR
 
 
+def _ai_agent_is_reachable(ai_url: str, timeout: float = 2.0) -> bool:
+    """True when the AI agent answers ``/health``, the route the server's own readiness check uses."""
+    client = _HttpJsonClient(ai_url, timeout)
+    try:
+        status, _, _ = client.request("GET", "/health")
+    except (urllib.error.URLError, OSError, http.client.HTTPException):
+        return False
+    return 200 <= status < 300
+
+
+def _may_sign_in(config: GoalLoopConfig, runtime: RuntimeStatus) -> bool:
+    """Whether the loop may send its password to the runtime it is about to test.
+
+    Never to a remote runtime. A runtime this loop started was given ``config.password``
+    as its server password, so that is the right one to use. A runtime somebody else
+    started is signed in to only with a password the caller supplied, never the
+    well-known default.
+    """
+    if not _is_local_runtime(runtime):
+        return False
+    return not runtime.reused or config.password != DEFAULT_PASSWORD
+
+
+def _ensure_ai_agent(config: GoalLoopConfig, runtime: RuntimeStatus) -> RuntimeStatus:
+    """Make sure the AI agent answers before any chat is sent to it.
+
+    The admin port answering only means the server is up. A locked runtime, and every
+    runtime this loop starts is one, runs no AI agent until somebody unlocks it, so
+    each scenario used to fail with "connection refused" for a reason the report never
+    named. Sign in when that is allowed, wait for ``/health``, and otherwise say
+    plainly what is missing.
+    """
+    if not runtime.ready or _ai_agent_is_reachable(runtime.ai_url):
+        return runtime
+    note = f"The AI agent at {runtime.ai_url} is not answering."
+    wait = max(0.0, float(config.startup_timeout_seconds))
+    if _may_sign_in(config, runtime):
+        admin = login_admin(config, runtime)
+        if not admin.ok:
+            return dataclasses.replace(
+                runtime, ready=False, message=f"{runtime.message} {note} Signing in to start it failed: {admin.message}",
+            )
+        note += " Signed in to start it."
+    else:
+        note += " The loop does not sign in to a runtime it did not start unless it is given a --password; unlock it first."
+        wait = min(wait, 10.0)
+    deadline = time.time() + wait
+    while True:
+        if _ai_agent_is_reachable(runtime.ai_url):
+            return dataclasses.replace(runtime, message=f"{runtime.message} {note} It is answering now.")
+        if time.time() >= deadline:
+            break
+        time.sleep(1.0)
+    return dataclasses.replace(runtime, ready=False, message=f"{runtime.message} {note} It did not answer within {wait:.0f}s.")
+
+
 def ensure_runtime(config: GoalLoopConfig) -> RuntimeStatus:
-    """Start or reuse AutoYou on the requested ports."""
+    """Start or reuse AutoYou on the requested ports; ready only once its AI agent answers too."""
+
+    return _ensure_ai_agent(config, _ensure_admin_runtime(config))
+
+
+def _ensure_admin_runtime(config: GoalLoopConfig) -> RuntimeStatus:
+    """Start or reuse the AutoYou admin runtime on the requested ports."""
 
     admin_url = _base_url(config.host, config.admin_port)
     ai_url = _base_url(config.host, config.ai_agent_port)
@@ -440,37 +513,27 @@ def ensure_runtime(config: GoalLoopConfig) -> RuntimeStatus:
     env.setdefault("ADMIN_WEB_SERVICE_PORT", str(config.admin_port))
     env.setdefault("AI_AGENT_SERVER_PORT", str(config.ai_agent_port))
     env.setdefault("AUTH_SERVER_PORT", str(config.auth_port))
+    # The console is UTF-8 and unbuffered so the log is complete and readable while the runtime runs.
+    env.setdefault("PYTHONUNBUFFERED", "1")
+    env.setdefault("PYTHONUTF8", "1")
+    env.setdefault("PYTHONIOENCODING", "utf-8")
     command = _bootstrap_command(config)
     flags = 0
     if os.name == "nt":
         flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-    process_handle = subprocess.Popen(
-        command,
-        cwd=str(REPO_ROOT),
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        creationflags=flags,
-        text=True,
-        bufsize=1,
-    )
-    if hasattr(process_handle.stdout, "readline"):
-        def _capture_bootstrap_log() -> None:
-            stream = process_handle.stdout
-            try:
-                for line in iter(stream.readline, ""):
-                    append_secure_file(log_file, line.encode("utf-8", errors="replace"))
-            except Exception:
-                pass
-            finally:
-                with contextlib.suppress(Exception):
-                    stream.close()
-
-        threading.Thread(
-            target=_capture_bootstrap_log,
-            daemon=True,
-            name="autoyou-secure-bootstrap-log",
-        ).start()
+    # The runtime outlives this process: the next run reuses it, and it keeps serving after the loop exits. Its
+    # console must therefore be the log file itself. It used to be a pipe this process read on a thread, and once
+    # the loop exited that pipe had no reader; the runtime's worker processes then failed on their next console
+    # write, so restarting its AI agent (the repair path) answered "did not become healthy" and left no worker.
+    with open(log_file, "ab") as console:
+        process_handle = subprocess.Popen(
+            command,
+            cwd=str(REPO_ROOT),
+            env=env,
+            stdout=console,
+            stderr=subprocess.STDOUT,
+            creationflags=flags,
+        )
 
     deadline = time.time() + float(config.startup_timeout_seconds)
     while time.time() < deadline:
@@ -1498,7 +1561,9 @@ def personal_harness_scenarios() -> list[Scenario]:
                 ),
                 ScenarioTurn(
                     "What was the news?",
-                    must_match=(r"[A-Za-z]{12}",),
+                    # A summary, not a stub: at least eight words of four letters or more. A headline list is all
+                    # short words, so asking for one long word rejected a correct reply.
+                    must_match=(r"(?:\b[A-Za-z]{4,}\b.*?){8}",),
                     must_not_match=(r"(?i)finish_reason=STOP|empty parts|internal error",),
                 ),
             ),
@@ -1523,7 +1588,7 @@ def media_factory_scenarios() -> list[Scenario]:
     return [
         Scenario(
             name="media_factory_hardware_and_settings",
-            description="Chat can inspect media hardware and update video generation settings without errors.",
+            description="Chat can inspect media hardware and update video generation settings without errors. Needs the opt-in Media Generation agent installed.",
             turns=(
                 ScenarioTurn(
                     "@media Show my current media generation hardware status and memory profile.",
@@ -1539,7 +1604,7 @@ def media_factory_scenarios() -> list[Scenario]:
         ),
         Scenario(
             name="media_factory_script_and_scene_editing",
-            description="Chat can plan a multi-scene video project, edit a scene, and inspect project status.",
+            description="Chat can plan a multi-scene video project, edit a scene, and inspect project status. Needs the opt-in Media Generation agent installed.",
             turns=(
                 ScenarioTurn(
                     "@media Create a 15 second video factory project titled 'GL-{tok} Orbital Dawn' about a sunrise over an orbital station, plan the script first without rendering yet.",
@@ -2356,6 +2421,12 @@ def _parse_cli(argv: Sequence[str]) -> GoalLoopConfig:
     parser.add_argument("--user-id", default="codex-self-improvement")
     parser.add_argument("--max-iterations", type=int, default=1)
     parser.add_argument("--request-timeout", type=float, default=120.0)
+    parser.add_argument(
+        "--startup-timeout",
+        type=float,
+        default=90.0,
+        help="Seconds to wait for the admin runtime, and again for the AI agent, to answer.",
+    )
     parser.add_argument("--allow-code-edits", action="store_true")
     parser.add_argument("--allow-main-restart", action="store_true")
     parser.add_argument("--repair-mode", choices=["codex-prompt", "agent"], default="codex-prompt")
@@ -2401,6 +2472,7 @@ def _parse_cli(argv: Sequence[str]) -> GoalLoopConfig:
         session_id=args.session_id,
         max_iterations=args.max_iterations,
         request_timeout_seconds=max(1.0, float(args.request_timeout)),
+        startup_timeout_seconds=max(1.0, float(args.startup_timeout)),
         allow_code_edits=args.allow_code_edits,
         allow_main_restart=args.allow_main_restart,
         repair_mode=args.repair_mode,

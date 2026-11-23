@@ -219,6 +219,8 @@ def test_parse_hook_prompt_extracts_goal_and_agent() -> None:
 
 def test_ensure_runtime_reuses_existing_admin(monkeypatch) -> None:
     monkeypatch.setattr(gl, "_admin_is_reachable", lambda admin_url: True)
+    # Never let a unit test probe, or sign in to, whatever runs on the default ports of this machine.
+    monkeypatch.setattr(gl, "_ai_agent_is_reachable", lambda ai_url, timeout=2.0: True)
     monkeypatch.setattr(
         gl,
         "identify_process_on_port",
@@ -295,3 +297,301 @@ def test_repair_login_defers_agreement_review_to_the_admin_app(monkeypatch) -> N
     assert not session.ok
     assert session.status_code == 428
     assert session.message.endswith("http://127.0.0.1:8001/login.")
+
+
+def test_a_runtime_that_is_not_listening_is_reported_unreachable_not_raised() -> None:
+    """ensure_runtime relies on this to decide to start a runtime; a timeout used to escape instead."""
+    import socket
+    import urllib.error
+
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        free_port = probe.getsockname()[1]  # closed again when the socket is, so nothing listens there
+    assert gl._admin_is_reachable(f"http://127.0.0.1:{free_port}", timeout=0.5) is False
+
+    class _TimesOut(gl._HttpJsonClient):
+        def request(self, *args, **kwargs):
+            raise urllib.error.URLError("timed out")
+
+    original = gl._HttpJsonClient
+    gl._HttpJsonClient = _TimesOut
+    try:
+        assert gl._admin_is_reachable("http://127.0.0.1:1", timeout=0.1) is False
+    finally:
+        gl._HttpJsonClient = original
+
+
+# --- the AI agent must answer before any chat is sent to it ---------------------------------------
+#
+# A runtime the loop starts is locked: the admin port answers but no AI agent runs until somebody
+# signs in. The scenarios used to chat anyway and failed with "connection refused" for a reason the
+# report never named. Every address below is loopback or the documentation range 203.0.113.0/24.
+
+
+class _FakeClock:
+    """A clock that only moves when the code under test sleeps, so waits cost nothing."""
+
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def time(self) -> float:
+        return self.now
+
+    monotonic = perf_counter = time
+
+    def sleep(self, seconds: float) -> None:
+        self.now += seconds
+
+
+def _runtime(*, reused: bool, admin="http://127.0.0.1:18101", ai="http://127.0.0.1:18181") -> gl.RuntimeStatus:
+    return gl.RuntimeStatus(admin, ai, reused, True, message="Started AutoYou through scripts/bootstrap_autoyou.py.")
+
+
+def _the_ai_agent_answers(monkeypatch, *replies: bool) -> list[str]:
+    """Script the /health probe: each reply in turn, then the last one for ever. Returns the URLs probed."""
+    queue = list(replies)
+    probed: list[str] = []
+
+    def probe(ai_url: str, timeout: float = 2.0) -> bool:
+        probed.append(ai_url)
+        return queue.pop(0) if len(queue) > 1 else queue[0]
+
+    monkeypatch.setattr(gl, "_ai_agent_is_reachable", probe)
+    monkeypatch.setattr(gl, "time", _FakeClock())
+    return probed
+
+
+def _must_not_sign_in(*args, **kwargs):
+    raise AssertionError("the loop must not send its password here")
+
+
+def test_a_runtime_whose_ai_agent_answers_is_left_alone(monkeypatch) -> None:
+    probed = _the_ai_agent_answers(monkeypatch, True)
+    monkeypatch.setattr(gl, "login_admin", _must_not_sign_in)
+    runtime = _runtime(reused=True)
+
+    assert gl._ensure_ai_agent(gl.GoalLoopConfig(goal="Synthetic"), runtime) is runtime
+    assert probed == ["http://127.0.0.1:18181"]
+
+
+def test_a_runtime_that_is_not_ready_is_not_probed_or_signed_in_to(monkeypatch) -> None:
+    monkeypatch.setattr(gl, "_ai_agent_is_reachable", _must_not_sign_in)
+    monkeypatch.setattr(gl, "login_admin", _must_not_sign_in)
+    down = gl.RuntimeStatus("http://127.0.0.1:18101", "http://127.0.0.1:18181", False, False, message="Port busy.")
+
+    assert gl._ensure_ai_agent(gl.GoalLoopConfig(goal="Synthetic"), down) is down
+
+
+def test_a_locked_runtime_the_loop_started_is_signed_in_and_waited_for(monkeypatch) -> None:
+    # Down at the first check, still down just after the sign-in, then up.
+    _the_ai_agent_answers(monkeypatch, False, False, False, True)
+    passwords = []
+
+    def sign_in(config, runtime):
+        passwords.append(config.password)
+        return gl.AdminSession(True, runtime.admin_url)
+
+    monkeypatch.setattr(gl, "login_admin", sign_in)
+    config = gl.GoalLoopConfig(goal="Synthetic", password="synthetic-password")
+
+    status = gl._ensure_ai_agent(config, _runtime(reused=False))
+
+    assert status.ready is True
+    assert passwords == ["synthetic-password"]
+    assert "Signed in to start it." in status.message
+    assert status.message.endswith("It is answering now.")
+
+
+def test_a_refused_sign_in_is_named_in_the_runtime_message(monkeypatch) -> None:
+    _the_ai_agent_answers(monkeypatch, False)
+    monkeypatch.setattr(
+        gl,
+        "login_admin",
+        lambda config, runtime: gl.AdminSession(False, runtime.admin_url, status_code=401, message="Incorrect password."),
+    )
+    config = gl.GoalLoopConfig(goal="Synthetic", password="synthetic-password")
+
+    status = gl._ensure_ai_agent(config, _runtime(reused=False))
+
+    assert status.ready is False
+    assert "http://127.0.0.1:18181 is not answering" in status.message
+    assert "Signing in to start it failed: Incorrect password." in status.message
+
+
+def test_the_default_password_is_never_sent_to_a_runtime_somebody_else_started(monkeypatch) -> None:
+    _the_ai_agent_answers(monkeypatch, False)
+    monkeypatch.setattr(gl, "login_admin", _must_not_sign_in)
+    config = gl.GoalLoopConfig(goal="Synthetic", startup_timeout_seconds=60)
+    assert config.password == gl.DEFAULT_PASSWORD
+
+    status = gl._ensure_ai_agent(config, _runtime(reused=True))
+
+    assert status.ready is False
+    assert "unlock it first" in status.message
+    # Nothing will unlock it, so it waits only briefly for an agent that is merely slow to start.
+    assert status.message.endswith("It did not answer within 10s.")
+
+
+def test_a_password_the_caller_supplied_is_used_for_a_reused_runtime(monkeypatch) -> None:
+    _the_ai_agent_answers(monkeypatch, False, True)
+    passwords = []
+
+    def sign_in(config, runtime):
+        passwords.append(config.password)
+        return gl.AdminSession(True, runtime.admin_url)
+
+    monkeypatch.setattr(gl, "login_admin", sign_in)
+    config = gl.GoalLoopConfig(goal="Synthetic", password="synthetic-password")
+
+    status = gl._ensure_ai_agent(config, _runtime(reused=True))
+
+    assert status.ready is True
+    assert passwords == ["synthetic-password"]
+
+
+def test_the_password_never_goes_to_a_remote_runtime(monkeypatch) -> None:
+    _the_ai_agent_answers(monkeypatch, False)
+    monkeypatch.setattr(gl, "login_admin", _must_not_sign_in)
+    config = gl.GoalLoopConfig(goal="Synthetic", password="synthetic-password")
+    remote = _runtime(reused=False, admin="http://203.0.113.9:8001", ai="http://203.0.113.9:8081")
+
+    status = gl._ensure_ai_agent(config, remote)
+
+    assert status.ready is False
+    assert "unlock it first" in status.message
+
+
+def test_an_ai_agent_that_never_answers_marks_the_runtime_not_ready(monkeypatch) -> None:
+    _the_ai_agent_answers(monkeypatch, False)
+    monkeypatch.setattr(gl, "login_admin", lambda config, runtime: gl.AdminSession(True, runtime.admin_url))
+    config = gl.GoalLoopConfig(goal="Synthetic", password="synthetic-password", startup_timeout_seconds=5)
+
+    status = gl._ensure_ai_agent(config, _runtime(reused=False))
+
+    assert status.ready is False
+    assert status.message.endswith("It did not answer within 5s.")
+
+
+def test_ensure_runtime_is_ready_only_once_the_ai_agent_answers(monkeypatch) -> None:
+    _the_ai_agent_answers(monkeypatch, False, True)
+    monkeypatch.setattr(gl, "_ensure_admin_runtime", lambda config: _runtime(reused=False))
+    monkeypatch.setattr(gl, "login_admin", lambda config, runtime: gl.AdminSession(True, runtime.admin_url))
+
+    status = gl.ensure_runtime(gl.GoalLoopConfig(goal="Synthetic", password="synthetic-password"))
+
+    assert status.ready is True
+    assert status.message.endswith("It is answering now.")
+
+
+def test_scenarios_are_not_run_against_an_ai_agent_that_is_down(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path))
+    _the_ai_agent_answers(monkeypatch, False)
+    monkeypatch.setattr(gl, "_ensure_admin_runtime", lambda config: _runtime(reused=True))
+    monkeypatch.setattr(gl, "_send_chat_turn", _must_not_sign_in)  # no chat may be attempted
+
+    report = gl.run_scenarios(gl.GoalLoopConfig(goal="", suite="personal_harness", offline=True))
+
+    assert not report.passed
+    assert report.runs == []
+    assert "AI agent" in report.runtime.message
+    assert "AI agent" in gl.format_scenario_report(report)
+    assert Path(report.report_path).is_relative_to(tmp_path)
+
+
+def test_the_ai_agent_probe_reads_the_health_route(monkeypatch) -> None:
+    requests = []
+
+    class Healthy:
+        def __init__(self, base_url, timeout):
+            self.base_url = base_url
+
+        def request(self, method, path, **kwargs):
+            requests.append((self.base_url, method, path))
+            return 200, {"text": "ok"}, "ok"
+
+    monkeypatch.setattr(gl, "_HttpJsonClient", Healthy)
+
+    assert gl._ai_agent_is_reachable("http://127.0.0.1:18181") is True
+    assert requests == [("http://127.0.0.1:18181", "GET", "/health")]
+
+
+def test_the_ai_agent_probe_treats_any_failure_to_answer_as_no(monkeypatch) -> None:
+    import http.client
+    import socket
+    import urllib.error
+
+    failures = [
+        urllib.error.URLError("timed out"),
+        ConnectionRefusedError(),
+        http.client.RemoteDisconnected("closed without a reply"),
+    ]
+    for failure in failures:
+        class Failing:
+            def __init__(self, base_url, timeout):
+                pass
+
+            def request(self, method, path, **kwargs):
+                raise failure
+
+        monkeypatch.setattr(gl, "_HttpJsonClient", Failing)
+        assert gl._ai_agent_is_reachable("http://127.0.0.1:18181") is False
+
+    class Starting:
+        def __init__(self, base_url, timeout):
+            pass
+
+        def request(self, method, path, **kwargs):
+            return 503, {}, ""
+
+    monkeypatch.setattr(gl, "_HttpJsonClient", Starting)
+    assert gl._ai_agent_is_reachable("http://127.0.0.1:18181") is False
+
+    monkeypatch.undo()
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        free_port = probe.getsockname()[1]  # nothing listens once this socket is closed
+    assert gl._ai_agent_is_reachable(f"http://127.0.0.1:{free_port}", timeout=0.5) is False
+
+
+def test_a_runtime_the_loop_starts_keeps_a_console_that_outlives_the_loop(monkeypatch, tmp_path) -> None:
+    """A pipe the loop reads dies with the loop; the runtime must be handed the log file itself."""
+    import subprocess
+
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path))
+    spawned = {}
+
+    class RunningProcess:
+        pid = 4242
+
+        def poll(self):
+            return None
+
+    def popen(command, **kwargs):
+        spawned.update(kwargs)
+        spawned["command"] = command
+        kwargs["stdout"].write("✓ console line from the runtime\n".encode("utf-8"))  # the child's own handle
+        return RunningProcess()
+
+    answers = iter([False, True])  # nothing runs at first, then the admin app answers
+    monkeypatch.setattr(gl.subprocess, "Popen", popen)
+    monkeypatch.setattr(gl, "_admin_is_reachable", lambda admin_url, timeout=2.0: next(answers))
+    monkeypatch.setattr(gl, "_port_in_use", lambda host, port: False)
+    monkeypatch.setattr(gl, "identify_process_on_port", lambda port: None)
+    monkeypatch.setattr(gl, "time", _FakeClock())
+
+    status = gl._ensure_admin_runtime(gl.GoalLoopConfig(goal="Synthetic", password="synthetic-password"))
+
+    assert status.ready is True and status.reused is False and status.bootstrap_pid == 4242
+    assert spawned["stdout"] is not subprocess.PIPE
+    assert spawned["stderr"] == subprocess.STDOUT
+    assert "text" not in spawned and "universal_newlines" not in spawned
+    assert spawned["env"]["PYTHONUTF8"] == "1" and spawned["env"]["PYTHONUNBUFFERED"] == "1"
+    assert spawned["env"]["AUTOYOU_SERVER_PASSWORD"] == "synthetic-password"
+    # What the runtime wrote lands in the log the report points at, and reading it back works.
+    assert Path(status.log_file).is_relative_to(tmp_path)
+    assert "console line from the runtime" in gl.read_secure_file(Path(status.log_file)).decode("utf-8")
+
+
+def test_the_startup_timeout_can_be_set_on_the_command_line() -> None:
+    assert gl._parse_cli(["--suite", "personal_harness", "--startup-timeout", "7"]).startup_timeout_seconds == 7.0
+    assert gl._parse_cli(["--suite", "personal_harness"]).startup_timeout_seconds == 90.0

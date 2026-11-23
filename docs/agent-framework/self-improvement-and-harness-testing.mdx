@@ -84,8 +84,9 @@ python autoyou_agents/self_improvement/goal_loop.py \
 | `--session-id` | generated | The conversation session id. |
 | `--max-iterations` | `1` | Number of evaluation passes, including the first. A value above one takes effect with agent repair enabled. |
 | `--request-timeout` | `120.0` | Per-request timeout in seconds. |
+| `--startup-timeout` | `90.0` | Seconds to wait for the admin runtime to answer, and again for the AI Agent worker after sign-in. |
 | `--prompt` | none | Add a prompt case (repeatable). |
-| `--suite` | none | Run `personal_harness`, `continuity`, or `paraphrase` instead of a single goal. |
+| `--suite` | none | Run `personal_harness`, `continuity`, `paraphrase`, or `media_factory` instead of a single goal. The `media_factory` scenarios need the opt-in Media Generation agent to be installed on the runtime; without it the request is routed to another agent and reported as a misroute. |
 | `--scenario`, `--list-scenarios`, `--repeat` | none, off, `1` | Run only named scenarios, list them, or repeat model-dependent ones. |
 | `--log-file` | none | Scan entries added to this log during an evaluation. A runtime started by the harness already has a log. |
 | `--offline` | off | Skip scenarios that require live internet. For offline inference, select a model and tools that run locally. |
@@ -102,9 +103,10 @@ The execution lifecycle of `goal_loop.py` consists of five distinct phases:
 
 #### Phase 1: Runtime Discovery & Health Probe
 The harness checks whether the AutoYou server is already running on the target ports:
-- Probes `http://127.0.0.1:8001/` and `http://127.0.0.1:8081/`.
+- Probes the admin app's status routes on `--admin-port` and the AI Agent worker's `/health` route on `--ai-agent-port`.
 - Resolves process identities (`ProcessIdentity(pid, name, cmdline)`).
 - If the requested runtime is unavailable, it can invoke the regular server bootstrap and record its output. Set up an isolated test root and distinct ports for test runs.
+- The runtime counts as ready only when the AI Agent worker answers. A runtime the harness starts is locked, and a locked runtime runs no AI Agent worker, so the harness signs in with `--password` and waits up to `--startup-timeout` seconds for `/health`. It signs in to a runtime someone else started only when you pass `--password` explicitly (never the default), and never to a runtime on another computer. When the worker does not answer, the report says why and no scenario is run.
 
 #### Phase 2: Admin Session Acquisition
 The harness establishes an authenticated cookie jar (`AdminSession`):

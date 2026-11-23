@@ -316,6 +316,27 @@ def test_opted_in_scenario_repairs_reload_only_verified_agent_edits(tmp_path, mo
         assert evidence["iterations"] == 1
 
 
+def test_the_internet_follow_up_accepts_a_headline_list_and_rejects_a_stub():
+    """A correct reply made only of short words (headlines, URLs) was failed by a 'one 12-letter word' rule."""
+    scenario = next(s for s in gl.personal_harness_scenarios() if s.name == "harness_internet_open_parse_and_followup")
+    patterns = scenario.turns[1].must_match
+    assert patterns
+
+    def accepted(text):
+        return all(re.search(gl._fill_token(p, "tok"), text, re.IGNORECASE | re.DOTALL) for p in patterns)
+
+    headlines = (
+        "The latest headlines:\n"
+        "1. **Woman found dead in her home after a 'shocking' attack on her husband**\n"
+        "   - Source: Example News | URL: https://news.example.test/articles/a1\n"
+        "2. **Man arrested for allegedly stealing crypto from customers**\n"
+    )
+    assert accepted(headlines)
+    assert not accepted("navigate_page completed successfully.")
+    assert not accepted("OK")
+    assert not accepted("finish_reason=STOP")
+
+
 def test_scenario_catalog_is_well_formed():
     scenarios = gl.continuity_scenarios()
     names = [s.name for s in scenarios]
