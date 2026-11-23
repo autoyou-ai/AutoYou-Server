@@ -183,6 +183,21 @@ No module docstring.
 | `get_current_datetime` | function | &nbsp; |
 | `inject_realtime_datetime_into_request` | function | Inject the real current date/time into an ADK LlmRequest system instruction. |
 
+## `desktop_accessibility.py`
+
+Cross-platform snapshot-bound desktop accessibility and background UI control.
+
+| Public name | Kind | Summary |
+| :--- | :--- | :--- |
+| `find_cua_driver_binary` | function | Return path to an installed ``cua-driver`` CLI binary, if enabled and present. |
+| `detect_desktop_environment` | function | Inspect host OS, container/WSL state, display availability, and active CUA backend. |
+| `list_accessible_windows` | function | List visible desktop windows using the best available backend across OSes. |
+| `snapshot_window_accessibility` | function | Capture a compact, snapshot-bound accessibility tree for a desktop window. |
+| `click_accessible_element` | function | Click or invoke a snapshot-bound UI element token without focus theft when supported. |
+| `type_into_accessible_element` | function | Write text into a snapshot-bound UI input token, optionally pressing Return. |
+| `press_accessible_hotkey` | function | Send a keyboard shortcut cleanly via cua-driver or cross-platform fallback. |
+| `find_composer_element_token` | function | Locate the primary text composer token inside a window accessibility snapshot. |
+
 ## `desktop_app_agent_shortcuts.py`
 
 Deterministic one-tool shortcuts for weak desktop bridge models.
@@ -213,6 +228,8 @@ Reusable desktop automation helpers for bridge agents.
 | `inspect_live_desktop_app_config` | function | Inspect a desktop agent's manifest pack and running window (without clicking or moving the pointer). |
 | `capture_desktop_app_screenshot` | function | &nbsp; |
 | `refresh_desktop_agent_llm_reference` | function | &nbsp; |
+| `inspect_desktop_app_accessibility` | function | Inspect a bridge desktop app's live UI via native background accessibility/UIA without stealing focus. |
+| `send_prompt_via_accessibility` | function | Attempt background prompt submission through native OS Accessibility / UIA / cua-driver. |
 | `send_prompt_to_desktop_app` | function | &nbsp; |
 | `select_desktop_app_project` | function | &nbsp; |
 | `select_desktop_app_permissions` | function | &nbsp; |

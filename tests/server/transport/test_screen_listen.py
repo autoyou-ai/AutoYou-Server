@@ -317,7 +317,9 @@ def test_meet_approval_and_multiple_clients_keep_drag_and_key_ownership(monkeypa
         for session_id in (first, second):
             manager._set_screen_session(session_id, "interactive")
             manager.desktop_video_tracks[session_id] = track
-            manager.datachannel_managers[session_id] = SimpleNamespace(send_message=AsyncMock(return_value=True))
+            manager.datachannel_managers[session_id] = SimpleNamespace(
+                send_message=AsyncMock(return_value=True), _current_buffered_amount=lambda: 0,
+            )
             await send(session_id, "remote_desktop_control", action="start", fullscreen=True, touch_mode="relative")
             pending = manager.datachannel_managers[session_id].send_message.await_args.args[0].payload
             assert pending["pending"] is True and pending["active"] is False
@@ -369,7 +371,9 @@ def test_meet_approval_and_multiple_clients_keep_drag_and_key_ownership(monkeypa
         manager.datachannel_managers[first].send_message.side_effect = receive_cursor
         cursor_position[0] = 600
         await asyncio.wait_for(cursor_updated.wait(), timeout=2)
-        manager.datachannel_managers[first] = SimpleNamespace(send_message=AsyncMock(return_value=True))
+        manager.datachannel_managers[first] = SimpleNamespace(
+            send_message=AsyncMock(return_value=True), _current_buffered_amount=lambda: 0,
+        )
         assert not manager._screen_client_always_allowed(first)
         assert await manager.review_screen_control(first, "", "forget_client")
         assert await manager.review_screen_control(first, first, "revoke")

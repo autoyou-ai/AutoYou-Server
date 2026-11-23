@@ -37,7 +37,8 @@ def test_macos_builds_independent_runtime_modules_concurrently(tmp_path, monkeyp
         job_count=4, extra_nuitka_args=(),
     )
     assert len(set(roots)) == 2
-    assert set(manifest["files"]) == {f"runtime_modules/{path.with_suffix('.so')}" for path in paths}
+    # The manifest uses forward slashes on every platform; str(Path) would use backslashes on Windows.
+    assert set(manifest["files"]) == {f"runtime_modules/{path.with_suffix('.so').as_posix()}" for path in paths}
 
 
 def _populate_required_runtime_sources(repo_root: Path) -> None:

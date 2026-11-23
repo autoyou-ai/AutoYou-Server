@@ -13,7 +13,7 @@ This page is generated from the source with `python scripts/generate_reference_d
 
 ## `remote_desktop_agent`
 
-Provides real-time desktop screen casting, multiple monitor and application window selection, and interactive mouse/keyboard cursor control through a protected browser console.
+Provides native background desktop UI automation (accessibility snapshots, snapshot-bound element clicks and typing across macOS, Windows, Linux, WSL, and Docker), plus real-time desktop screen casting and monitor/window inspection.
 
 - **Location:** `autoyou_agents/remote_desktop_agent/`
 - **Website:** `/agent/remote_desktop_agent/`
@@ -21,8 +21,13 @@ Provides real-time desktop screen casting, multiple monitor and application wind
 | Declared tool | Summary |
 | :--- | :--- |
 | `get_current_datetime` | &nbsp; |
+| `desktop_automation_status` | Inspect the host OS (macOS, Windows, Linux, WSL2, or Docker) and active background UI automation backend. |
 | `list_active_monitors` | List all attached display monitors, their resolutions, and positioning offsets. |
 | `list_running_windows` | List all visible application window titles, handles, and dimensions on the desktop. |
+| `snapshot_window_ui` | Capture a compact accessibility UI tree with snapshot-bound element tokens for a desktop window. |
+| `click_ui_element` | Click or invoke a snapshot-bound UI element token returned by ``snapshot_window_ui``. |
+| `type_into_ui_element` | Enter text into a snapshot-bound UI input token returned by ``snapshot_window_ui``. |
+| `press_ui_hotkey` | Press a keyboard shortcut (for example ``["cmd", "l"]`` or ``["ctrl", "s"]``). |
 
 ## `education_agent`
 

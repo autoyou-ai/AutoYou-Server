@@ -34,7 +34,10 @@ def test_locked_ui_preferences_fall_back_without_rewriting(monkeypatch, tmp_path
     assert calls == [True]
 
 
-def test_default_ui_theme_is_light_and_honors_caller_default(tmp_path):
+def test_default_ui_theme_is_light_and_honors_caller_default(tmp_path, monkeypatch):
+    # Under pytest the test root, not the anchor, decides where preferences live, and the
+    # admin tests save "dark" into the session-wide root. Give this test a root of its own.
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path))
     assert ui_theme.DEFAULT_UI_THEME == "light"
     assert ui_theme.get_ui_theme(app_name="AutoYou", anchor=tmp_path) == "light"
     assert ui_theme.get_ui_theme(app_name="AutoYou", anchor=tmp_path, default="dark") == "dark"

@@ -368,7 +368,7 @@ def test_admin_ui_uses_flat_pending_action_keys_for_model_names_with_dots():
     assert 'videoCall.remote_desktop.quality' in asset
     assert 'videoCall.remote_desktop.bitrate_kbps' in asset
     assert 'videoCall.remote_desktop.control_enabled' in asset
-    assert "Allow Remote Desktop input" in asset
+    assert "Allow Remote Desktop control" in asset
     assert "fixed-pointer mode" in asset
     assert 'outbound_api' in asset
     assert 'outbound_video_file' in asset

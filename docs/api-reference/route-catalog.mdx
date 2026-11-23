@@ -11,7 +11,7 @@ This page lists every route declared in `routers/`: the FastAPI decorator routes
 
 A route registered on both the admin app and the auth app appears once for each. Summaries come from each handler's docstring, or its name when it has none. Paths in `{braces}` are path parameters. Request and response shapes are in the handlers; this catalog records which routes exist, not their payloads.
 
-Routes counted (Admin app: 325, Admin and auth apps: 3, AI Agent worker: 9, Auth app: 23).
+Routes counted (Admin app: 328, Admin and auth apps: 3, AI Agent worker: 9, Auth app: 23).
 
 ## Admin and configuration
 
@@ -65,6 +65,7 @@ Configuration, password and security settings, authenticator setup, the chat and
 | Admin app | `GET` | `/api/scheduler/notification-queue` | Scheduler notification queue status |
 | Admin app | `GET` | `/api/screen-listen` | Screen listen status |
 | Admin app | `POST` | `/api/screen-listen` | Screen listen configure |
+| Admin app | `POST` | `/api/screen-listen/control` | Screen listen control |
 | Admin app | `GET` | `/api/screen-listen/frame.jpg` | The newest camera picture from one connected device, for Interact. |
 | Admin app | `POST` | `/api/setup/recipe/apply` | Admin setup recipe apply |
 | Admin app | `POST` | `/api/setup/recipe/preview` | Admin setup recipe preview |
@@ -319,6 +320,8 @@ Telegram, Signal, and WhatsApp connector control. Source: `routers/messaging.py`
 | App | Method | Path | Summary |
 | :--- | :--- | :--- | :--- |
 | Admin app | `POST` | `/admin/telegram/allow-code` | Admin generate telegram allow code |
+| Admin app | `GET` | `/api/admin/messaging-contacts` | Admin messaging contacts |
+| Admin app | `POST` | `/api/admin/messaging-contacts` | Admin update messaging contacts |
 | Admin app | `POST` | `/api/admin/telegram/allow-code` | Admin generate telegram allow code api |
 | Admin app | `POST` | `/api/signal/cleanup` | Cleanup Signal pairing and reset configuration (admin endpoint). |
 | Admin app | `GET` | `/api/signal/detailed-status` | Get detailed Signal service status with integration states (admin endpoint). |
