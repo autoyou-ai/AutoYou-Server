@@ -165,6 +165,8 @@ def test_voice_training_storage_endpoint_rejects_change_while_training(monkeypat
     assert response.json()["success"] is False
 
 def test_voice_training_storage_endpoint_migrates_and_sets_path(monkeypatch, tmp_path) -> None:
+    # Voice storage refuses any path outside AUTOYOU_TEST_ROOT while testing, so this test's root is its tmp_path.
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path))
     source = tmp_path / "source"
     source.mkdir()
     (source / "transcripts.json").write_text("[]", encoding="utf-8")

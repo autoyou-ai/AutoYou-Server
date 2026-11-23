@@ -93,7 +93,8 @@ def test_voice_training_custom_storage_path_is_persisted_under_test_root(autoyou
         voice_training_storage_config_path,
     )
 
-    custom_dir = tmp_path / "voice-store"
+    # The setter refuses a path outside AUTOYOU_TEST_ROOT, so the custom store lives inside it.
+    custom_dir = autoyou_test_root / f"voice-store-{tmp_path.name}"
     storage = set_voice_training_dir(custom_dir)
 
     assert storage["active_dir"] == str(custom_dir.resolve())
@@ -103,4 +104,7 @@ def test_voice_training_custom_storage_path_is_persisted_under_test_root(autoyou
     reset = reset_voice_training_dir()
 
     assert _is_within(autoyou_test_root, reset["active_dir"])
+    import shutil
+
+    shutil.rmtree(custom_dir, ignore_errors=True)
 

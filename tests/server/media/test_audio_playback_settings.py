@@ -109,6 +109,8 @@ def test_compiled_mode_still_honors_explicit_configured_music_dirs(monkeypatch, 
 
 
 def test_resolve_music_library_dirs_includes_active_voice_training_recordings(monkeypatch, tmp_path):
+    # A voice training directory outside AUTOYOU_TEST_ROOT is refused while testing; this test's root is its tmp_path.
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path))
     music_dir = tmp_path / "music"
     music_dir.mkdir()
     training_dir = tmp_path / "voice-training"

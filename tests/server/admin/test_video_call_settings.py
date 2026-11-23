@@ -1838,7 +1838,9 @@ def test_recording_default_paths_use_runtime_data_root(monkeypatch, tmp_path):
     assert server._resolve_video_recording_dir(cfg=cfg) == str(tmp_path / "AutoYou" / "output" / "video-recordings")
     assert paths["video_recording"]["default_dir"] == str(tmp_path / "AutoYou" / "output" / "video-recordings")
     assert paths["safety_recording"]["default_dir"] == str(tmp_path / "AutoYou" / "output" / "safety-recordings")
-    assert paths["voice_training"]["default_dir"] == str(tmp_path / "AutoYou" / "voice_training")
+    # Fresh installations keep voice training beside the other agents' output (the unified content library).
+    assert paths["voice_training"]["default_dir"] == str(
+        tmp_path / "AutoYou" / "content_library" / "content" / "voice_training_agent")
     assert paths["location_recording"]["database_path"] == str(tmp_path / "location_agent" / "locations.sqlite3")
     assert not (tmp_path / "location_agent" / "locations.sqlite3").exists()
 
