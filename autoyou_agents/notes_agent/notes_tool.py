@@ -798,7 +798,7 @@ class NotesTool:
                 )
                 note_id = cur.lastrowid
             from shared.content_library import publish_content
-            publish_content("notes_agent", str(note_id), title, "note", href="/agent/notes_agent/")
+            publish_content("notes_agent", str(note_id), title, "note", href="/agent/notes_agent/", source_labels=tags or [], source_collection=category or "", source_text=content or "")
             return {"success": True, "note_id": int(note_id), "title": title}
         except Exception as exc:
             return {"success": False, "error": internal_error_message(exc)}
@@ -912,7 +912,7 @@ class NotesTool:
             saved_title = conn.execute("SELECT title FROM notes WHERE id=?", (int(note_id),)).fetchone() if changed else None
         if changed:
             from shared.content_library import publish_content
-            publish_content("notes_agent", str(note_id), saved_title[0], "note", href="/agent/notes_agent/", force_revision=True)
+            publish_content("notes_agent", str(note_id), saved_title[0], "note", href="/agent/notes_agent/", force_revision=True, source_labels=tags, source_collection=category, source_text=content)
         return changed
 
     def append_media_attachment_to_note(

@@ -108,6 +108,7 @@ uploads/
 media/
 !tests/**/media/
 conversation_media/
+/shared/content_library/
 *.mp3
 test.wav
 test.*.wav

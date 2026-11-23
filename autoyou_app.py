@@ -1247,13 +1247,15 @@ def run_server_mode():
     _patch_dotenv_for_packaged_runtime()
     _prepare_runtime_server_imports(APP_ROOT)
 
-    # Point Whisper/Hugging Face caches at a writable user directory so
-    # compiled workers never try to download models into the app bundle.
+    # Point Whisper/Hugging Face and tiktoken caches at writable user directories so
+    # compiled workers never try to write into read-only app bundles (e.g. WindowsApps).
     try:
         platform_runtime_module = _get_shared_platform_runtime_module()
         platform_runtime_module.configure_whisper_cache_environment("AutoYou")
+        if hasattr(platform_runtime_module, "configure_tiktoken_cache_environment"):
+            platform_runtime_module.configure_tiktoken_cache_environment("AutoYou")
     except Exception as exc:
-        print(f"[autoyou_app] Warning: could not set Whisper cache dir: {exc}")
+        print(f"[autoyou_app] Warning: could not set cache dir: {exc}")
 
     try:
         import asyncio
@@ -1300,6 +1302,8 @@ def run_ai_agent_server_mode(host: str, port: int, agent_dir: str):
     try:
         platform_runtime_module = _get_shared_platform_runtime_module()
         platform_runtime_module.configure_whisper_cache_environment("AutoYou")
+        if hasattr(platform_runtime_module, "configure_tiktoken_cache_environment"):
+            platform_runtime_module.configure_tiktoken_cache_environment("AutoYou")
         secure_storage_module = _load_runtime_module_from_path(
             "shared.secure_storage",
             ("shared", "secure_storage.py"),

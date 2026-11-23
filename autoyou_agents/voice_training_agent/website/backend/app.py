@@ -360,6 +360,11 @@ async def api_upload_transcript(
         data.append(new_entry)
 
         save_secure_json(transcripts_file, data)
+        from shared.content_library import publish_content
+        parent = publish_content("voice_training_agent", "transcript:" + rec_id, transcript[:90] or "Voice transcript", "note",
+            href="/agent/voice_training_agent/", source_text=transcript, source_labels=["transcript"], source_collection="Voice / Transcripts")
+        publish_content("voice_training_agent", "recording:" + rec_id, filename, "voice", path=str(file_path),
+            parent_id=parent["id"] if parent else "", source_text=transcript, source_labels=["recording"], source_collection="Voice / Recordings")
 
         return _json_response({"success": True, "entry": new_entry})
     except Exception as e:

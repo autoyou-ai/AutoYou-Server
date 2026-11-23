@@ -51,16 +51,21 @@ def register_routes(
     server: Any,
 ) -> Dict[str, Callable[..., Any]]:
     from shared.content_library_api import register_content_routes
-    register_content_routes(admin_app, lambda request: server._require_api_login(request))
+    from shared.content_worker import ContentWorker
+    content_worker = ContentWorker(config=lambda: server.STATE.config or {},
+        ready=lambda: bool(server.STATE.config) and not server._config_write_block_reason())
+    register_content_routes(admin_app, lambda request: server._require_api_login(request), worker=content_worker)
     chat_jobs = AdminChatJobs()
     previous_lifespan = admin_app.router.lifespan_context
 
     @asynccontextmanager
     async def chat_lifespan(app):
         async with previous_lifespan(app):
+            content_worker.start()
             try:
                 yield
             finally:
+                content_worker.stop()
                 await chat_jobs.shutdown()
 
     admin_app.router.lifespan_context = chat_lifespan

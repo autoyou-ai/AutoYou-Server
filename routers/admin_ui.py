@@ -568,7 +568,7 @@ def register_routes(
                 </div>
                 <div class='ayu-legal-body' id='ayu-legal-body'>
                   <div class='ayu-legal-content'>
-                    <strong>Responsibility notice:</strong> You are responsible for the data, accounts, prompts, models, automations, messages, third-party services, and operations you connect to AutoYou. Use AutoYou only with lawful authority, required consents, and compliance with applicable laws. AutoYou is provided as-is; OpenStorey LLC, the AutoYou owner board, and contributors disclaim warranties and limit liability to the maximum extent permitted by law. Release notices: <a href='/NOTICE.txt' target='_blank'>NOTICE</a>, <a href='/THIRD-PARTY-NOTICES.md' target='_blank'>Third-Party Notices</a>, and <a href='/sbom.cdx.json' target='_blank'>SBOM</a>.
+                    <strong>RESPONSIBILITY NOTICE:</strong> You are responsible for the data, accounts, prompts, models, automations, messages, third-party services, and operations you connect to AutoYou. Use AutoYou only with lawful authority, required consents, and compliance with applicable laws. AutoYou is provided as-is; OpenStorey LLC, the AutoYou owner board, and contributors disclaim warranties and limit liability to the maximum extent permitted by law. Bundled release notices: <a href='/NOTICE.txt' target='_blank'>NOTICE</a>, <a href='/THIRD-PARTY-NOTICES.md' target='_blank'>Third-Party Notices</a>, and <a href='/sbom.cdx.json' target='_blank'>SBOM</a>.
                   </div>
                 </div>
         """

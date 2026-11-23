@@ -193,7 +193,7 @@ EMPTY_PACKAGE_BRIDGE_STUB = '"""Packaged runtime package marker."""\n'
 BRIDGE_STUBS = {
     Path("autoyou_agents") / "__init__.py": AUTOYOU_AGENTS_BRIDGE_STUB,
 }
-TRUSTED_AUTOYOU_AGENT_SUBDIRS = frozenset(BUILTIN_AGENT_PACKAGE_NAMES) | frozenset({"shared_tools"})
+TRUSTED_AUTOYOU_AGENT_SUBDIRS = frozenset(BUILTIN_AGENT_PACKAGE_NAMES) | frozenset({"shared_tools", "self_improvement"})
 
 
 def _source_path(repo_root: Path, relative_path: Path) -> Path:

@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from shared import content_files
-from shared.content_library import ContentLibrary, configure_output_root, infer_kind, output_dir, settings
+from shared.content_library import ContentLibrary, configure_output_root, configure_organization, infer_kind, output_dir, settings
 
 
 class Annotation(BaseModel):
@@ -25,6 +25,11 @@ class Destination(BaseModel):
     output_root: str = Field(min_length=1, max_length=2048)
 
 
+class Organization(BaseModel):
+    auto_organize: bool = True
+    semantic_labels: bool = True
+
+
 class TransferInput(BaseModel):
     filename: str = Field(min_length=1, max_length=180)
     size: int = Field(gt=0, le=20 * 1024 ** 3)
@@ -33,7 +38,7 @@ class TransferInput(BaseModel):
     source_id: str = Field(default="", max_length=256)
 
 
-def register_content_routes(app, authorize, prefix="/api/admin/content"):
+def register_content_routes(app, authorize, prefix="/api/admin/content", worker=None):
     def json_response(data, status=200):
         return JSONResponse(data, status_code=status, headers={"Cache-Control": "no-store"})
 
@@ -51,6 +56,81 @@ def register_content_routes(app, authorize, prefix="/api/admin/content"):
                 raise HTTPException(413, "Request exceeds the transfer limit")
             body.extend(chunk)
         return bytes(body)
+
+    @app.get(prefix + "/activity")
+    async def library_activity(request: Request):
+        denied = authorize(request)
+        if denied is not None:
+            return denied
+        from shared.content_worker import activity
+        return json_response(await asyncio.to_thread(activity))
+
+    @app.get(prefix + "/duplicates")
+    async def library_duplicates(request: Request):
+        denied = authorize(request)
+        if denied is not None:
+            return denied
+        from shared.content_storage import duplicates
+        return json_response({"groups": await asyncio.to_thread(duplicates)})
+
+    @app.put(prefix + "/organization")
+    async def organization(request: Request, payload: Organization):
+        denied = authorize(request)
+        if denied is not None:
+            return denied
+        result = await asyncio.to_thread(configure_organization, **payload.model_dump())
+        if worker:
+            worker.wake.set()
+        return json_response(result)
+
+    @app.post(prefix + "/migration/preview")
+    async def preview_migration(request: Request, payload: Destination):
+        denied = authorize(request)
+        if denied is not None:
+            return denied
+        from shared.content_storage import migration_plan
+        try:
+            return json_response(await asyncio.to_thread(migration_plan, payload.output_root))
+        except ValueError as error:
+            return json_response({"error": str(error)}, 400)
+
+    @app.post(prefix + "/migration")
+    async def migrate(request: Request, payload: Destination):
+        denied = authorize(request)
+        if denied is not None:
+            return denied
+        from shared.content_worker import start_migration
+        try:
+            result = await asyncio.to_thread(start_migration, payload.output_root)
+            if worker:
+                worker.wake.set()
+            return json_response(result, 202)
+        except FileExistsError as error:
+            return json_response({"error": str(error)}, 409)
+        except (ValueError, OSError) as error:
+            return json_response({"error": str(error)}, 400)
+
+    @app.post(prefix + "/migration/{identifier}/cancel")
+    async def cancel_migration(identifier: str, request: Request):
+        denied = authorize(request)
+        if denied is not None:
+            return denied
+        from shared.content_worker import cancel_migration as cancel
+        await asyncio.to_thread(cancel, identifier)
+        return json_response({"success": True})
+
+    @app.post(prefix + "/retry")
+    async def retry_organization(request: Request):
+        denied = authorize(request)
+        if denied is not None:
+            return denied
+        def retry():
+            with ContentLibrary().connect() as db:
+                db.execute("UPDATE content SET retry_at=0,processed_version=0 WHERE deleted=0 AND organization_state IN ('waiting_model','failed','missing')")
+        await asyncio.to_thread(retry)
+        if worker:
+            worker.wake.set()
+        return json_response({"success": True})
 
     @app.post(prefix + "/upload-sessions")
     async def begin_transfer(request: Request, payload: TransferInput):
@@ -144,6 +224,10 @@ def register_content_routes(app, authorize, prefix="/api/admin/content"):
         if denied is not None:
             return denied
         from shared.content_library_scan import refresh_existing as scan
+        if worker:
+            worker.last_scan = 0
+            worker.wake.set()
+            return json_response({"queued": True, "indexed": 0, "errors": []}, 202)
         return json_response(await asyncio.to_thread(scan))
 
     @app.get(prefix + "/assets/{name}")
@@ -228,10 +312,14 @@ def register_content_routes(app, authorize, prefix="/api/admin/content"):
             return denied
         library = ContentLibrary()
         with library.connect() as db:
-            row = db.execute("SELECT path,title FROM content WHERE id=? AND deleted=0", (item_id,)).fetchone()
-        if not row or not row["path"] or not Path(row["path"]).is_file():
+            row = db.execute("SELECT path,managed_path,title FROM content WHERE id=? AND deleted=0", (item_id,)).fetchone()
+        if not row or not row["path"]:
             raise HTTPException(404, "Open this item in its source agent")
-        response = content_files.response(Path(row["path"]), request)
+        path = Path(row["managed_path"] or row["path"])
+        if not path.is_file():
+            raise HTTPException(404, "This file is unavailable; check its source folder")
+        import mimetypes
+        response = content_files.response(path, request, mimetypes.guess_type(row["path"])[0])
         # User-supplied HTML/SVG must not execute with the owner's origin.
         if Path(row["path"]).suffix.lower() not in {".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".mp4", ".webm", ".mov", ".mp3", ".m4a", ".ogg", ".opus", ".wav", ".flac", ".aac"}:
             from urllib.parse import quote

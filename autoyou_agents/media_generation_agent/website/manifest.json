@@ -1,8 +1,8 @@
 {
   "agent_name": "media_generation_agent",
-  "description": "Local video and image generator powered by Wan2GP.",
+  "description": "Multi-stage Media Factory Studio for long-running videos, image generation, instruction-guided image editing, and cross-platform local GPU engines (CUDA, ROCm, Apple MLX, DGX Spark, ComfyUI).",
   "entry_path": "/",
   "recommended_port": 8077,
   "requires_proxy_registration": true,
-  "title": "Media Generator"
+  "title": "Media Factory Studio"
 }

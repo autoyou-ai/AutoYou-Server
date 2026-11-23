@@ -435,23 +435,63 @@
         highScores: []
     };
 
+    var inFlightGetRequests = Object.create(null);
+
     async function requestJson(url, options) {
-        var res = await fetch(url, options);
-        var text = await res.text();
-        var json = null;
-        try { json = JSON.parse(text); } catch (e) {}
-        if (!res.ok) {
-            var msg = res.statusText;
-            if (json) {
-                msg = json.detail || json.message || json.error || msg;
-            } else if (text) {
-                msg = text;
-            }
-            var error = new Error(msg);
-            error.status = res.status;
-            throw error;
+        var isPlainGet = !options || (
+            (!options.method || String(options.method).toUpperCase() === "GET") &&
+            !options.signal &&
+            !options.body &&
+            !options.headers &&
+            !options.cache &&
+            !options.credentials &&
+            !options.mode &&
+            !options.redirect
+        );
+        if (isPlainGet && inFlightGetRequests[url]) {
+            return inFlightGetRequests[url];
         }
-        return json;
+        var promise = (async function () {
+            var attempt = 0;
+            while (true) {
+                var res;
+                var text;
+                try {
+                    res = await fetch(url, options);
+                    text = await res.text();
+                } catch (fetchError) {
+                    if (isPlainGet && attempt < 1 && (!fetchError || fetchError.name !== "AbortError")) {
+                        attempt += 1;
+                        await new Promise(function (resolve) { setTimeout(resolve, 250); });
+                        continue;
+                    }
+                    throw fetchError;
+                }
+                var json = null;
+                try { json = JSON.parse(text); } catch (e) {}
+                if (!res.ok) {
+                    var msg = res.statusText;
+                    if (json) {
+                        msg = json.detail || json.message || json.error || msg;
+                    } else if (text) {
+                        msg = text;
+                    }
+                    var error = new Error(msg);
+                    error.status = res.status;
+                    throw error;
+                }
+                return json;
+            }
+        })();
+        if (!isPlainGet) {
+            return promise;
+        }
+        inFlightGetRequests[url] = promise;
+        try {
+            return await promise;
+        } finally {
+            delete inFlightGetRequests[url];
+        }
     }
 
     async function postJson(url, payload) {
@@ -2481,6 +2521,9 @@
             return;
         }
         var tick = function () {
+            if (document.hidden) {
+                return;
+            }
             Promise.all([
                 ensureOperationsData(true, { passive: true }).catch(function () {}),
                 refreshPairingQrModal().catch(function () {})
@@ -4004,6 +4047,7 @@
             return;
         }
         liveIntervals.modelJobs = window.setInterval(function () {
+            if (document.hidden) return;
             refreshModelDownloads(true).catch(function () {});
         }, 2000);
     }
@@ -4106,6 +4150,7 @@
             return;
         }
         liveIntervals.speechJobs = window.setInterval(function () {
+            if (document.hidden) return;
             refreshSpeechDownloads(true).catch(function () {});
         }, 2000);
     }
@@ -4456,9 +4501,43 @@
         return String((attachment || {}).filename || "attachment");
     }
 
+    var chatTrackedObjectUrls = [];
+
+    function chatTrackObjectUrl(url) {
+        if (url && chatTrackedObjectUrls.indexOf(url) === -1) {
+            chatTrackedObjectUrls.push(url);
+        }
+        return url;
+    }
+
+    function chatRevokeAttachmentUrl(attachment) {
+        var url = attachment && attachment.previewUrl;
+        if (!url) return;
+        try {
+            if (window.URL && typeof URL.revokeObjectURL === "function") {
+                URL.revokeObjectURL(url);
+            }
+        } catch (error) {}
+        var idx = chatTrackedObjectUrls.indexOf(url);
+        if (idx >= 0) chatTrackedObjectUrls.splice(idx, 1);
+        try { delete attachment.previewUrl; } catch (error) {}
+    }
+
+    function chatRevokeAttachmentUrls(list) {
+        (list || []).forEach(chatRevokeAttachmentUrl);
+    }
+
     function chatReadFile(file) {
         return new Promise(function (resolve, reject) {
             var reader = new FileReader();
+            var previewUrl = "";
+            try {
+                if (typeof window !== "undefined" && window.URL && typeof URL.createObjectURL === "function") {
+                    previewUrl = chatTrackObjectUrl(URL.createObjectURL(file));
+                }
+            } catch (error) {
+                previewUrl = "";
+            }
             reader.onload = function () {
                 var result = String(reader.result || "");
                 var comma = result.indexOf(",");
@@ -4467,18 +4546,24 @@
                     filename: file.name || "attachment",
                     mimetype: file.type || "application/octet-stream",
                     data: comma >= 0 ? result.slice(comma + 1) : result,
+                    previewUrl: previewUrl,
                     size_bytes: file.size || 0,
                     kind: kind,
                     meta: { platform: "admin-web", kind: kind }
                 });
             };
-            reader.onerror = function () { reject(new Error("Could not read " + (file.name || "the selected file") + ".")); };
+            reader.onerror = function () {
+                if (previewUrl) chatRevokeAttachmentUrl({ previewUrl: previewUrl });
+                reject(new Error("Could not read " + (file.name || "the selected file") + "."));
+            };
             reader.readAsDataURL(file);
         });
     }
 
     function chatDataUrl(attachment) {
-        if (!attachment || !attachment.data) return "";
+        if (!attachment) return "";
+        if (attachment.previewUrl) return attachment.previewUrl;
+        if (!attachment.data) return "";
         return "data:" + String(attachment.mimetype || "application/octet-stream") + ";base64," + attachment.data;
     }
 
@@ -4500,7 +4585,7 @@
         var item = attachment || {};
         var kind = String(item.kind || chatKindForMime(item.mimetype));
         var serverUrl = item.available === false ? "" : chatMediaUrl(item, false);
-        var source = item.data ? chatDataUrl(item) : serverUrl;
+        var source = item.previewUrl || serverUrl || (item.data ? chatDataUrl(item) : "");
         var preview = "";
         if (source && kind === "image") {
             preview = "<a class=\"ayu-chat-attachment-link\" href=\"" + escapeHtml(source) + "\" target=\"_blank\" rel=\"noopener\"><img class=\"ayu-chat-attachment-preview\" src=\"" + escapeHtml(source) + "\" alt=\"" + escapeHtml(chatAttachmentLabel(item)) + "\" loading=\"lazy\"></a>";
@@ -4740,6 +4825,7 @@
         state.chat.files = [];
         state.chat.training = [];
         state.chat.composer = "";
+        chatRevokeAttachmentUrls(state.chat.attachments);
         state.chat.attachments = [];
         renderApp();
         window.setTimeout(function () {
@@ -4868,13 +4954,17 @@
             chunks.parts[Number(info.chunk_index)] = chunk;
             state.chat.call.chunks[info.chunk_id] = chunks;
             if (chunks.parts.filter(Boolean).length === chunks.total) {
-                var raw = "";
-                chunks.parts.forEach(function (part) { raw += String.fromCharCode.apply(null, chatBase64Bytes(part)); });
+                var decodedParts = chunks.parts.map(chatBase64Bytes);
+                var totalBytes = decodedParts.reduce(function (sum, arr) { return sum + arr.length; }, 0);
+                var merged = new Uint8Array(totalBytes);
+                var offset = 0;
+                decodedParts.forEach(function (arr) {
+                    merged.set(arr, offset);
+                    offset += arr.length;
+                });
                 delete state.chat.call.chunks[info.chunk_id];
                 try {
-                    var encoded = new Uint8Array(raw.length);
-                    for (var byteIndex = 0; byteIndex < raw.length; byteIndex += 1) encoded[byteIndex] = raw.charCodeAt(byteIndex);
-                    chatHandleCallFrame(JSON.parse(new TextDecoder().decode(encoded)));
+                    chatHandleCallFrame(JSON.parse(new TextDecoder().decode(merged)));
                 } catch (error) {}
             }
             return;
@@ -6154,7 +6244,14 @@
         var deviceReplyMarkup = deviceLive
             ? '<button type="button" class="ayu-chat-device-reply" data-action="chat-reply-device" title="Deliver this text to the device as your own message. AutoYou is not asked." ' + (isActionPending("chat-reply-device") ? "disabled" : "") + '>' + (isActionPending("chat-reply-device") ? "Sending…" : "Send to " + escapeHtml(counterpart.name)) + '</button>'
             : "";
-        return '<div class="ayu-screen ayu-chat-screen"><div class="ayu-chat-heading"><div><span class="ayu-chat-eyebrow">AutoYou workspace</span><h1>Chat &amp; History</h1><p>One calm place for conversations, voice notes, files, and live calls with your server.</p></div><div class="ayu-chat-heading-actions"><button type="button" class="ayu-btn ayu-btn-secondary ayu-btn-sm ayu-chat-history-toggle" data-action="chat-history-toggle" aria-expanded="' + Boolean(chat.mobileHistoryOpen) + '">Conversations</button><span class="ayu-chat-server-pill"><span></span>Server connected</span>' + assistantHeadingButton()
+        var agentOverview = getByPath(state.bootstrap, "agents.agent_overview", []);
+        var mediaFactoryInstalled = Array.isArray(agentOverview) && agentOverview.some(function (agent) {
+            return agent && agent.agent_name === "media_generation_agent" && agent.installed;
+        });
+        var mediaFactoryButton = mediaFactoryInstalled
+            ? '<a class="ayu-btn ayu-btn-secondary ayu-btn-sm" href="/agent/media_generation_agent/" target="_blank" rel="noopener" title="Open Media Factory Studio for long-running videos and image editing">Media Factory</a>'
+            : "";
+        return '<div class="ayu-screen ayu-chat-screen"><div class="ayu-chat-heading"><div><span class="ayu-chat-eyebrow">AutoYou workspace</span><h1>Chat &amp; History</h1><p>One calm place for conversations, voice notes, files, and live calls with your server.</p></div><div class="ayu-chat-heading-actions"><button type="button" class="ayu-btn ayu-btn-secondary ayu-btn-sm ayu-chat-history-toggle" data-action="chat-history-toggle" aria-expanded="' + Boolean(chat.mobileHistoryOpen) + '">Conversations</button><span class="ayu-chat-server-pill"><span></span>Server connected</span>' + mediaFactoryButton + assistantHeadingButton()
             + button("New chat", "chat-new", "primary", "plus", "sm") + '</div></div><div class="ayu-chat-workspace' + (chat.mobileHistoryOpen ? ' history-open' : '') + '"><aside class="ayu-chat-history"><div class="ayu-chat-history-top"><div><span class="ayu-chat-eyebrow">Your workspace</span><h2>Conversations</h2></div>'
             + button("Refresh", "chat-refresh", "ghost", "refresh", "sm") + '</div><label class="ayu-chat-search"><span>⌕</span><input data-role="chat-search" type="search" value="' + escapeHtml(chat.search || "") + '" placeholder="Search messages and sessions" aria-label="Search conversations"></label><div class="ayu-chat-filters">' + filters + '</div><div class="ayu-chat-history-list">'
             + (chat.loading && !chat.sessions.length ? '<div class="ayu-chat-history-loading"><div class="ayu-spinner"></div>Loading history…</div>' : chatSessionListMarkup())
@@ -6337,10 +6434,16 @@
 
     async function runChatTurn(turn) {
         try {
+            var outboundAttachments = (turn.attachments || []).map(function (att) {
+                if (!att || typeof att !== "object") return att;
+                var copy = Object.assign({}, att);
+                delete copy.previewUrl;
+                return copy;
+            });
             var payload = {
                 async: true, request_id: turn.id, message: turn.message.content,
                 user_id: turn.userId, session_id: turn.sessionId,
-                context: turn.attachments.length ? [{ source: "admin-web", attachments: turn.attachments }] : [],
+                context: outboundAttachments.length ? [{ source: "admin-web", attachments: outboundAttachments }] : [],
                 metadata: { client: "admin-web", source: "admin_web", client_request_id: turn.id }
             };
             var response;
@@ -6356,6 +6459,7 @@
             if (response.request_id) {
                 turn.accepted = true;
                 turn.message.pending = false;
+                var pollAttempts = 0;
                 while (["completed", "stopped", "failed"].indexOf(response.status) < 0) {
                     if (turn.cancelRequested && !turn.stopSent) {
                         try {
@@ -6364,7 +6468,11 @@
                         } catch (stopError) {}
                     }
                     chatUpdateTurn(turn, turn.cancelRequested ? "stopping" : response.status);
-                    await new Promise(function (resolve) { setTimeout(resolve, 500); });
+                    var pollDelayMs = turn.cancelRequested
+                        ? 400
+                        : (document.hidden ? 2000 : (pollAttempts < 4 ? 400 : (pollAttempts < 12 ? 750 : 1500)));
+                    pollAttempts += 1;
+                    await new Promise(function (resolve) { setTimeout(resolve, pollDelayMs); });
                     try { response = await chatTurnRequest("/api/chat/requests/" + encodeURIComponent(turn.id)); }
                     catch (pollError) {
                         if (pollError.status === 404) throw new Error("The server no longer has this request. Check conversation history before retrying.");
@@ -6472,6 +6580,9 @@
             return;
         }
         liveIntervals.telegramSenders = window.setInterval(function () {
+            if (document.hidden) {
+                return;
+            }
             if (!shouldPollTelegramSenders()) {
                 syncTelegramSenderPolling();
                 return;
@@ -11771,7 +11882,8 @@
         if (action.indexOf("chat-discard-attachment:") === 0) {
             var attachmentIndex = Number(action.slice("chat-discard-attachment:".length));
             if (Number.isFinite(attachmentIndex)) {
-                state.chat.attachments.splice(attachmentIndex, 1);
+                var removed = state.chat.attachments.splice(attachmentIndex, 1);
+                chatRevokeAttachmentUrls(removed);
                 renderApp();
             }
             return;
@@ -13636,9 +13748,22 @@
         flushPassiveRenderSoon();
     });
 
-    // Interact stops polling in a background tab; catch up as soon as it is shown.
+    // Background monitors pause while the tab is hidden; catch up as soon as it is shown.
     document.addEventListener("visibilitychange", function () {
-        if (!document.hidden && state.screen === "interact") refreshInteract();
+        if (document.hidden) return;
+        if (state.screen === "interact") refreshInteract();
+        if (liveIntervals.modelJobs) refreshModelDownloads(true).catch(function () {});
+        if (liveIntervals.speechJobs) refreshSpeechDownloads(true).catch(function () {});
+        if (liveIntervals.telegramSenders && shouldPollTelegramSenders()) refreshTelegramSenders(false).catch(function () {});
+    });
+
+    window.addEventListener("beforeunload", function () {
+        if (window.URL && typeof URL.revokeObjectURL === "function") {
+            chatTrackedObjectUrls.slice().forEach(function (url) {
+                try { URL.revokeObjectURL(url); } catch (error) {}
+            });
+            chatTrackedObjectUrls = [];
+        }
     });
 
     // A refresh waits while text is selected; run it once the selection clears.
@@ -13763,6 +13888,7 @@
     }
 
     document.addEventListener("paste", function (event) {
+        if (state.screen !== "chat") return;
         var items = (event.clipboardData || {}).items;
         if (!items || !items.length) return;
         var files = [];
@@ -13848,17 +13974,79 @@
         }
     });
 
+    function resolveHashDestination(rawHash) {
+        var cleaned = String(rawHash || "").replace(/^#+/, "").trim().toLowerCase();
+        if (!cleaned) {
+            return null;
+        }
+        var aliases = {
+            "security": { screen: "security", section: "baseline" },
+            "password": { screen: "security", section: "baseline" },
+            "pairing-2fa": { screen: "security", section: "pairing" },
+            "2fa": { screen: "security", section: "pairing" },
+            "authenticator": { screen: "security", section: "pairing" },
+            "ai-provider": { screen: "ai", section: "responses" },
+            "ai-models": { screen: "ai", section: "models" },
+            "models": { screen: "ai", section: "models" },
+            "local-network": { screen: "connectivity", section: "local" },
+            "lan": { screen: "connectivity", section: "local" },
+            "remote-access": { screen: "connectivity", section: "remote" },
+            "voice": { screen: "speech", section: "voice" }
+        };
+        if (aliases[cleaned]) {
+            return aliases[cleaned];
+        }
+        var parts = cleaned.split("/");
+        var screenId = parts[0];
+        var sectionId = parts[1] || "";
+        if (NAV.some(function (item) { return item.id === screenId; })) {
+            return sectionId ? { screen: screenId, section: sectionId } : { screen: screenId };
+        }
+        return null;
+    }
+
+    function applyHashRoute() {
+        var target = resolveHashDestination(window.location && window.location.hash);
+        if (!target) {
+            return false;
+        }
+        setScreen(target.screen, target.section ? { section: target.section } : {});
+        return true;
+    }
+
+    window.addEventListener("hashchange", function () {
+        if (state.bootstrap) {
+            applyHashRoute();
+        }
+    });
+
     async function boot() {
         if (!root) {
             return;
         }
         renderApp();
-        try {
-            await refreshBootstrap();
-        } catch (error) {
-            root.innerHTML = "<div class=\"ayu-screen-loading\"><div class=\"ayu-loading-card\"><h1>Admin shell failed to load</h1><p>" + escapeHtml(error.message || String(error)) + "</p><p><a href=\"/\">Retry admin shell</a></p></div></div>";
+        var bootRetryDelays = [350, 900, 1500];
+        var lastError = null;
+        for (var attempt = 0; attempt <= bootRetryDelays.length; attempt += 1) {
+            try {
+                await refreshBootstrap();
+                lastError = null;
+                break;
+            } catch (error) {
+                lastError = error;
+                var status = error && typeof error.status === "number" ? error.status : 0;
+                var transient = !status || status === 408 || status >= 500;
+                if (!transient || attempt >= bootRetryDelays.length) {
+                    break;
+                }
+                await new Promise(function (resolve) { setTimeout(resolve, bootRetryDelays[attempt]); });
+            }
+        }
+        if (lastError) {
+            root.innerHTML = "<div class=\"ayu-screen-loading\"><div class=\"ayu-loading-card\"><h1>Admin shell failed to load</h1><p>" + escapeHtml(lastError.message || String(lastError)) + "</p><p><a href=\"/\">Retry admin shell</a></p></div></div>";
             return;
         }
+        applyHashRoute();
         if (state.screen === "ai") {
             ensureAiData(false);
         }

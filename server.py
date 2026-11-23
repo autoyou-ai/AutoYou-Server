@@ -280,6 +280,7 @@ from shared.adk_memory import (
 )
 from shared.platform_runtime import (
   configure_runtime,
+  configure_tiktoken_cache_environment,
   configure_whisper_cache_environment,
   get_adk_agents_base_dir,
   get_config_dir,
@@ -2036,6 +2037,12 @@ def _prepare_ai_agent_process_env(env_vars: Dict[str, str]) -> Dict[str, str]:
         memory_backend = "legacy"
     prepared_env["AUTOYOU_MEMORY_BACKEND"] = memory_backend
     prepared_env["AUTOYOU_COGNEE_MEMORY_ENABLED"] = "1" if memory_backend == "cognee" else "0"
+    try:
+        tiktoken_cache_dir = str(configure_tiktoken_cache_environment("AutoYou"))
+        prepared_env["CUSTOM_TIKTOKEN_CACHE_DIR"] = tiktoken_cache_dir
+        prepared_env["TIKTOKEN_CACHE_DIR"] = tiktoken_cache_dir
+    except Exception:
+        pass
 
     if not is_compiled():
         return prepared_env

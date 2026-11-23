@@ -164,6 +164,9 @@ def delete_voice_transcript(transcript_id: str) -> dict:
                     LOGGER.warning("Failed to delete audio file %s: %s", wav_path, e)
                     
         save_secure_json(transcripts_file, updated)
+        from shared.content_library import forget_content
+        forget_content("voice_training_agent", "transcript:" + transcript_id)
+        forget_content("voice_training_agent", "recording:" + transcript_id)
             
         return {"status": "success", "message": f"Deleted transcript {transcript_id}"}
     except SecureStorageError:

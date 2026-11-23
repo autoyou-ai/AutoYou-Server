@@ -551,11 +551,87 @@ public static class AutoYouWinList {
 '''
 
 
+def _run_powershell_encoded(ps: str, script: str, *, timeout_seconds: float = 12.0) -> subprocess.CompletedProcess[str]:
+    """Run a PowerShell script via -EncodedCommand so quotes and newlines never get mangled."""
+    import base64
+
+    encoded = base64.b64encode(script.encode("utf-16le")).decode("ascii")
+    return _run_cmd(
+        [ps, "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
+        timeout_seconds=timeout_seconds,
+    )
+
+
+def _list_windows_windows_ctypes() -> Optional[List[Dict[str, Any]]]:
+    """Fast native Win32 window enumeration without spawning PowerShell/csc."""
+    if os.name != "nt":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        kernel32 = ctypes.windll.kernel32
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        windows: List[Dict[str, Any]] = []
+
+        @ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+        def _enum_proc(hwnd: int, _lparam: int) -> bool:
+            if not user32.IsWindowVisible(hwnd):
+                return True
+            length = user32.GetWindowTextLengthW(hwnd)
+            if length <= 0:
+                return True
+            buf = ctypes.create_unicode_buffer(length + 1)
+            user32.GetWindowTextW(hwnd, buf, length + 1)
+            title = buf.value.strip()
+            if not title:
+                return True
+            rect = wintypes.RECT()
+            if not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+                return True
+            width = rect.right - rect.left
+            height = rect.bottom - rect.top
+            if width < 60 or height < 40:
+                return True
+            pid = wintypes.DWORD(0)
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            proc_name = ""
+            if pid.value:
+                handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid.value)
+                if handle:
+                    try:
+                        size = wintypes.DWORD(512)
+                        name_buf = ctypes.create_unicode_buffer(512)
+                        if kernel32.QueryFullProcessImageNameW(handle, 0, name_buf, ctypes.byref(size)):
+                            proc_name = Path(name_buf.value).stem
+                    finally:
+                        kernel32.CloseHandle(handle)
+            windows.append({
+                "app_name": proc_name,
+                "process_name": proc_name,
+                "title": title,
+                "pid": int(pid.value),
+                "window_id": int(hwnd),
+                "bounds": {"x": int(rect.left), "y": int(rect.top), "width": int(width), "height": int(height)},
+                "platform": "windows",
+            })
+            return True
+
+        user32.EnumWindows(_enum_proc, 0)
+        return windows
+    except Exception:
+        return None
+
+
 def _list_windows_windows_native() -> List[Dict[str, Any]]:
+    native = _list_windows_windows_ctypes()
+    if native is not None:
+        return native
     ps = _windows_powershell_binary(allow_wsl_host=True)
     if not ps:
         return []
-    completed = _run_cmd([ps, "-NoProfile", "-Command", _WINDOWS_LIST_WINDOWS_PS], timeout_seconds=12)
+    completed = _run_powershell_encoded(ps, _WINDOWS_LIST_WINDOWS_PS, timeout_seconds=12)
     if completed.returncode != 0 or not completed.stdout.strip():
         return []
     try:
@@ -626,12 +702,18 @@ while ($queue.Count -gt 0 -and $items.Count -lt {int(max_elements)} -and $visite
 }}
 @{{ status = "success"; window_title = [string]$root.Current.Name; elements = $items }} | ConvertTo-Json -Depth 5 -Compress
 '''
-    completed = _run_cmd([ps, "-NoProfile", "-Command", script], timeout_seconds=15)
+    completed = _run_powershell_encoded(ps, script, timeout_seconds=15)
     if completed.returncode != 0 or not completed.stdout.strip():
         return {"status": "error", "message": completed.stderr.strip() or "Windows UIA snapshot failed."}
     try:
         parsed = json.loads(completed.stdout)
-        return parsed if isinstance(parsed, dict) else {"status": "error", "message": "Invalid UIA JSON output."}
+        if not isinstance(parsed, dict):
+            return {"status": "error", "message": "Invalid UIA JSON output."}
+        if isinstance(parsed.get("elements"), dict):
+            parsed["elements"] = [parsed["elements"]]
+        elif parsed.get("elements") is None:
+            parsed["elements"] = []
+        return parsed
     except Exception as exc:
         return {"status": "error", "message": f"Failed to parse UIA snapshot: {exc}"}
 
@@ -675,7 +757,7 @@ if ('{action}' -eq 'invoke') {{
   Write-Output '{{"status":"fallback_needed"}}'; exit 0
 }}
 '''
-    completed = _run_cmd([ps, "-NoProfile", "-Command", script], timeout_seconds=12)
+    completed = _run_powershell_encoded(ps, script, timeout_seconds=12)
     try:
         parsed = json.loads(completed.stdout.strip() or "{}")
         return parsed if isinstance(parsed, dict) else {"status": "fallback_needed"}

@@ -61,13 +61,16 @@ from shared.adk_state import (
     AUTOYOU_CONVERSATION_SESSION_USER_STATE_KEY,
     AUTOYOU_OWNER_KEY_STATE_KEY,
     AUTOYOU_OWNER_KEY_USER_STATE_KEY,
+    AUTOYOU_RECENT_MEDIA_ATTACHMENTS_STATE_KEY,
     AUTOYOU_REPLY_TARGET_STATE_KEY,
     AUTOYOU_REPLY_TARGET_USER_STATE_KEY,
     AUTOYOU_SCHEDULED_TASK_STATE_KEY,
     AUTOYOU_ASSISTANT_TURN_STATE_KEY,
+    AUTOYOU_TURN_ATTACHMENTS_STATE_KEY,
     AUTOYOU_TURN_CONTINUATION_STATE_KEY,
     normalize_assistant_turn,
     normalize_reply_target,
+    normalize_turn_attachments,
 )
 from shared.openclaw_gateway import (
     attachment_to_path as _shared_attachment_to_path,
@@ -2653,6 +2656,15 @@ def _build_autoyou_state_delta_from_metadata(metadata: Any) -> Dict[str, Any]:
             "client_prompt_id": client_prompt_id,
         }
 
+    turn_attachments = normalize_turn_attachments(metadata.get("_turn_attachments"))
+    if turn_attachments:
+        state_delta[AUTOYOU_TURN_ATTACHMENTS_STATE_KEY] = turn_attachments
+        media_only = [a for a in turn_attachments if a.get("kind") in {"image", "video", "audio"}]
+        if media_only:
+            state_delta[AUTOYOU_RECENT_MEDIA_ATTACHMENTS_STATE_KEY] = media_only
+    elif "_turn_attachments" in metadata:
+        state_delta[AUTOYOU_TURN_ATTACHMENTS_STATE_KEY] = []
+
     return state_delta
 
 
@@ -3298,7 +3310,7 @@ async def send_message_to_ai_agent(
 
                         if local_media is not None:
                             continue
-                        # Other providers keep their existing ADK inline input.
+                        # Other providers keep their existing ADK inline input, plus sampled video keyframes.
                         is_media = mt_lower.startswith("image/") or mt_lower.startswith("audio/")
                         if is_media:
                             # Apply sensible limits to prevent payload explosions: 10MB image, 25MB audio
@@ -3319,6 +3331,24 @@ async def send_message_to_ai_agent(
                                     logger.warning(f"Attachment {name} exceeds {max_size} bytes limit for inline_data.")
                             except Exception as e:
                                 logger.warning(f"Failed to process inline data for {name}: {e}")
+                        elif mt_lower.startswith("video/"):
+                            try:
+                                from shared.ollama_media import _sample_video
+
+                                data_bytes, _error = await asyncio.to_thread(_load_attachment_bytes, a)
+                                if data_bytes and len(data_bytes) <= 25 * 1024 * 1024:
+                                    sampled = await asyncio.to_thread(_sample_video, data_bytes, 3)
+                                    for frame_mime, frame_bytes in sampled:
+                                        parts.append({
+                                            "inline_data": {
+                                                "mime_type": frame_mime,
+                                                "data": base64.b64encode(frame_bytes).decode("ascii"),
+                                            }
+                                        })
+                                    if sampled:
+                                        summary_items[-1] += f" ({len(sampled)} sampled keyframes attached)"
+                            except Exception as e:
+                                logger.debug(f"Video keyframe sampling skipped for {name}: {e}")
 
                     summary_text = (
                         f"Attachments: {len(atts)} item(s): " + ", ".join(summary_items) + "."
@@ -3890,6 +3920,13 @@ async def process_chat_message(
             path_saved_count=path_saved_count,
             path_skipped_count=path_skipped_count,
         )
+        # Expose compact path-based attachment descriptors into ADK state so
+        # multimodal agents (e.g. media_generation_agent) can act on attached
+        # images, videos, and audio directly across every connected client.
+        turn_attachment_list = normalize_turn_attachments(attachments)
+        if not turn_attachment_list and voice_note_saved_attachment and voice_note_saved_attachment.get("path"):
+            turn_attachment_list = normalize_turn_attachments([voice_note_saved_attachment])
+        request.metadata["_turn_attachments"] = turn_attachment_list
         direct_reminder_response = await _try_process_direct_reminder(request, start_time=start_time)
         if direct_reminder_response:
             return await _finalize_voice_note_response(direct_reminder_response)

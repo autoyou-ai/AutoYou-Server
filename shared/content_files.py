@@ -7,6 +7,7 @@ so existing discovery, key rotation, and recovery apply to both.
 from __future__ import annotations
 from contextlib import contextmanager
 import json
+import hashlib
 import os
 from pathlib import Path
 import shutil
@@ -16,6 +17,70 @@ from shared.secure_storage import FILE_HEADER, SecureStorageError, read_secure_f
 
 CHUNK_SIZE = 1024 * 1024
 FORMAT = "autoyou-media-chunks-1"
+REFERENCE = b"AUTOYOU-CONTENT-REFERENCE-1\n"
+
+
+def reference_target(path):
+    """Resolve only our small references to verified, owned content objects."""
+    path = Path(path)
+    if path.stat().st_size > 8192:
+        return None
+    raw = read_secure_file(path, migrate_plaintext=False)
+    if not raw.startswith(REFERENCE):
+        return None
+    value = json.loads(raw[len(REFERENCE):])
+    digest = value.get("digest", "")
+    import re
+    if not re.fullmatch(r"[a-f0-9]{64}", digest):
+        raise ValueError("Invalid content object reference")
+    from shared.content_library import managed_roots
+    target = Path(value["target"])
+    allowed = [root / ".objects" / digest[:2] / digest for root in managed_roots()]
+    if target.is_symlink() or not any(target.resolve() == item.resolve() and target.resolve().is_relative_to(root.resolve())
+                                     for root, item in zip(managed_roots(), allowed)):
+        raise ValueError("Content object is outside managed storage")
+    if any(path.resolve().is_relative_to(root / ".objects") for root in managed_roots()):
+        raise ValueError("Content objects cannot reference other objects")
+    if not target.is_file():
+        raise FileNotFoundError("Restore the library's .objects folder to read this item")
+    return target
+
+
+def make_reference(path, target, digest):
+    """Replace a verified owned copy; external originals never call this helper."""
+    path, target = Path(path), Path(target)
+    if path.resolve() == target.resolve():
+        return
+    staged = path.with_name(path.name + ".reference")
+    write_secure_file(staged, REFERENCE + json.dumps({"target": str(target), "digest": digest}).encode())
+    reference_target(staged)  # Validate before replacing any bytes.
+    # The object has already been read back and verified. Publish its reference
+    # before cleaning the obsolete sidecar, so interruption never loses data.
+    os.replace(staged, path)
+    if parts(path).exists():
+        shutil.rmtree(parts(path))
+
+
+def fingerprint(path):
+    digest, length = hashlib.sha256(), 0
+    for chunk in read_range(path):
+        digest.update(chunk)
+        length += len(chunk)
+    return digest.hexdigest(), length
+
+
+def copy(source, destination):
+    """Copy completed media in bounded chunks, honoring the active storage mode."""
+    destination = Path(destination)
+    create(destination)
+    try:
+        offset = 0
+        for chunk in read_range(source):
+            offset = append(destination, offset, chunk)
+        return offset
+    except BaseException:
+        discard(destination)
+        raise
 
 
 def legacy_payload(path):
@@ -60,6 +125,9 @@ def create(path):
 
 
 def size(path):
+    target = reference_target(path)
+    if target is not None:
+        return size(target)
     data = manifest(path)
     if data:
         return sum(data["sizes"])
@@ -68,6 +136,8 @@ def size(path):
 
 
 def protected(path):
+    if reference_target(path) is not None:
+        return True
     if parts(path).exists():
         return True
     with Path(path).open("rb") as handle:
@@ -101,6 +171,10 @@ def truncate(path, length):
 
 def read_range(path, start=0, end=None):
     path = Path(path)
+    target = reference_target(path)
+    if target is not None:
+        yield from read_range(target, start, end)
+        return
     data = manifest(path)
     legacy = None if data else legacy_payload(path)
     total = sum(data["sizes"]) if data else len(legacy) if legacy is not None else path.stat().st_size
@@ -217,7 +291,10 @@ def seal(path):
 def discard(path):
     path = Path(path)
     if parts(path).exists():
-        manifest(path)  # Validate our own sidecar before removing it.
+        # A crash can leave obsolete chunks after the verified reference was published.
+        raw = read_secure_file(path, migrate_plaintext=False)
+        if not raw.startswith(REFERENCE):
+            manifest(path)
         shutil.rmtree(parts(path))
     path.unlink(missing_ok=True)
 
@@ -250,8 +327,10 @@ def response(path, request, media_type=None):
     length = size(path)
     etag = f'"{path.stat().st_mtime_ns:x}-{length:x}"'
     headers = {"Accept-Ranges": "bytes", "Cache-Control": "private, no-store", "ETag": etag, "X-Content-Type-Options": "nosniff"}
-    value = request.headers.get("range", "")
-    if request.headers.get("if-range") and request.headers["if-range"] != etag:
+    # A caller without an HTTP request (a test, an internal render) is served the whole file.
+    request_headers = getattr(request, "headers", None) or {}
+    value = request_headers.get("range", "")
+    if request_headers.get("if-range") and request_headers["if-range"] != etag:
         value = ""
     start, end = 0, length - 1
     if value:
@@ -273,6 +352,6 @@ def response(path, request, media_type=None):
         headers["Content-Range"] = f"bytes {start}-{end}/{length}"
     headers["Content-Length"] = str(max(0, end - start + 1))
     content_type = media_type or mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-    if request.method == "HEAD":
+    if getattr(request, "method", "GET") == "HEAD":
         return Response(status_code=206 if value else 200, headers=headers, media_type=content_type)
     return StreamingResponse(read_range(path, start, end), status_code=206 if value else 200, headers=headers, media_type=content_type)

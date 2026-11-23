@@ -53,9 +53,21 @@ DEFAULT_IMAGE_MODEL_CANDIDATES = (
     "qwen_image_20B",
     "qwen_image_2512_20B",
 )
+DEFAULT_IMAGE_EDIT_MODEL_CANDIDATES = (
+    "flux_dev_kontext",
+    "qwen_image_edit_20B",
+    "qwen_image_edit_plus_20B",
+    "qwen_image_edit_plus2_20B",
+    "chrono_edit_distill",
+    "chrono_edit",
+    "flux_schnell",
+    "flux",
+)
 MODEL_TYPE_ALIASES = {
     "qwen_image_20b": "qwen_image_20B",
     "qwen_image_2512_20b": "qwen_image_2512_20B",
+    "qwen_image_edit_20b": "qwen_image_edit_20B",
+    "qwen_image_edit_plus_20b": "qwen_image_edit_plus_20B",
     "wan2.1_text2video_14b": "t2v",
     "wan2.2_text2video_14b": "t2v_2_2",
 }
@@ -203,14 +215,22 @@ def _iter_wan2gp_candidate_dirs() -> List[Tuple[Path, Path]]:
                 candidates.append((entry / "app", entry))
     # AutoYou-managed install plus plain git clones in the user's home folder.
     user_home = Path.home()
-    for standalone in (
+    standalone_dirs = [
         MANAGED_WAN2GP_APP_DIR,
         user_home / "Wan2GP",
         user_home / "wan2gp",
         user_home / "WanGP",
-    ):
+    ]
+    # Also check dedicated AutoYouRuntime folders on live hosts (skipped in hermetic test runs).
+    if not os.getenv("AUTOYOU_TEST_ROOT"):
+        if os.name == "nt":
+            for drive in ("D", "C", "E", "F"):
+                standalone_dirs.append(Path(f"{drive}:/AutoYouRuntime/wan2gp-app"))
+        standalone_dirs.append(user_home / "AutoYouRuntime" / "wan2gp-app")
+    for standalone in standalone_dirs:
         if standalone.is_dir():
-            candidates.append((standalone, standalone.parent if standalone == MANAGED_WAN2GP_APP_DIR else standalone))
+            root = standalone.parent if standalone in {MANAGED_WAN2GP_APP_DIR} or standalone.name == "wan2gp-app" else standalone
+            candidates.append((standalone, root))
     return candidates
 
 def _find_wan2gp_python(app_dir: Path) -> Optional[Path]:
@@ -218,6 +238,17 @@ def _find_wan2gp_python(app_dir: Path) -> Optional[Path]:
         python_path = app_dir / rel_path
         if python_path.exists():
             return python_path
+    # Check sibling AutoYouRuntime virtualenvs (e.g. wan2gp-rocm10-py312, wan2gp-cuda-py312).
+    if app_dir.name == "wan2gp-app" and app_dir.parent.is_dir():
+        sub = "Scripts/python.exe" if os.name == "nt" else "bin/python"
+        try:
+            for sibling in sorted(app_dir.parent.iterdir()):
+                if sibling.is_dir() and sibling != app_dir and "wan2gp" in sibling.name.lower():
+                    candidate = sibling / sub
+                    if candidate.is_file():
+                        return candidate
+        except OSError:
+            pass
     return None
 
 def discover_wan2gp_installation() -> Optional[Dict[str, str]]:
@@ -270,17 +301,41 @@ def _default_wan2gp_config() -> Dict[str, Any]:
         "draw_things_image_model": "flux_2_klein_4b_q6p.ckpt",
         "draw_things_resolution": "768x512",
         "draw_things_image_resolution": "768x512",
+        "comfyui_url": "http://127.0.0.1:8188",
+        "comfyui_dir": "",
+        "comfyui_python": "",
+        "comfyui_checkpoint": "flux1-schnell-fp8.safetensors",
+        "comfyui_image_workflow": "",
+        "comfyui_video_workflow": "",
+        "mlx_python": "",
+        "mflux_cli": "",
+        "mlx_image_model": "schnell",
+        "mlx_video_module": "mlx_video.ltx_2.generate",
+        "mlx_quantize": 8,
+        "sdcpp_cli": "",
+        "sdcpp_models_dir": "",
+        "sdcpp_image_model": "",
+        "sdcpp_video_model": "",
         "model_type": "ltx2_distilled_gguf_q4_k_m",
         "resolution": "416x240",
         "num_inference_steps": 8,
         "video_length": 49,
+        "video_fps": 24,
+        "sliding_window_size": 121,
+        "sliding_window_overlap": 17,
         "image_model_type": "flux_schnell",
+        "image_edit_model_type": "flux_dev_kontext",
         "image_resolution": "1280x720",
         "image_num_inference_steps": 10,
         "seed": -1,
         "settings_version": 2.52,
         "enhance_prompt": True,
         "prompt_enhancer": "",
+        "llm_provider_override": "",
+        "llm_model_override": "",
+        "release_idle_ollama_vram": True,
+        "default_scene_duration_seconds": 5,
+        "continuity_chain_frames": True,
     }
 
 def discover_draw_things_cli(configured_path: Optional[str] = None) -> Optional[str]:
@@ -368,6 +423,10 @@ def _wan2gp_config_path(*, for_write: bool = False) -> Path:
     legacy_path = PROJECT_ROOT / "config" / "video.json"
     if not for_write and not is_compiled() and legacy_path.exists() and not runtime_path.exists():
         return legacy_path
+    if not for_write and not is_compiled() and not os.getenv("AUTOYOU_TEST_ROOT"):
+        agent_local_path = Path(__file__).resolve().parent / "config" / "video.json"
+        if agent_local_path.exists() and not runtime_path.exists():
+            return agent_local_path
     return runtime_path
 
 def get_wan2gp_config() -> Dict[str, Any]:
@@ -670,18 +729,12 @@ def _run_wan2gp_install_job() -> None:
             [str(venv_python), "-m", "pip", "install", "--upgrade", "pip", "wheel"],
         )
 
-        torch_command = [str(venv_python), "-m", "pip", "install", "torch", "torchvision", "torchaudio"]
-        if amd_install:
-            targets = ",".join("device-" + target for target in profile["amd_targets"])
-            torch_command = [
-                str(venv_python), "-m", "pip", "install",
-                f"torch[{targets}]==2.13.0+rocm10.0.0",
-                f"torchvision[{targets}]==0.28.0+rocm10.0.0",
-                "torchaudio==2.11.0.2+rocm10.0.0",
-                "--index-url", "https://stable.repo.amd.com/rocm/whl-next/",
-            ]
-        if profile.get("system") == "Windows" and profile.get("has_nvidia"):
-            torch_command += ["--index-url", "https://download.pytorch.org/whl/cu124"]
+        from .engines import build_gpu_torch_install_command
+
+        torch_command = build_gpu_torch_install_command(
+            venv_python,
+            prefer_rocm_targets=list(profile.get("amd_targets") or []) if amd_install else None,
+        )
         _run_install_step("Installing PyTorch (large download)", torch_command)
 
         requirements = app_dir / "requirements.txt"
@@ -998,7 +1051,8 @@ def delete_history_item(item_id: int) -> bool:
     try:
         f_path = Path(item["file_path"])
         if f_path.exists():
-            f_path.unlink()
+            from shared import content_files
+            content_files.discard(f_path)
     except SecureStorageError:
         raise
     except OSError:
@@ -1341,55 +1395,208 @@ def _ollama_model_options(model_name: str) -> Dict[str, Any]:
         pass
     return options
 
-def ai_enhance_prompt(prompt: str, media_type: str = "video") -> str:
-    """Optimize the prompt using the active AutoYou model provider."""
+def seconds_to_video_frames(duration_seconds: float, *, fps: int = 24, minimum: int = 17, maximum: int = 481) -> int:
+    """Convert a desired clip duration in seconds into a valid 4*k+1 diffusion frame count."""
+    safe_fps = max(8, min(60, int(fps or 24)))
+    raw = max(float(minimum), float(duration_seconds or 2.0) * safe_fps)
+    snapped = int(round((raw - 1.0) / 4.0) * 4 + 1)
+    return max(minimum, min(maximum, snapped))
+
+
+def list_installed_wan_models(app_dir: Optional[Any] = None) -> Dict[str, Any]:
+    """List Wan2GP model definitions and indicate which checkpoints are downloaded locally."""
+    cfg = app_dir if isinstance(app_dir, dict) else get_wan2gp_config()
+    raw_dir = cfg.get("app_dir") if isinstance(app_dir, dict) else (app_dir or cfg.get("app_dir") or "")
+    resolved_dir = Path(str(raw_dir or ""))
+    defaults_dir = resolved_dir / "defaults"
+    ckpts_dir = resolved_dir / "ckpts"
+    downloaded_files = {p.name.lower() for p in ckpts_dir.glob("*")} if ckpts_dir.is_dir() else set()
+
+    video_models: List[Dict[str, Any]] = []
+    image_models: List[Dict[str, Any]] = []
+    edit_models: List[Dict[str, Any]] = []
+
+    if defaults_dir.is_dir():
+        for spec_path in sorted(defaults_dir.glob("*.json")):
+            model_id = spec_path.stem
+            try:
+                payload = json.loads(spec_path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if not isinstance(payload, dict):
+                continue
+            model_meta = payload.get("model") if isinstance(payload.get("model"), dict) else {}
+            name = str(model_meta.get("name") or model_id).strip()
+            arch = str(model_meta.get("architecture") or model_id).lower()
+            urls = model_meta.get("URLs") if isinstance(model_meta.get("URLs"), list) else []
+            url_basenames = {str(u).rsplit("/", 1)[-1].lower() for u in urls if isinstance(u, str)}
+            installed = bool(url_basenames and url_basenames.intersection(downloaded_files))
+            is_edit = "edit" in model_id.lower() or "kontext" in model_id.lower() or "edit" in arch
+            is_image = bool(model_meta.get("image_outputs")) or arch.startswith(("flux", "qwen_image", "z_image")) or model_id.lower().startswith(("flux", "qwen_image", "z_image"))
+            entry = {
+                "id": model_id,
+                "name": name,
+                "architecture": arch,
+                "installed": installed,
+                "description": str(model_meta.get("description") or "")[:200],
+            }
+            if is_edit:
+                edit_models.append(entry)
+            if is_image:
+                image_models.append(entry)
+            elif not is_edit:
+                video_models.append(entry)
+
+    for bucket in (video_models, image_models, edit_models):
+        bucket.sort(key=lambda item: (not item["installed"], item["id"]))
+    return {
+        "video": video_models,
+        "image": image_models,
+        "edit": edit_models,
+        "installed_checkpoints": sorted(downloaded_files),
+    }
+
+
+def _maybe_release_idle_ollama_vram(config: Dict[str, Any]) -> None:
+    """Politely ask local Ollama to unload idle models before heavy GPU renders when memory is tight.
+
+    On unified-memory or 32 GB RAM / high-VRAM systems, keeping a 20+ GB LLM loaded
+    in Ollama while loading a diffusion transformer + text encoder can exhaust OS
+    virtual-memory commit limits. Unloading idle Ollama models frees 20+ GB cleanly;
+    Ollama reloads automatically on the next chat turn.
+    """
+    if os.getenv("AUTOYOU_TEST_ROOT") or not config.get("release_idle_ollama_vram", True):
+        return
+    try:
+        from shared.media_generation_runtime import system_memory_bytes
+
+        total_ram, avail_ram = system_memory_bytes()
+        avail_gb = (avail_ram / (1024 ** 3)) if avail_ram else 0.0
+        api_base = os.getenv("OLLAMA_API_BASE", "http://127.0.0.1:11434").rstrip("/")
+        import urllib.request
+
+        with urllib.request.urlopen(f"{api_base}/api/ps", timeout=2.0) as resp:
+            ps_data = json.loads(resp.read().decode("utf-8", errors="replace"))
+        models = ps_data.get("models") if isinstance(ps_data, dict) else []
+        if not models:
+            return
+        loaded_vram_gb = sum(float((m or {}).get("size_vram") or (m or {}).get("size") or 0) for m in models) / (1024 ** 3)
+        # Release whenever free host RAM < 12 GB OR Ollama holds >= 6 GB VRAM.
+        if total_ram and avail_gb >= 12.0 and loaded_vram_gb < 6.0:
+            return
+        for entry in models:
+            model_name = str((entry or {}).get("name") or (entry or {}).get("model") or "").strip()
+            if not model_name:
+                continue
+            req = urllib.request.Request(
+                f"{api_base}/api/generate",
+                data=json.dumps({"model": model_name, "keep_alive": 0}).encode("utf-8"),
+                method="POST",
+                headers={"Content-Type": "application/json"},
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=5.0):
+                    pass
+            except Exception:
+                pass
+        time.sleep(0.8)
+    except Exception:
+        pass
+
+
+def get_active_llm_info(
+    *,
+    provider_override: Optional[str] = None,
+    model_override: Optional[str] = None,
+) -> Dict[str, str]:
+    """Return the active AutoYou chat LLM provider & model (with optional per-project override)."""
+    cfg = get_wan2gp_config()
+    provider = str(provider_override or cfg.get("llm_provider_override") or os.getenv("AI_PROVIDER", "ollama")).strip().lower()
+    if provider == "ollama_gateway":
+        provider = "ollama"
+    model = str(model_override or cfg.get("llm_model_override") or "").strip()
+    if not model:
+        if provider == "google":
+            model = os.getenv("GOOGLE_MODEL", "gemini-2.5-flash")
+        elif provider == "openrouter":
+            model = normalize_openrouter_model(os.getenv("OPENROUTER_MODEL", ""))
+        elif provider == "litellm":
+            model = os.getenv("LITELLM_MODEL", "")
+        elif provider == "openclaw":
+            model = os.getenv("OPENCLAW_MODEL", "openclaw/default")
+        elif provider == "hermes":
+            model = os.getenv("HERMES_MODEL", "hermes-agent")
+        else:
+            model = os.getenv("OLLAMA_MODEL", "ministral-3:8b")
+    return {"provider": provider, "model": model}
+
+
+def list_available_llm_options() -> Dict[str, Any]:
+    """Return active chat LLM plus locally installed Ollama models for UI/chat selection."""
+    active = get_active_llm_info()
+    ollama_models: List[str] = []
+    if not os.getenv("AUTOYOU_TEST_ROOT"):
+        try:
+            import urllib.request
+
+            api_base = os.getenv("OLLAMA_API_BASE", "http://127.0.0.1:11434").rstrip("/")
+            with urllib.request.urlopen(f"{api_base}/api/tags", timeout=2.0) as resp:
+                data = json.loads(resp.read().decode("utf-8", errors="replace"))
+            for item in (data.get("models") or []) if isinstance(data, dict) else []:
+                name = str((item or {}).get("name") or "").strip()
+                if name:
+                    ollama_models.append(name)
+        except Exception:
+            pass
+    return {
+        "active": active,
+        "providers": ["ollama", "google", "openrouter", "litellm", "openclaw", "hermes"],
+        "ollama_models": ollama_models,
+    }
+
+
+def llm_chat_complete(
+    system_prompt: str,
+    user_prompt: str,
+    *,
+    provider_override: Optional[str] = None,
+    model_override: Optional[str] = None,
+    max_tokens: int = 1600,
+    temperature: float = 0.4,
+    timeout: int = 90,
+) -> Optional[str]:
+    """Run a chat completion using the active AutoYou LLM provider or user-selected override."""
     try:
         import litellm
         import logging
+
         logging.getLogger("LiteLLM").setLevel(logging.CRITICAL)
         if hasattr(litellm, "logger"):
-            litellm.logger.setLevel(50) # Critical/No logs
+            litellm.logger.setLevel(50)
     except Exception:
-        return _heuristic_enhance_prompt(prompt, media_type)
-    
-    provider = os.getenv("AI_PROVIDER", "ollama").strip().lower()
-    
-    if media_type == "video":
-        system_instruction = (
-            "You are a cinematic prompt engineer expert for Wan2.1 and LTX-Video text-to-video models.\n"
-            "Optimize the user's prompt into one concise descriptive paragraph under 140 words with no line breaks or Markdown.\n"
-            "Describe the scene chronologically: start with visible action, specify subjects, environment, lighting, and camera movement.\n"
-            "Keep the composition center-safe for vertical cropping.\n"
-            "Always append: 'No readable text, no logos, and no watermark appear anywhere in the frame. The composition keeps the action centered for vertical crop compatibility.'\n"
-            "Output ONLY the final prompt and nothing else. Do not add quotes or preamble."
-        )
-    else:
-        system_instruction = (
-            "You are a professional visual prompt engineer expert for text-to-image models (like Flux or Qwen Image).\n"
-            "Optimize the user's prompt into one concise descriptive paragraph under 120 words with no line breaks or Markdown.\n"
-            "Specify subject, composition, lighting, style, depth of field, color, and texture details.\n"
-            "Output ONLY the final prompt and nothing else. Do not add quotes or preamble."
-        )
+        return None
 
-    messages = [
-        {"role": "system", "content": system_instruction},
-        {"role": "user", "content": f"Optimize this prompt: {prompt}"}
-    ]
+    info = get_active_llm_info(provider_override=provider_override, model_override=model_override)
+    provider = info["provider"]
+    chosen_model = info["model"]
 
     completion_kwargs = {
-        "messages": messages,
-        "max_tokens": 360,
-        "temperature": 0.4,
-        "timeout": 45,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        "max_tokens": int(max_tokens),
+        "temperature": float(temperature),
+        "timeout": int(timeout),
     }
 
     try:
         if provider == "google":
-            model = "gemini/" + os.getenv("GOOGLE_MODEL", "gemini-2.5-flash")
+            model = chosen_model if chosen_model.startswith("gemini/") else ("gemini/" + (chosen_model or "gemini-2.5-flash"))
             response = litellm.completion(model=model, **completion_kwargs)
         elif provider == "openclaw":
             port = os.getenv("OPENCLAW_PORT", "18789")
-            model = "openai/" + os.getenv("OPENCLAW_MODEL", "openclaw/default")
+            model = chosen_model if chosen_model.startswith("openai/") else ("openai/" + (chosen_model or "openclaw/default"))
             response = litellm.completion(
                 model=model,
                 api_base=f"http://127.0.0.1:{port}/v1",
@@ -1398,7 +1605,7 @@ def ai_enhance_prompt(prompt: str, media_type: str = "video") -> str:
             )
         elif provider == "hermes":
             port = os.getenv("HERMES_PORT", "8642")
-            model = "openai/" + os.getenv("HERMES_MODEL", "hermes-agent")
+            model = chosen_model if chosen_model.startswith("openai/") else ("openai/" + (chosen_model or "hermes-agent"))
             response = litellm.completion(
                 model=model,
                 api_base=f"http://127.0.0.1:{port}/v1",
@@ -1406,10 +1613,10 @@ def ai_enhance_prompt(prompt: str, media_type: str = "video") -> str:
                 **completion_kwargs,
             )
         elif provider == "openrouter":
-            model = normalize_openrouter_model(os.getenv("OPENROUTER_MODEL", ""))
+            model = normalize_openrouter_model(chosen_model or os.getenv("OPENROUTER_MODEL", ""))
             api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
-            if not api_key or api_key == "NULL":
-                return _heuristic_enhance_prompt(prompt, media_type)
+            if not api_key or api_key == "NULL" or not model:
+                return None
             response = litellm.completion(
                 model=f"openrouter/{model}",
                 api_key=api_key,
@@ -1417,15 +1624,17 @@ def ai_enhance_prompt(prompt: str, media_type: str = "video") -> str:
                 **completion_kwargs,
             )
         elif provider == "litellm":
-            model = os.getenv("LITELLM_MODEL", "")
+            model = chosen_model or os.getenv("LITELLM_MODEL", "")
+            if not model:
+                return None
             response = litellm.completion(
                 model=model,
                 api_key=os.getenv("LITELLM_API_KEY"),
                 api_base=os.getenv("LITELLM_API_BASE"),
                 **completion_kwargs,
             )
-        else: # Default local Ollama
-            model_name = os.getenv("OLLAMA_MODEL", "qwen3.5:4b")
+        else:  # Default local Ollama
+            model_name = chosen_model or os.getenv("OLLAMA_MODEL", "qwen3.5:4b")
             api_base = os.getenv("OLLAMA_API_BASE", "http://localhost:11434")
             response = litellm.completion(
                 model=f"ollama_chat/{model_name}",
@@ -1433,14 +1642,95 @@ def ai_enhance_prompt(prompt: str, media_type: str = "video") -> str:
                 **completion_kwargs,
                 **_ollama_model_options(model_name),
             )
-            
-        enhanced = _clean_prompt_text(response.choices[0].message.content)
-        if (enhanced.startswith('"') and enhanced.endswith('"')) or (enhanced.startswith("'") and enhanced.endswith("'")):
-            enhanced = enhanced[1:-1].strip()
-        return enhanced or _heuristic_enhance_prompt(prompt, media_type)
-    except Exception as e:
-        print(f"Warning: AI prompt enhancement failed: {e}. Using heuristic template.")
+        return str(response.choices[0].message.content or "").strip() or None
+    except Exception as exc:
+        print(f"Warning: Media LLM completion failed ({provider}/{chosen_model}): {exc}")
+        return None
+
+
+def ai_enhance_prompt(
+    prompt: str,
+    media_type: str = "video",
+    *,
+    context_notes: str = "",
+    edit_mode: bool = False,
+    llm_provider_override: Optional[str] = None,
+    llm_model_override: Optional[str] = None,
+) -> str:
+    """Optimize the prompt using the active AutoYou chat LLM (or override) with embedded context."""
+    if edit_mode:
+        system_instruction = (
+            "You are a precision visual editing prompt engineer for image/video edit models (Flux Kontext, Qwen Image Edit, LTX Edit).\n"
+            "Rewrite the user's editing instruction into one crisp, unambiguous paragraph under 110 words with no line breaks or Markdown.\n"
+            "Preserve subject identity, framing, and untouched regions while clearly specifying the exact visual changes requested.\n"
+            "Output ONLY the final edit prompt and nothing else."
+        )
+    elif media_type == "video":
+        system_instruction = (
+            "You are a cinematic prompt engineer expert for Wan 2.2 and LTX-2 text-to-video and image-to-video models.\n"
+            "Optimize the user's prompt into one concise descriptive paragraph under 140 words with no line breaks or Markdown.\n"
+            "Describe the scene chronologically: start with visible action, specify subjects, environment, lighting, camera movement, and sound/atmosphere if helpful.\n"
+            "Keep the composition center-safe for vertical cropping.\n"
+            "Always append: 'No readable text, no logos, and no watermark appear anywhere in the frame. The composition keeps the action centered for vertical crop compatibility.'\n"
+            "Output ONLY the final prompt and nothing else. Do not add quotes or preamble."
+        )
+    else:
+        system_instruction = (
+            "You are a professional visual prompt engineer expert for text-to-image models (like Flux, Flux.2, Z-Image, or Qwen Image).\n"
+            "Optimize the user's prompt into one concise descriptive paragraph under 120 words with no line breaks or Markdown.\n"
+            "Specify subject, composition, lighting, style, depth of field, color, and texture details.\n"
+            "Output ONLY the final prompt and nothing else. Do not add quotes or preamble."
+        )
+
+    user_content = f"Optimize this prompt: {prompt}"
+    if context_notes and str(context_notes).strip():
+        user_content += f"\n\nEmbedded context to preserve:\n{str(context_notes).strip()[:1200]}"
+
+    raw = llm_chat_complete(
+        system_instruction,
+        user_content,
+        provider_override=llm_provider_override,
+        model_override=llm_model_override,
+        max_tokens=360,
+        temperature=0.4,
+        timeout=45,
+    )
+    if not raw:
         return _heuristic_enhance_prompt(prompt, media_type)
+    enhanced = _clean_prompt_text(raw)
+    if (enhanced.startswith('"') and enhanced.endswith('"')) or (enhanced.startswith("'") and enhanced.endswith("'")):
+        enhanced = enhanced[1:-1].strip()
+    return enhanced or _heuristic_enhance_prompt(prompt, media_type)
+
+
+def _resolve_wan_edit_model_type(wan: Dict[str, Any], app_dir: Path, requested_model_type: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+    requested = _normalize_model_type(requested_model_type)
+    installed_ckpts = set(list_installed_wan_models(app_dir).get("installed_checkpoints") or [])
+    if requested and (app_dir / "defaults" / f"{requested}.json").is_file():
+        return requested, None
+
+    candidates = [
+        _normalize_model_type(wan.get("image_edit_model_type")),
+        *DEFAULT_IMAGE_EDIT_MODEL_CANDIDATES,
+        _normalize_model_type(wan.get("image_model_type")),
+    ]
+    # Prefer an edit model whose checkpoint is already downloaded, else first valid edit/image definition.
+    first_valid = None
+    for candidate in candidates:
+        if not candidate:
+            continue
+        spec = _load_wan_model_definition(app_dir, candidate)
+        if not spec:
+            continue
+        if first_valid is None:
+            first_valid = candidate
+        urls = (spec.get("model") or {}).get("URLs") if isinstance(spec.get("model"), dict) else []
+        if any(str(u).rsplit("/", 1)[-1].lower() in installed_ckpts for u in (urls or []) if isinstance(u, str)):
+            return candidate, None
+    if first_valid:
+        return first_valid, None
+    return _resolve_wan_model_type(wan, app_dir, requested_model_type, "image")
+
 
 def generate_media_sync(
     prompt: str,
@@ -1452,8 +1742,24 @@ def generate_media_sync(
     seed: Optional[int] = None,
     history_item_id: Optional[int] = None,
     optimized_prompt: Optional[str] = None,
+    *,
+    duration_seconds: Optional[float] = None,
+    fps: Optional[int] = None,
+    negative_prompt: Optional[str] = None,
+    reference_image_path: Optional[str] = None,
+    end_image_path: Optional[str] = None,
+    input_video_path: Optional[str] = None,
+    input_audio_path: Optional[str] = None,
+    edit_mode: bool = False,
+    denoise_strength: Optional[float] = None,
+    sliding_window_size: Optional[int] = None,
+    sliding_window_overlap: Optional[int] = None,
+    engine_override: Optional[str] = None,
+    llm_provider_override: Optional[str] = None,
+    llm_model_override: Optional[str] = None,
+    context_notes: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Run one bounded generation and always finish its history state."""
+    """Run one bounded generation across any supported engine and finish its history state."""
     try:
         wan = get_wan2gp_config()
         queue_timeout = float(wan.get("queue_timeout_seconds", 3600))
@@ -1462,10 +1768,37 @@ def generate_media_sync(
         with _generation_slot(history_item_id, queue_timeout):
             if history_item_id:
                 update_history_status(history_item_id, "generating", progress_message="Checking the local generation engine.")
-            return _generate_media_sync_unlocked(
-                prompt, media_type, model_type, resolution, steps, frames, seed,
-                history_item_id, optimized_prompt,
-            )
+            import contextlib
+            from shared.media_generation_runtime import _materialize_media_path
+
+            with contextlib.ExitStack() as media_stack:
+                def _mat(raw_p: Optional[str]) -> Optional[str]:
+                    if not raw_p:
+                        return None
+                    p = Path(raw_p).expanduser()
+                    if not p.is_file():
+                        return raw_p
+                    return str(_materialize_media_path(media_stack, p))
+
+                return _generate_media_sync_unlocked(
+                    prompt, media_type, model_type, resolution, steps, frames, seed,
+                    history_item_id, optimized_prompt,
+                    duration_seconds=duration_seconds,
+                    fps=fps,
+                    negative_prompt=negative_prompt,
+                    reference_image_path=_mat(reference_image_path),
+                    end_image_path=_mat(end_image_path),
+                    input_video_path=_mat(input_video_path),
+                    input_audio_path=_mat(input_audio_path),
+                    edit_mode=edit_mode,
+                    denoise_strength=denoise_strength,
+                    sliding_window_size=sliding_window_size,
+                    sliding_window_overlap=sliding_window_overlap,
+                    engine_override=engine_override,
+                    llm_provider_override=llm_provider_override,
+                    llm_model_override=llm_model_override,
+                    context_notes=context_notes,
+                )
     except Exception as exc:
         message = f"Media generation failed: {exc}"
         if history_item_id:
@@ -1483,19 +1816,40 @@ def _generate_media_sync_unlocked(
     seed: Optional[int] = None,
     history_item_id: Optional[int] = None,
     optimized_prompt: Optional[str] = None,
+    *,
+    duration_seconds: Optional[float] = None,
+    fps: Optional[int] = None,
+    negative_prompt: Optional[str] = None,
+    reference_image_path: Optional[str] = None,
+    end_image_path: Optional[str] = None,
+    input_video_path: Optional[str] = None,
+    input_audio_path: Optional[str] = None,
+    edit_mode: bool = False,
+    denoise_strength: Optional[float] = None,
+    sliding_window_size: Optional[int] = None,
+    sliding_window_overlap: Optional[int] = None,
+    engine_override: Optional[str] = None,
+    llm_provider_override: Optional[str] = None,
+    llm_model_override: Optional[str] = None,
+    context_notes: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Execute local generation through Wan2GP or Draw Things CLI."""
+    """Execute local generation through Wan2GP, ComfyUI, MLX, Draw Things CLI, or stable-diffusion.cpp."""
+    from .engines import (
+        VALID_ENGINES,
+        execute_comfyui_generation,
+        execute_mlx_generation,
+        execute_sdcpp_generation,
+    )
+
     wan = get_wan2gp_config()
     media_type = _normalize_media_type(media_type)
-    engine = str(wan.get("engine") or "wan2gp").strip().lower()
-    if engine not in {"wan2gp", "draw_things"}:
-        err_msg = f"Unknown media generation engine '{engine}'. Choose Wan2GP or Draw Things CLI."
+    engine = str(engine_override or wan.get("engine") or "wan2gp").strip().lower()
+    if engine not in VALID_ENGINES:
+        err_msg = f"Unknown media generation engine '{engine}'. Choose one of: {', '.join(VALID_ENGINES)}."
         if history_item_id:
             update_history_status(history_item_id, "failed", err_msg)
         return {"status": "error", "message": err_msg}
-    
-    # 1. Resolve paths (platform defaults; get_wan2gp_config already overlays a
-    #    discovered install when the saved path is missing on this machine)
+
     default_paths = _platform_default_wan2gp_paths()
     app_dir = Path(wan.get("app_dir", default_paths["app_dir"]))
     python = Path(wan.get("python", default_paths["python"]))
@@ -1519,7 +1873,6 @@ def _generate_media_sync_unlocked(
                 update_history_status(history_item_id, "failed", err_msg)
             return {"status": "error", "message": err_msg, "install_required": True}
 
-    # 2. Check if python and app directory are present on this machine
     if engine == "wan2gp" and not app_dir.exists():
         err_msg = (
             f"Wan2GP application folder not found at: '{app_dir}'. "
@@ -1551,17 +1904,30 @@ def _generate_media_sync_unlocked(
                 update_history_status(history_item_id, "failed", err_msg)
             return {"status": "error", "message": err_msg, "runtime_repair_required": True}
 
+    model_warning = None
     if engine == "draw_things":
         final_model_type = _normalize_model_type(model_type) or _normalize_model_type(
             wan.get("draw_things_image_model" if media_type == "image" else "draw_things_video_model")
         )
-        model_warning = None
+    elif engine == "comfyui":
+        final_model_type = _normalize_model_type(model_type) or str(wan.get("comfyui_checkpoint") or "flux1-schnell-fp8.safetensors")
+    elif engine == "mlx":
+        final_model_type = _normalize_model_type(model_type) or str(
+            wan.get("mlx_image_model" if media_type == "image" else "mlx_video_module") or ("schnell" if media_type == "image" else "mlx_video.ltx_2.generate")
+        )
+    elif engine == "sdcpp":
+        final_model_type = _normalize_model_type(model_type) or str(
+            wan.get("sdcpp_image_model" if media_type == "image" else "sdcpp_video_model") or ""
+        )
+    elif edit_mode and media_type == "image":
+        final_model_type, model_warning = _resolve_wan_edit_model_type(wan, app_dir, model_type)
     else:
         final_model_type, model_warning = _resolve_wan_model_type(wan, app_dir, model_type, media_type)
+
     if not final_model_type:
         err_msg = (
-            f"Set a Draw Things {media_type} model ID in Configuration."
-            if engine == "draw_things" else
+            f"Set a {engine} {media_type} model ID in Configuration."
+            if engine != "wan2gp" else
             f"{model_warning} Configure a {media_type} model in the Media Generator settings. "
             "For image generation, use an image-capable Wan2GP model such as flux_schnell, flux, z_image, or qwen_image_20B."
         )
@@ -1569,19 +1935,24 @@ def _generate_media_sync_unlocked(
             update_history_status(history_item_id, "failed", err_msg)
         return {"status": "error", "message": err_msg}
 
-    # 3. Enhance prompt using AI only when enabled, and keep the payload Wan2GP-friendly.
     if history_item_id:
         update_history_status(history_item_id, "generating", progress_message="Preparing the visual prompt.")
     if optimized_prompt:
         final_prompt = _clean_prompt_text(optimized_prompt)
     elif bool(wan.get("enhance_prompt", True)):
-        final_prompt = ai_enhance_prompt(prompt, media_type)
+        final_prompt = ai_enhance_prompt(
+            prompt,
+            media_type,
+            context_notes=context_notes or "",
+            edit_mode=edit_mode,
+            llm_provider_override=llm_provider_override,
+            llm_model_override=llm_model_override,
+        )
     else:
         final_prompt = _clean_prompt_text(prompt)
     if history_item_id:
         update_history_status(history_item_id, "generating", None, optimized_prompt=final_prompt)
 
-    # 4. Prepare parameters
     final_resolution = resolution or (
         wan.get("draw_things_image_resolution" if media_type == "image" else "draw_things_resolution")
         if engine == "draw_things" else
@@ -1592,8 +1963,17 @@ def _generate_media_sync_unlocked(
         or (wan.get("image_num_inference_steps") if media_type == "image" else wan.get("num_inference_steps"))
         or (10 if media_type == "image" else 8)
     )
-    final_frames = None if media_type == "image" else int(frames or wan.get("video_length", 49))
+    effective_fps = int(fps or wan.get("video_fps") or 24)
+    if media_type == "image":
+        final_frames = None
+    elif frames is not None:
+        final_frames = int(frames)
+    elif duration_seconds is not None and float(duration_seconds) > 0:
+        final_frames = seconds_to_video_frames(float(duration_seconds), fps=effective_fps)
+    else:
+        final_frames = int(wan.get("video_length", 49))
     final_seed = int(seed if seed is not None else wan.get("seed", -1))
+
     if engine == "draw_things":
         try:
             _draw_things_dimensions(final_resolution)
@@ -1604,8 +1984,122 @@ def _generate_media_sync_unlocked(
             if history_item_id:
                 update_history_status(history_item_id, "failed", err_msg)
             return {"status": "error", "message": err_msg}
-    
-    base_settings_payload = {
+
+    ref_img = Path(reference_image_path).expanduser() if reference_image_path else None
+    if ref_img and not ref_img.is_file():
+        ref_img = None
+    end_img = Path(end_image_path).expanduser() if end_image_path else None
+    if end_img and not end_img.is_file():
+        end_img = None
+    in_vid = Path(input_video_path).expanduser() if input_video_path else None
+    if in_vid and not in_vid.is_file():
+        in_vid = None
+    in_aud = Path(input_audio_path).expanduser() if input_audio_path else None
+    if in_aud and not in_aud.is_file():
+        in_aud = None
+
+    settings_recorded = {
+        "model_type": final_model_type,
+        "resolution": final_resolution,
+        "num_inference_steps": final_steps,
+        "video_length": final_frames,
+        "seed": final_seed,
+    }
+    if history_item_id:
+        update_history_status(history_item_id, "generating", None, settings=settings_recorded)
+
+    # Free idle Ollama RAM on low-free-RAM hosts before launching heavy GPU models.
+    _maybe_release_idle_ollama_vram(wan)
+
+    # ── Non-Wan2GP/DrawThings native engines (ComfyUI, MLX, stable-diffusion.cpp) ──
+    if engine in {"comfyui", "mlx", "sdcpp"}:
+        work_dir = _unique_work_dir(OUTPUT_DIR / datetime.now().strftime("%Y%m%d_%H%M%S"))
+        work_dir.mkdir(parents=True, exist_ok=True)
+        out_dir = work_dir / "output"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        generation_timeout = float(wan.get("generation_timeout_seconds", 3600 if media_type == "image" else 7200))
+        try:
+            def _progress_cb(msg: str) -> None:
+                if history_item_id:
+                    update_history_status(history_item_id, "generating", progress_message=msg[:240])
+
+            def _stream_cb(_stream: str, text: str) -> None:
+                lines = [line.strip() for line in re.split(r"[\r\n]+", text) if line.strip()]
+                if lines and history_item_id:
+                    update_history_status(history_item_id, "generating", progress_message=lines[-1][-240:])
+
+            if engine == "comfyui":
+                result_file = execute_comfyui_generation(
+                    config=wan, prompt=final_prompt, media_type=media_type, model_type=final_model_type,
+                    resolution=final_resolution, steps=final_steps, frames=final_frames, seed=final_seed,
+                    output_dir=out_dir, negative_prompt=negative_prompt or "",
+                    reference_image_path=ref_img, denoise_strength=float(denoise_strength or 0.65),
+                    timeout=generation_timeout, on_progress=_progress_cb,
+                )
+            elif engine == "mlx":
+                result_file = execute_mlx_generation(
+                    config=wan, prompt=final_prompt, media_type=media_type, model_type=final_model_type,
+                    resolution=final_resolution, steps=final_steps, frames=final_frames, seed=final_seed,
+                    output_dir=out_dir, work_dir=work_dir, reference_image_path=ref_img,
+                    timeout=generation_timeout, on_output=_stream_cb,
+                )
+            else:
+                result_file = execute_sdcpp_generation(
+                    config=wan, prompt=final_prompt, media_type=media_type, model_type=final_model_type,
+                    resolution=final_resolution, steps=final_steps, frames=final_frames, seed=final_seed,
+                    output_dir=out_dir, work_dir=work_dir, negative_prompt=negative_prompt or "",
+                    reference_image_path=ref_img, timeout=generation_timeout, on_output=_stream_cb,
+                )
+
+            if media_type == "image":
+                from PIL import Image
+
+                with Image.open(result_file) as image:
+                    image.verify()
+
+            permanent_dir = OUTPUT_DIR / ("images" if media_type == "image" else "videos")
+            permanent_dir.mkdir(parents=True, exist_ok=True)
+            final_file_path = permanent_dir / result_file.name
+            from shared import content_files
+
+            content_files.copy(result_file, final_file_path)
+            _seal_generation_work_dir(work_dir)
+            try:
+                _cleanup_generation_payloads(work_dir)
+            except OSError:
+                pass
+            if history_item_id:
+                update_history_status(
+                    history_item_id, "completed", None,
+                    optimized_prompt=final_prompt, file_path=str(final_file_path),
+                    file_name=result_file.name, settings=settings_recorded,
+                )
+                item_id = history_item_id
+            else:
+                item_id = save_history_item(
+                    media_type=media_type, original_prompt=prompt, optimized_prompt=final_prompt,
+                    file_path=str(final_file_path), file_name=result_file.name,
+                    settings=settings_recorded, status="completed",
+                )
+            return {
+                "status": "success",
+                "item_id": item_id,
+                "engine": engine,
+                "media_type": media_type,
+                "file_path": str(final_file_path),
+                "file_name": result_file.name,
+                "optimized_prompt": final_prompt,
+                "model_warning": model_warning,
+                "retry_attempted": False,
+                "message": f"Successfully generated {media_type} via {engine} and saved to history.",
+            }
+        except Exception as exc:
+            err_msg = f"{engine} generation failed: {exc}"
+            if history_item_id:
+                update_history_status(history_item_id, "failed", err_msg)
+            return {"status": "error", "message": err_msg, "engine": engine}
+
+    base_settings_payload: Dict[str, Any] = {
         "settings_version": _wan_settings_version(app_dir, wan.get("settings_version", 2.52)),
         "model_type": final_model_type,
         "seed": final_seed,
@@ -1614,18 +2108,38 @@ def _generate_media_sync_unlocked(
         "repeat_generation": 1,
         "output_filename": "autoyou_{date(YYYY-MM-DD_HH-mm-ss)}_{prompt(32)}",
     }
+    if negative_prompt and str(negative_prompt).strip():
+        base_settings_payload["negative_prompt"] = str(negative_prompt).strip()
     if media_type == "video":
         base_settings_payload["video_length"] = final_frames
-
-    settings_recorded = {
-        "model_type": final_model_type,
-        "resolution": final_resolution,
-        "num_inference_steps": final_steps,
-        "video_length": final_frames,
-        "seed": final_seed
-    }
-    if history_item_id:
-        update_history_status(history_item_id, "generating", None, settings=settings_recorded)
+        effective_sw_size = int(sliding_window_size or wan.get("sliding_window_size") or 121)
+        effective_sw_overlap = int(sliding_window_overlap or wan.get("sliding_window_overlap") or 17)
+        if final_frames and final_frames > effective_sw_size:
+            base_settings_payload["sliding_window_size"] = effective_sw_size
+            base_settings_payload["sliding_window_overlap"] = min(effective_sw_overlap, max(5, effective_sw_size // 4))
+        if ref_img and end_img:
+            base_settings_payload["image_start"] = str(ref_img)
+            base_settings_payload["image_end"] = str(end_img)
+            base_settings_payload["image_prompt_type"] = "SE"
+        elif ref_img:
+            base_settings_payload["image_start"] = str(ref_img)
+            base_settings_payload["image_prompt_type"] = "S"
+        if in_vid:
+            base_settings_payload["video_source"] = str(in_vid)
+            base_settings_payload["image_prompt_type"] = (base_settings_payload.get("image_prompt_type") or "") + "V"
+            if denoise_strength is not None:
+                base_settings_payload["input_video_strength"] = max(0.1, min(1.0, float(denoise_strength)))
+        if in_aud:
+            base_settings_payload["audio_guide"] = str(in_aud)
+            base_settings_payload["audio_prompt_type"] = "A"
+    else:
+        if ref_img:
+            # Image modification / reference-guided image generation in Wan2GP (Flux Kontext, Qwen Image Edit, etc.)
+            base_settings_payload["image_refs"] = [str(ref_img)]
+            base_settings_payload["image_start"] = str(ref_img)
+            base_settings_payload["image_prompt_type"] = "S"
+            if denoise_strength is not None:
+                base_settings_payload["denoising_strength"] = max(0.1, min(1.0, float(denoise_strength)))
 
     work_dir: Optional[Path] = None
     try:
@@ -1829,7 +2343,8 @@ def _generate_media_sync_unlocked(
             permanent_dir.mkdir(parents=True, exist_ok=True)
 
             final_file_path = permanent_dir / result_file.name
-            write_secure_file(final_file_path, result_file.read_bytes())
+            from shared import content_files
+            content_files.copy(result_file, final_file_path)
             _seal_generation_work_dir(work_dir)
 
             # Keep encrypted diagnostics available after a successful job.

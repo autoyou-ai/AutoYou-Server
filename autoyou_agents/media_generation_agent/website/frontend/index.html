@@ -9,8 +9,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AutoYou Media Generator</title>
-  <!-- Google Fonts -->
+  <title>AutoYou Media Factory Studio</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -23,7 +22,7 @@
     <div class="login-card glass-card animate-fade-in">
       <div class="login-icon">🎬</div>
       <h2>Authentication Required</h2>
-      <p class="login-hint" id="login-copy">Enter your 6-digit authenticator code to unlock the Media Lab.</p>
+      <p class="login-hint" id="login-copy">Enter your 6-digit authenticator code to unlock the Media Factory Studio.</p>
       <div class="otp-row" id="otp-row">
         <input id="otp-input" type="text" class="otp-input" maxlength="6" placeholder="000000"
                autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]*">
@@ -37,31 +36,37 @@
   </div>
 
   <div class="app-container hidden" id="main-layout" inert>
-    
     <!-- Sidebar Navigation -->
     <aside class="sidebar">
       <div class="sidebar-header">
         <div class="logo">
           <span class="logo-icon">🎬</span>
-          <span class="logo-text">AutoYou <span class="logo-highlight">Media</span></span>
+          <span class="logo-text">AutoYou <span class="logo-highlight">Factory</span></span>
         </div>
+        <div class="llm-badge" id="sidebar-llm-badge" title="Active LLM controlling prompt enhancement and video scripts">LLM: Checking…</div>
       </div>
-      
+
       <nav class="sidebar-nav">
         <button class="nav-item active" data-target="dashboard-view">
-          <span class="nav-icon">🔮</span> Generation Lab
+          <span class="nav-icon">🔮</span> Quick Studio
+        </button>
+        <button class="nav-item" data-target="factory-view">
+          <span class="nav-icon">🏭</span> Long-Video Factory
+        </button>
+        <button class="nav-item" data-target="editor-view">
+          <span class="nav-icon">🪄</span> Image Studio &amp; Edit
         </button>
         <button class="nav-item" data-target="history-view">
           <span class="nav-icon">📁</span> Gallery of Creations
         </button>
         <button class="nav-item" data-target="settings-view">
-          <span class="nav-icon">⚙️</span> Configuration
+          <span class="nav-icon">⚙️</span> Hardware &amp; Engines
         </button>
         <button class="nav-item logout-btn" id="logout-btn">
           <span class="nav-icon">🚪</span> Sign Out
         </button>
       </nav>
-      
+
       <div class="sidebar-footer">
         <div class="status-card" id="connection-status-card">
           <div class="status-indicator">
@@ -69,44 +74,64 @@
             <span class="status-label" id="status-label">Local engine: Disconnected</span>
           </div>
           <p class="status-detail" id="status-detail">Local paths are unchecked.</p>
+          <p class="status-hw-pill hidden" id="sidebar-hw-pill"></p>
         </div>
       </div>
     </aside>
-    
+
     <!-- Main Content Area -->
     <main class="main-content">
-      
-      <!-- VIEW: Generation Lab -->
+
+      <!-- VIEW 1: Quick Studio (Generation Lab) -->
       <section class="view-section active" id="dashboard-view">
         <header class="view-header">
-          <h1>Generation Lab</h1>
-          <p class="subtitle">Create images and video with local models on this computer.</p>
+          <div class="header-row">
+            <div>
+              <h1>Quick Studio</h1>
+              <p class="subtitle">Generate images and videos with multimodal references, LLM prompt enhancement, and local GPU acceleration.</p>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" id="jump-to-factory-btn">
+              <span>🏭</span> Plan Long Video
+            </button>
+          </div>
         </header>
-        
+
         <div class="lab-grid">
           <!-- Generation Panel -->
           <div class="card glass-card form-container">
             <div class="card-header">
               <h2>Visual Generator</h2>
             </div>
-            
+
             <form id="generation-form">
               <div class="form-group">
-                <label for="prompt">Describe your visual masterpiece</label>
-                <textarea id="prompt" placeholder="Describe the scene in detail. For example: A sleek dark room, a computer screen displays glowing green lines of code. The camera slowly pushes in as warm neon lights shine from the desk..." required></textarea>
+                <label for="prompt">Describe your visual scene or masterpiece</label>
+                <textarea id="prompt" placeholder="Describe the subject, camera movement, lighting, and atmosphere. Tip: drop or paste a reference image, video, or audio clip below to guide generation..." required></textarea>
               </div>
-              
+
+              <!-- Multimodal Reference Attachments -->
+              <div class="form-group">
+                <label>Multimodal References <span class="label-muted">(Optional: Image / Video / Audio — drag, paste, or browse)</span></label>
+                <div class="dropzone" id="quick-dropzone" tabindex="0">
+                  <input type="file" id="quick-file-input" accept="image/*,video/*,audio/*" multiple hidden>
+                  <div class="dropzone-prompt">
+                    <span>📎</span> Drop image, video, or audio here — or <button type="button" class="link-btn" id="quick-browse-btn">browse files</button>
+                  </div>
+                  <div class="attachment-chips" id="quick-attachment-chips"></div>
+                </div>
+              </div>
+
               <div class="prompt-enhancer-actions">
                 <button type="button" class="btn btn-secondary btn-sm" id="enhance-prompt-btn">
                   <span>✨</span> AI Prompt Enhancer
                 </button>
               </div>
-              
+
               <div class="optimized-prompt-display hidden" id="optimized-prompt-box">
                 <label>Refined Prompt</label>
                 <div class="prompt-text" id="optimized-prompt-text">Generating optimized prompts...</div>
               </div>
-              
+
               <div class="form-row">
                 <div class="form-group col">
                   <label for="media-type">Generation Type</label>
@@ -115,7 +140,7 @@
                     <option value="image">🖼️ Single Image</option>
                   </select>
                 </div>
-                
+
                 <div class="form-group col">
                   <label for="model-type">Model</label>
                   <select id="model-type">
@@ -125,14 +150,16 @@
                     <option value="t2v">Wan Text2Video</option>
                     <option value="flux_schnell">Flux Schnell Image</option>
                     <option value="flux">Flux Image</option>
+                    <option value="flux_dev_kontext">Flux.1 Dev Kontext Edit</option>
                     <option value="z_image">Z-Image Turbo</option>
                     <option value="qwen_image_20B">Qwen Image 20B</option>
+                    <option value="qwen_image_edit_plus_20B">Qwen Image Edit Plus 20B</option>
                     <option value="flux_2_klein_4b_q6p.ckpt">FLUX.2 Klein 4B (Draw Things)</option>
                     <option value="ltx_2.3_22b_distilled_q6p.ckpt">LTX 2.3 22B (Draw Things)</option>
                   </select>
                 </div>
               </div>
-              
+
               <!-- Custom Parameter Accordion -->
               <details class="advanced-params">
                 <summary>Advanced Custom Parameters</summary>
@@ -143,44 +170,55 @@
                       <option value="416x240" selected>416x240 (Fastest)</option>
                       <option value="848x480">848x480 (Quality)</option>
                       <option value="720x1280">720x1280 (Portrait)</option>
-                      <option value="1280x720">1280x720 (Landscape)</option>
+                      <option value="1280x720">1280x720 (Landscape HD)</option>
                       <option value="512x512">512x512</option>
                       <option value="768x512">768x512</option>
                       <option value="512x768">512x768</option>
                       <option value="832x512">832x512</option>
                       <option value="512x832">512x832</option>
+                      <option value="1024x1024">1024x1024 (Square HD)</option>
                     </select>
                   </div>
-                  
+
                   <div class="form-group">
                     <label for="num-steps">Quality Steps</label>
-                    <input type="number" id="num-steps" value="8" min="1" max="50">
+                    <input type="number" id="num-steps" value="8" min="1" max="80">
                   </div>
-                  
+
+                  <div class="form-group" id="duration-group">
+                    <label for="video-duration-sec">Clip Duration (Seconds)</label>
+                    <input type="number" id="video-duration-sec" value="2" min="1" max="20" step="0.5">
+                  </div>
+
                   <div class="form-group" id="frames-group">
                     <label for="video-length">Length (Frames)</label>
-                    <input type="number" id="video-length" value="49" min="1" max="250">
+                    <input type="number" id="video-length" value="49" min="1" max="481">
                   </div>
-                  
+
                   <div class="form-group">
                     <label for="seed">Random Seed</label>
                     <input type="number" id="seed" value="-1" min="-1">
                   </div>
+
+                  <div class="form-group">
+                    <label for="quick-negative-prompt">Negative Prompt (Optional)</label>
+                    <input type="text" id="quick-negative-prompt" placeholder="blurry, distorted text, watermark">
+                  </div>
                 </div>
               </details>
-              
+
               <button type="submit" class="btn btn-primary" id="generate-submit-btn" disabled>
                 <span>🚀</span> Kick off Generation
               </button>
             </form>
           </div>
-          
+
           <!-- Live Status Panel -->
           <div class="card glass-card jobs-panel">
             <div class="card-header">
               <h2>Running Generations</h2>
             </div>
-            
+
             <div class="jobs-list" id="active-jobs-list" role="status" aria-live="polite" aria-atomic="false">
               <div class="no-jobs">
                 <div class="no-jobs-icon">😴</div>
@@ -191,90 +229,463 @@
           </div>
         </div>
       </section>
-      
-      <!-- VIEW: Gallery of Creations -->
+
+      <!-- VIEW 2: Long-Video Factory (Goal Loop Orchestrated) -->
+      <section class="view-section" id="factory-view">
+        <header class="view-header">
+          <div class="header-row">
+            <div>
+              <h1>Long-Video Factory</h1>
+              <p class="subtitle">Checkpointed, resumable multi-stage video production controlled by Goal Loop — from 15-second trailers to multi-hour films.</p>
+            </div>
+            <button type="button" class="btn btn-primary btn-auto" id="factory-new-toggle-btn">
+              <span>➕</span> New Video Project
+            </button>
+          </div>
+        </header>
+
+        <!-- New Project Composer Drawer -->
+        <div class="card glass-card factory-composer hidden" id="factory-new-card">
+          <div class="card-header">
+            <h2>Create Multi-Stage Video Production</h2>
+          </div>
+          <form id="factory-create-form">
+            <div class="form-row">
+              <div class="form-group col">
+                <label for="factory-title">Project Title</label>
+                <input type="text" id="factory-title" placeholder="e.g. Journey Across the Solar System" required>
+              </div>
+              <div class="form-group col">
+                <label for="factory-aspect">Aspect Ratio &amp; Resolution</label>
+                <select id="factory-aspect">
+                  <option value="16:9">16:9 Widescreen (848x480 Fast)</option>
+                  <option value="16:9-hd">16:9 HD (1280x720)</option>
+                  <option value="9:16">9:16 Vertical (480x848)</option>
+                  <option value="9:16-hd">9:16 Vertical HD (720x1280)</option>
+                  <option value="1:1">1:1 Square (512x512)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="factory-brief">Creative Brief &amp; Embedded Story Context</label>
+              <textarea id="factory-brief" placeholder="Describe the story, characters, pacing, visual style, narration tone, or paste context you want embedded across every scene..." required></textarea>
+            </div>
+
+            <div class="form-group">
+              <label>Target Total Duration</label>
+              <div class="preset-pills" id="factory-duration-presets">
+                <button type="button" class="pill-btn" data-seconds="15">15 sec</button>
+                <button type="button" class="pill-btn active" data-seconds="30">30 sec</button>
+                <button type="button" class="pill-btn" data-seconds="60">1 min</button>
+                <button type="button" class="pill-btn" data-seconds="300">5 min</button>
+                <button type="button" class="pill-btn" data-seconds="1800">30 min</button>
+                <button type="button" class="pill-btn" data-seconds="7200">2 hours</button>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group col">
+                <label for="factory-duration-seconds">Total Seconds</label>
+                <input type="number" id="factory-duration-seconds" value="30" min="4" max="86400">
+              </div>
+              <div class="form-group col">
+                <label for="factory-scene-seconds">Scene Clip Length (Seconds)</label>
+                <input type="number" id="factory-scene-seconds" value="5" min="2" max="15" step="0.5">
+              </div>
+              <div class="form-group col">
+                <label for="factory-llm-select">Script &amp; Enhancement LLM</label>
+                <select id="factory-llm-select">
+                  <option value="">Follow Active AutoYou Chat LLM</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Project Reference Media <span class="label-muted">(Optional: Anchor Image, Reference Video, or Soundtrack Audio)</span></label>
+              <div class="dropzone" id="factory-dropzone">
+                <input type="file" id="factory-file-input" accept="image/*,video/*,audio/*" multiple hidden>
+                <div class="dropzone-prompt">
+                  <span>🎞️</span> Drop reference assets or <button type="button" class="link-btn" id="factory-browse-btn">browse</button>
+                </div>
+                <div class="attachment-chips" id="factory-attachment-chips"></div>
+              </div>
+            </div>
+
+            <div class="form-row factory-checks">
+              <label class="checkbox-container">
+                <input type="checkbox" id="factory-plan-now" checked>
+                <span class="checkmark"></span> Generate editable LLM script &amp; scenes immediately
+              </label>
+              <label class="checkbox-container">
+                <input type="checkbox" id="factory-use-keyframes">
+                <span class="checkmark"></span> Generate storyboard keyframes before rendering video
+              </label>
+            </div>
+
+            <div class="form-actions-row">
+              <button type="submit" class="btn btn-primary btn-auto" id="factory-create-submit">
+                <span>🎬</span> Create Production
+              </button>
+              <button type="button" class="btn btn-secondary" id="factory-cancel-create">Cancel</button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Two-Column Factory Workspace -->
+        <div class="factory-layout">
+          <!-- Project List Sidebar -->
+          <div class="card glass-card factory-sidebar-card">
+            <div class="card-header">
+              <h2>Productions</h2>
+            </div>
+            <div class="projects-list" id="factory-projects-list">
+              <p class="field-hint">Loading productions…</p>
+            </div>
+          </div>
+
+          <!-- Selected Project Workspace -->
+          <div class="factory-workspace" id="factory-workspace">
+            <div class="card glass-card empty-workspace" id="factory-empty-workspace">
+              <div class="empty-gallery-icon">🏭</div>
+              <h3>Select or Create a Video Production</h3>
+              <p>Plan multi-scene scripts with your chosen LLM, edit any scene prompt, render in resumable checkpointed stages, refine individual clips, and assemble a master MP4 automatically.</p>
+            </div>
+
+            <div class="hidden" id="factory-project-detail">
+              <!-- Project Overview + Goal Loop Stepper -->
+              <div class="card glass-card factory-stage-card">
+                <div class="project-detail-header">
+                  <div>
+                    <h2 id="proj-detail-title">Project Title</h2>
+                    <p class="field-hint" id="proj-detail-meta">0 scenes · 0s target</p>
+                  </div>
+                  <div class="project-detail-badges">
+                    <span class="status-pill" id="proj-status-pill">draft</span>
+                    <button type="button" class="btn btn-danger btn-sm" id="proj-delete-btn">Delete</button>
+                  </div>
+                </div>
+
+                <!-- Goal Loop 5-Stage Pipeline Stepper -->
+                <div class="stage-stepper" id="proj-stage-stepper">
+                  <div class="stage-step" data-stage="plan"><span class="step-num">1</span><span class="step-name">Plan Script</span></div>
+                  <div class="stage-step" data-stage="keyframes"><span class="step-num">2</span><span class="step-name">Keyframes</span></div>
+                  <div class="stage-step" data-stage="render"><span class="step-num">3</span><span class="step-name">Render Scenes</span></div>
+                  <div class="stage-step" data-stage="refine"><span class="step-num">4</span><span class="step-name">Refine &amp; Verify</span></div>
+                  <div class="stage-step" data-stage="assemble"><span class="step-num">5</span><span class="step-name">Assemble Master</span></div>
+                </div>
+
+                <!-- Progress Bar -->
+                <div class="progress-wrap">
+                  <div class="progress-bar-track">
+                    <div class="progress-bar-fill" id="proj-progress-fill" style="width: 0%;"></div>
+                  </div>
+                  <div class="progress-caption">
+                    <span id="proj-progress-msg">Ready.</span>
+                    <span id="proj-progress-pct">0%</span>
+                  </div>
+                </div>
+
+                <!-- Goal Loop Action Controls -->
+                <div class="goal-controls-bar">
+                  <button type="button" class="btn btn-primary btn-auto btn-sm" id="goal-run-all-btn">🚀 Run Full Pipeline</button>
+                  <button type="button" class="btn btn-secondary btn-sm" id="goal-stage-plan-btn">📝 Plan / Re-Plan</button>
+                  <button type="button" class="btn btn-secondary btn-sm" id="goal-stage-keyframes-btn">🖼️ Keyframes</button>
+                  <button type="button" class="btn btn-secondary btn-sm" id="goal-stage-render-btn">🎬 Render Scenes</button>
+                  <button type="button" class="btn btn-secondary btn-sm" id="goal-stage-refine-btn">✨ Refine</button>
+                  <button type="button" class="btn btn-secondary btn-sm" id="goal-stage-assemble-btn">🎞️ Assemble</button>
+                  <button type="button" class="btn btn-secondary btn-sm" id="goal-pause-btn">⏸️ Pause</button>
+                  <button type="button" class="btn btn-secondary btn-sm" id="goal-resume-btn">▶️ Resume</button>
+                  <button type="button" class="btn btn-danger btn-sm" id="goal-cancel-btn">⛔ Cancel</button>
+                </div>
+
+                <!-- Master Video Player (when assembled) -->
+                <div class="master-player-box hidden" id="proj-master-box">
+                  <h3>🎉 Assembled Master Video</h3>
+                  <video id="proj-master-video" controls playsinline></video>
+                  <div class="form-actions-row">
+                    <a id="proj-master-download" class="btn btn-secondary btn-sm" download>⬇️ Download Master MP4</a>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Script & Style Bible Editor -->
+              <div class="card glass-card">
+                <div class="card-header card-header-inline">
+                  <h2>Script &amp; Visual Style Bible</h2>
+                  <button type="button" class="btn btn-secondary btn-sm" id="proj-save-script-btn">💾 Save Script &amp; Style</button>
+                </div>
+                <div class="form-group">
+                  <label for="proj-style-bible">Visual Continuity Style Bible</label>
+                  <textarea id="proj-style-bible" class="compact-textarea" placeholder="Define persistent characters, wardrobe, color grading, lens, and lighting rules across every scene..."></textarea>
+                </div>
+                <div class="form-group">
+                  <label for="proj-script-text">Editable Master Script</label>
+                  <textarea id="proj-script-text" placeholder="Screenplay / scene outline..."></textarea>
+                </div>
+              </div>
+
+              <!-- Scenes Storyboard -->
+              <div class="card glass-card">
+                <div class="card-header card-header-inline">
+                  <h2>Scene Storyboard (<span id="proj-scene-count">0</span>)</h2>
+                  <button type="button" class="btn btn-secondary btn-sm" id="proj-add-scene-btn">➕ Add Scene</button>
+                </div>
+                <div class="scenes-list" id="proj-scenes-list"></div>
+              </div>
+
+              <!-- Stage Log Drawer -->
+              <details class="card glass-card stage-log-details">
+                <summary>Goal Loop &amp; Stage Execution Log</summary>
+                <div class="stage-log-list" id="proj-stage-logs"></div>
+              </details>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW 3: Image Studio & Editor -->
+      <section class="view-section" id="editor-view">
+        <header class="view-header">
+          <h1>Image Studio &amp; Editor</h1>
+          <p class="subtitle">Modify existing images with natural-language instructions (Flux Kontext, Flux.2 Edit, Qwen Image Edit, Apple MLX, ComfyUI).</p>
+        </header>
+
+        <div class="lab-grid">
+          <div class="card glass-card">
+            <div class="card-header">
+              <h2>Source Image &amp; Edit Instruction</h2>
+            </div>
+
+            <div class="form-group">
+              <label>1. Choose Source Image</label>
+              <div class="dropzone" id="editor-dropzone">
+                <input type="file" id="editor-file-input" accept="image/*" hidden>
+                <div class="dropzone-prompt">
+                  <span>🖼️</span> Drop or paste an image here, <button type="button" class="link-btn" id="editor-browse-btn">browse</button>, or pick from Gallery below
+                </div>
+              </div>
+              <div class="form-row" style="margin-top: 10px;">
+                <select id="editor-gallery-picker">
+                  <option value="">Or select an image from your Gallery…</option>
+                </select>
+              </div>
+            </div>
+
+            <form id="image-edit-form">
+              <div class="form-group">
+                <label for="editor-instruction">2. Describe the modification</label>
+                <textarea id="editor-instruction" placeholder="e.g. Change the lighting to golden sunset, put a sleek leather jacket on the subject, and turn the background into a neon Tokyo street while keeping the face and pose identical..." required></textarea>
+              </div>
+
+              <div class="prompt-enhancer-actions">
+                <button type="button" class="btn btn-secondary btn-sm" id="editor-enhance-btn">
+                  <span>✨</span> Enhance Edit Instruction
+                </button>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group col">
+                  <label for="editor-model">Edit Model</label>
+                  <select id="editor-model">
+                    <option value="">Auto (Best Installed Edit Model)</option>
+                    <option value="flux_dev_kontext">Flux.1 Dev Kontext</option>
+                    <option value="qwen_image_edit_plus_20B">Qwen Image Edit Plus 20B</option>
+                    <option value="qwen_image_edit_20B">Qwen Image Edit 20B</option>
+                    <option value="chrono_edit_distill">ChronoEdit Distill</option>
+                    <option value="flux_schnell">Flux Schnell (Fallback)</option>
+                  </select>
+                </div>
+                <div class="form-group col">
+                  <label for="editor-strength">Modification Strength (<span id="editor-strength-val">0.65</span>)</label>
+                  <input type="range" id="editor-strength" min="0.15" max="0.95" step="0.05" value="0.65">
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group col">
+                  <label for="editor-steps">Steps</label>
+                  <input type="number" id="editor-steps" value="12" min="1" max="60">
+                </div>
+                <div class="form-group col">
+                  <label for="editor-seed">Seed</label>
+                  <input type="number" id="editor-seed" value="-1" min="-1">
+                </div>
+              </div>
+
+              <button type="submit" class="btn btn-primary" id="editor-submit-btn">
+                <span>🪄</span> Apply Image Modification
+              </button>
+            </form>
+          </div>
+
+          <div class="card glass-card">
+            <div class="card-header">
+              <h2>Before &amp; After Preview</h2>
+            </div>
+            <div class="compare-grid">
+              <div class="compare-pane">
+                <span class="compare-label">Original</span>
+                <div class="compare-frame" id="editor-original-preview">
+                  <span class="field-hint">No source image selected yet.</span>
+                </div>
+              </div>
+              <div class="compare-pane">
+                <span class="compare-label">Modified Result</span>
+                <div class="compare-frame" id="editor-result-preview">
+                  <span class="field-hint">Run an edit to see the modified result here.</span>
+                </div>
+              </div>
+            </div>
+            <p class="field-hint" id="editor-status-text" style="margin-top: 12px;"></p>
+            <div class="form-actions-row hidden" id="editor-result-actions">
+              <button type="button" class="btn btn-secondary btn-sm" id="editor-animate-btn">🎬 Animate in Quick Studio</button>
+              <button type="button" class="btn btn-secondary btn-sm" id="editor-use-as-source-btn">🔁 Iterate Further</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW 4: Gallery of Creations -->
       <section class="view-section" id="history-view">
         <header class="view-header">
           <h1>Gallery of Creations</h1>
-          <p class="subtitle">Browse, playback, and manage all your locally generated videos and images.</p>
+          <p class="subtitle">Browse, playback, edit, animate, and manage all your locally generated videos and images.</p>
           <a class="content-library-link" href="/agent/organizer_agent/" target="_blank" rel="noopener">Open your content library</a>
           <p class="content-library-hint">Completed creations are saved to your shared output folder and indexed with your other content. Use Organizer to add collections, labels and annotations.</p>
         </header>
-        
+
         <div class="gallery-filters">
           <button class="filter-tab active" data-filter="all">All Media</button>
           <button class="filter-tab" data-filter="video">🎬 Videos</button>
           <button class="filter-tab" data-filter="image">🖼️ Images</button>
         </div>
-        
-        <div class="gallery-grid" id="gallery-grid-container">
-          <!-- Populated by JavaScript -->
-        </div>
-        
+
+        <div class="gallery-grid" id="gallery-grid-container"></div>
+
         <div class="empty-gallery hidden" id="gallery-empty">
           <div class="empty-gallery-icon">📭</div>
           <h3>Your Gallery is Empty</h3>
-          <p>You haven't generated any videos or images yet. Head over to the Generation Lab to create your first item.</p>
+          <p>You haven't generated any videos or images yet. Head over to Quick Studio or Long-Video Factory to create your first item.</p>
         </div>
       </section>
-      
-      <!-- VIEW: Settings Configuration -->
+
+      <!-- VIEW 5: Hardware, Multi-Engine & Configuration -->
       <section class="view-section" id="settings-view">
         <header class="view-header">
-          <h1>Configuration</h1>
-          <p class="subtitle">Choose the local engine, model store, and generation defaults.</p>
+          <h1>Hardware &amp; Engine Configuration</h1>
+          <p class="subtitle">Inspect GPU/VRAM telemetry, verify cross-platform local engines (CUDA, ROCm, Apple MLX, DGX Spark, ComfyUI, sd-cli), and tune Media Factory defaults.</p>
         </header>
-        
+
+        <!-- Hardware Telemetry & Cross-Platform Engine Matrix -->
         <div class="card glass-card settings-card" id="environment-card">
-          <div class="card-header">
-              <h2>Local Generation Engines</h2>
+          <div class="card-header card-header-inline">
+            <h2>Hardware Telemetry &amp; Local Engines</h2>
+            <div class="form-actions-row">
+              <button type="button" class="btn btn-secondary btn-sm" id="env-verify-btn">✅ Verify Factory</button>
+              <button type="button" class="btn btn-secondary btn-sm" id="env-detect-btn"><span>🔍</span> Detect Engines</button>
+              <button type="button" class="btn btn-primary btn-auto btn-sm hidden" id="env-install-btn"><span>⬇️</span> Install Wan2GP</button>
+            </div>
           </div>
+
+          <div class="hw-telemetry-grid" id="hw-telemetry-grid">
+            <div class="hw-stat"><span class="hw-stat-label">Accelerator</span><strong id="hw-gpu-val">Detecting…</strong></div>
+            <div class="hw-stat"><span class="hw-stat-label">GPU VRAM</span><strong id="hw-vram-val">—</strong></div>
+            <div class="hw-stat"><span class="hw-stat-label">System RAM</span><strong id="hw-ram-val">—</strong></div>
+            <div class="hw-stat"><span class="hw-stat-label">Auto Memory Profile</span><strong id="hw-profile-val">—</strong></div>
+            <div class="hw-stat"><span class="hw-stat-label">FFmpeg Stitching</span><strong id="hw-ffmpeg-val">—</strong></div>
+          </div>
+
           <p class="field-hint" id="env-platform-line">Checking this computer...</p>
           <p class="field-hint" id="env-guidance-line"></p>
-          <div class="form-row" style="gap: 12px; margin: 12px 0;">
-            <button type="button" class="btn btn-secondary" id="env-detect-btn">
-              <span>🔍</span> Detect Wan2GP
-            </button>
-            <button type="button" class="btn btn-primary hidden" id="env-install-btn">
-              <span>⬇️</span> Install Wan2GP on this computer
-            </button>
-          </div>
+
+          <!-- 5-Engine Matrix -->
+          <div class="engine-matrix" id="engine-matrix"></div>
+
+          <!-- Verification Checklist -->
+          <div class="verification-list hidden" id="verification-list"></div>
+
           <p class="field-hint" id="env-action-result"></p>
-          <pre id="env-install-log" class="hidden" style="max-height: 200px; overflow-y: auto; font-size: 11px; white-space: pre-wrap; background: rgba(0,0,0,0.35); padding: 10px; border-radius: 8px;"></pre>
+          <pre id="env-install-log" class="hidden install-log-pre"></pre>
         </div>
 
+        <!-- Engine & Factory Configuration Form -->
         <div class="card glass-card settings-card">
           <div class="card-header">
-              <h2>Engine Configuration</h2>
+            <h2>Engine &amp; Factory Defaults</h2>
           </div>
 
           <form id="settings-form">
             <div class="form-group">
-              <label for="settings-engine">Generation Engine</label>
+              <label for="settings-engine">Active Generation Engine</label>
               <select id="settings-engine">
-                <option value="wan2gp">Wan2GP</option>
+                <option value="wan2gp">Wan2GP (NVIDIA CUDA / DGX Spark / AMD ROCm)</option>
+                <option value="comfyui">ComfyUI Headless API (CUDA / ROCm / MPS / Docker)</option>
+                <option value="mlx">Apple Silicon MLX (mflux + mlx-video)</option>
                 <option value="draw_things">Draw Things CLI (Apple Silicon)</option>
+                <option value="sdcpp">stable-diffusion.cpp (sd-cli GGML C/C++)</option>
               </select>
             </div>
 
             <div id="wan2gp-path-fields">
-            <div class="form-group">
-              <label for="settings-root">Wan2GP Root Folder</label>
-              <input type="text" id="settings-root" placeholder="e.g. ~/pinokio/api/wan.git (auto-detected)" required>
-              <span class="field-hint">The main folder where Wan2GP is installed.</span>
+              <div class="form-group">
+                <label for="settings-root">Wan2GP Root Folder</label>
+                <input type="text" id="settings-root" placeholder="e.g. ~/pinokio/api/wan.git (auto-detected)" required>
+                <span class="field-hint">The main folder where Wan2GP is installed.</span>
+              </div>
+              <div class="form-group">
+                <label for="settings-app">App Folder</label>
+                <input type="text" id="settings-app" placeholder="e.g. ~/pinokio/api/wan.git/app" required>
+                <span class="field-hint">The app folder that contains the Wan2GP generator (wgp.py).</span>
+              </div>
+              <div class="form-group">
+                <label for="settings-python">Wan2GP Python Path</label>
+                <input type="text" id="settings-python" placeholder="e.g. .../app/env/bin/python (Windows: ...\\Scripts\\python.exe)" required>
+                <span class="field-hint">Full path to the Python inside Wan2GP's environment.</span>
+              </div>
             </div>
 
-            <div class="form-group">
-              <label for="settings-app">App Folder</label>
-              <input type="text" id="settings-app" placeholder="e.g. ~/pinokio/api/wan.git/app" required>
-              <span class="field-hint">The app folder that contains the Wan2GP generator (wgp.py).</span>
+            <div id="comfyui-settings" class="hidden">
+              <div class="form-row">
+                <div class="form-group col">
+                  <label for="settings-comfyui-url">ComfyUI Server URL</label>
+                  <input type="text" id="settings-comfyui-url" placeholder="http://127.0.0.1:8188">
+                </div>
+                <div class="form-group col">
+                  <label for="settings-comfyui-dir">ComfyUI App Folder (Optional)</label>
+                  <input type="text" id="settings-comfyui-dir" placeholder="Auto-detected when installed">
+                </div>
+              </div>
             </div>
 
-            <div class="form-group">
-              <label for="settings-python">Wan2GP Python Path</label>
-              <input type="text" id="settings-python" placeholder="e.g. .../app/env/bin/python (Windows: ...\\app\\env\\Scripts\\python.exe)" required>
-              <span class="field-hint">Full path to the Python inside Wan2GP's environment.</span>
+            <div id="mlx-settings" class="hidden">
+              <div class="form-row">
+                <div class="form-group col">
+                  <label for="settings-mflux-cli">mflux-generate CLI Path</label>
+                  <input type="text" id="settings-mflux-cli" placeholder="Auto-detected on Apple Silicon">
+                </div>
+                <div class="form-group col">
+                  <label for="settings-mlx-image-model">MLX Image Model</label>
+                  <input type="text" id="settings-mlx-image-model" placeholder="schnell">
+                </div>
+                <div class="form-group col">
+                  <label for="settings-mlx-video-model">MLX Video Model</label>
+                  <input type="text" id="settings-mlx-video-model" placeholder="Lightricks/LTX-2">
+                </div>
+              </div>
             </div>
+
+            <div id="sdcpp-settings" class="hidden">
+              <div class="form-row">
+                <div class="form-group col">
+                  <label for="settings-sdcpp-cli">sd-cli Binary Path</label>
+                  <input type="text" id="settings-sdcpp-cli" placeholder="Auto-detected on PATH">
+                </div>
+                <div class="form-group col">
+                  <label for="settings-sdcpp-models">GGUF Models Folder</label>
+                  <input type="text" id="settings-sdcpp-models" placeholder="Directory containing .gguf/.safetensors models">
+                </div>
+              </div>
             </div>
 
             <div id="draw-things-settings" class="hidden">
@@ -300,16 +711,16 @@
               </div>
               <p class="field-hint">Model IDs are resolved locally; this integration does not download model weights.</p>
             </div>
-            
+
             <hr class="form-divider">
-            
+
             <div class="card-header" style="padding: 10px 0 20px 0;">
-              <h2>Model Defaults</h2>
+              <h2>Model &amp; GPU Memory Defaults</h2>
             </div>
-            
+
             <div class="form-row" id="wan2gp-model-settings">
               <div class="form-group col">
-                <label for="settings-model">Default Model</label>
+                <label for="settings-model">Default Video Model</label>
                 <input type="text" id="settings-model" placeholder="ltx2_distilled_gguf_q4_k_m" required>
               </div>
               <div class="form-group col">
@@ -317,35 +728,42 @@
                 <input type="text" id="settings-image-model" placeholder="flux_schnell">
               </div>
               <div class="form-group col">
-                <label for="settings-memory-profile">Memory Use</label>
-                <select id="settings-memory-profile">
-                  <option value="auto">Use Wan2GP setting</option>
-                  <option value="5">Low memory - stream model weights</option>
-                  <option value="4">Balanced</option>
-                  <option value="4.5">Balanced with less GPU memory</option>
-                  <option value="3.5">Load whole models without reserved RAM</option>
-                  <option value="3">Fast - load whole models on GPU</option>
-                  <option value="2">Keep models in reserved RAM</option>
-                  <option value="1">Fastest - uses most RAM and GPU memory</option>
-                </select>
-                <span class="field-hint">Low memory helps when a model fails to load before generation starts.</span>
+                <label for="settings-edit-model">Default Image Edit Model</label>
+                <input type="text" id="settings-edit-model" placeholder="flux_2_klein_4b_edit">
               </div>
             </div>
 
             <div class="form-row">
               <div class="form-group col">
-                <label for="settings-resolution">Default Resolution</label>
-                <input type="text" id="settings-resolution" placeholder="416x240" required>
+                <label for="settings-memory-profile">GPU / RAM Memory Profile</label>
+                <select id="settings-memory-profile">
+                  <option value="auto">Auto (Optimize dynamically for GPU VRAM &amp; RAM)</option>
+                  <option value="3.5">Profile 3.5 — High VRAM, Low System RAM (Recommended for 64GB+ GPU / Unified)</option>
+                  <option value="3">Profile 3 — Fast, load whole models on GPU</option>
+                  <option value="4">Profile 4 — Balanced</option>
+                  <option value="4.5">Profile 4.5 — Balanced with less GPU memory</option>
+                  <option value="5">Profile 5 — Very Low VRAM (stream from CPU RAM)</option>
+                  <option value="2">Profile 2 — Keep models in reserved RAM</option>
+                  <option value="1">Profile 1 — High RAM + High VRAM</option>
+                </select>
+                <span class="field-hint">Auto picks Profile 3.5 on high-VRAM / unified-memory GPUs to maximize GPU utilization while keeping CPU RAM low.</span>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group col">
+                <label for="settings-resolution">Default Video Resolution</label>
+                <input type="text" id="settings-resolution" placeholder="848x480" required>
               </div>
               <div class="form-group col">
                 <label for="settings-image-resolution">Default Image Resolution</label>
                 <input type="text" id="settings-image-resolution" placeholder="1280x720">
               </div>
             </div>
-            
+
             <div class="form-row">
               <div class="form-group col">
-                <label for="settings-steps">Default Steps</label>
+                <label for="settings-steps">Default Video Steps</label>
                 <input type="number" id="settings-steps" min="1" required>
               </div>
               <div class="form-group col">
@@ -359,39 +777,63 @@
                 <label for="settings-length">Default Video Length (Frames)</label>
                 <input type="number" id="settings-length" min="1" required>
               </div>
+              <div class="form-group col">
+                <label for="settings-scene-duration">Factory Scene Length (Seconds)</label>
+                <input type="number" id="settings-scene-duration" min="2" max="20" step="0.5" value="5">
+              </div>
+              <div class="form-group col">
+                <label for="settings-fps">Video FPS</label>
+                <input type="number" id="settings-fps" min="8" max="60" value="24">
+              </div>
             </div>
-            
+
+            <div class="form-row">
+              <div class="form-group col">
+                <label for="settings-llm-provider">LLM Provider Override (Blank = Follow Chat LLM)</label>
+                <input type="text" id="settings-llm-provider" placeholder="e.g. ollama, openai, gemini, anthropic">
+              </div>
+              <div class="form-group col">
+                <label for="settings-llm-model">LLM Model Override</label>
+                <input type="text" id="settings-llm-model" placeholder="Leave blank to follow AutoYou's active chat model">
+              </div>
+            </div>
+
             <div class="form-group">
               <label class="checkbox-container">
                 <input type="checkbox" id="settings-enhance">
-                <span class="checkmark"></span> Enhance prompts by default
+                <span class="checkmark"></span> Enhance prompts by default with LLM
+              </label>
+              <label class="checkbox-container">
+                <input type="checkbox" id="settings-continuity-chain" checked>
+                <span class="checkmark"></span> Chain last frame of each scene into the next scene for seamless long videos
+              </label>
+              <label class="checkbox-container">
+                <input type="checkbox" id="settings-release-ollama-vram" checked>
+                <span class="checkmark"></span> Release idle Ollama VRAM before heavy GPU video renders
               </label>
             </div>
-            
+
             <button type="submit" class="btn btn-primary" id="settings-save-btn">
               <span>💾</span> Save Settings
             </button>
           </form>
         </div>
       </section>
-      
+
     </main>
   </div>
-  
+
   <!-- Media Modal Overlay -->
   <div class="modal hidden" id="media-modal">
     <div class="modal-backdrop"></div>
     <div class="modal-container glass-card">
       <button class="modal-close" id="modal-close-btn">&times;</button>
-      <div class="modal-body" id="modal-media-content">
-        <!-- Rendered dynamically -->
-      </div>
+      <div class="modal-body" id="modal-media-content"></div>
       <div class="modal-footer">
         <h3 id="modal-title">Optimized Prompt</h3>
         <p class="prompt-text" id="modal-prompt"></p>
-        <div class="meta-row" id="modal-meta">
-          <!-- Rendered dynamically -->
-        </div>
+        <div class="meta-row" id="modal-meta"></div>
+        <div class="form-actions-row" id="modal-actions" style="margin-top: 14px;"></div>
       </div>
     </div>
   </div>

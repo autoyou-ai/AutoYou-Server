@@ -35,8 +35,14 @@ def _shared_anchor() -> Path:
 
 def default_voice_training_dir() -> Path:
     from shared.platform_runtime import get_service_data_dir
-
-    return get_service_data_dir("voice_training", anchor=_shared_anchor())
+    from shared.content_library import managed_roots, output_dir
+    legacy = get_service_data_dir("voice_training", anchor=_shared_anchor())
+    # Existing workspaces retain their paths. Fresh installations share the
+    # same output destination as the other agents, without a setup step.
+    for candidate in (legacy, *(root / "voice_training_agent" for root in managed_roots())):
+        if candidate.is_dir() and any(candidate.iterdir()):
+            return candidate
+    return output_dir("voice_training_agent")
 
 
 def voice_training_storage_config_path() -> Path:
@@ -69,11 +75,10 @@ def _normalize_training_dir(path_value: str | Path, *, create: bool = True) -> P
     raw = str(path_value or "").strip()
     if not raw:
         raise ValueError("Voice training storage path is required.")
-    path = Path(raw).expanduser()
-    if not path.is_absolute():
-        path = path.resolve()
-    else:
-        path = path.resolve()
+    path = Path(raw).expanduser().resolve()
+    test_root = os.getenv("AUTOYOU_TEST_ROOT")
+    if test_root and not path.is_relative_to(Path(test_root).resolve()):
+        raise ValueError("Test voice storage must remain inside AUTOYOU_TEST_ROOT")
     if path.exists() and not path.is_dir():
         raise ValueError(f"Voice training storage path is not a directory: {path}")
     if create:

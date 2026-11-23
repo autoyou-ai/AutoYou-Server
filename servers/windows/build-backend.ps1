@@ -1,4 +1,4 @@
-# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
+﻿# Copyright (c) 2026 OpenStorey LLC. All rights reserved.
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 
@@ -48,7 +48,7 @@ $defaultPythonExe = Join-Path $repoRoot ".venv\Scripts\python.exe"
 $backendRuntimePinPackages = @("google-adk", "google-genai", "google-cloud-aiplatform", "fastapi", "sqlalchemy")
 
 if (-not $SkipLocalBuildAcknowledgement) {
-    $pythonCommand = if (Test-Path $defaultPythonExe) {
+    $pythonCommand = if ((Test-Path $defaultPythonExe) -and (Test-Path (Join-Path $repoRoot ".venv\pyvenv.cfg"))) {
         $defaultPythonExe
     } else {
         $candidate = Get-Command python -ErrorAction SilentlyContinue
@@ -178,8 +178,15 @@ $includeCogneeRuntime = $IncludeCognee -or ($includeCogneeEnv -in @("1", "true",
 $requirementsIncludesVoice = $Requirements -in @("full", "source-full", "connector-full", "training-full")
 $requirementsIncludesTuning = $Requirements -eq "training-full"
 
-if (-not (Test-Path $defaultPythonExe)) {
-    throw "Expected build Python at '$defaultPythonExe'."
+$defaultPythonHasVenvCfg = Test-Path -LiteralPath (Join-Path $repoRoot ".venv\pyvenv.cfg") -PathType Leaf
+if (-not (Test-Path $defaultPythonExe) -or -not $defaultPythonHasVenvCfg) {
+    $fallbackPython312 = Resolve-Python312Executable
+    if ($fallbackPython312) {
+        Write-Warning "Using Python 3.12 executable '$fallbackPython312' because '$defaultPythonExe' is missing or incomplete."
+        $defaultPythonExe = $fallbackPython312
+    } else {
+        throw "Expected build Python at '$defaultPythonExe' (or a Python 3.12 installation)."
+    }
 }
 
 $pythonExe = $defaultPythonExe
@@ -1988,6 +1995,32 @@ Assert-AdkBrowserBundle -BackendRoot $finalBackendRoot
 Vendor-AdkBrowserFonts -BackendRoot $finalBackendRoot -CacheRoot $downloadRoot
 Patch-AdkBrowserUi -BackendRoot $finalBackendRoot -PythonExe $pythonExe
 Assert-AdkBrowserBundle -BackendRoot $finalBackendRoot
+
+# Ensure vendored LiteLLM/tiktoken BPE rank files preserve LF bytes so offline
+# hash checks succeed even when running from read-only WindowsApps (MSIX).
+$tiktokenDir = Join-Path $runtimeSitePackagesRoot "litellm\litellm_core_utils\tokenizers"
+if (Test-Path -LiteralPath $tiktokenDir -PathType Container) {
+    $expectedRankHashes = @{
+        "9b5ad71b2ce5302211f9c61530b329a4922fc6a4" = "223921B76EE99BDE995B7FF738513EEF100FB51D18C93597A113BCFFE865B2A7"
+        "fb374d419588a4632f3f557e76b4b70aebbca790" = "446A9538CB6C348E3516120D7C08B09F57C36495E2ACFFFE59A5BF8B0CFB1A2D"
+    }
+    foreach ($entry in $expectedRankHashes.GetEnumerator()) {
+        $rankFile = Join-Path $tiktokenDir $entry.Key
+        if (Test-Path -LiteralPath $rankFile -PathType Leaf) {
+            $currentHash = Get-Sha256Hex $rankFile
+            if ($currentHash -ne $entry.Value) {
+                $rawBytes = [System.IO.File]::ReadAllBytes($rankFile)
+                $text = [System.Text.Encoding]::ASCII.GetString($rawBytes).Replace("`r`n", "`n")
+                $fixedBytes = [System.Text.Encoding]::ASCII.GetBytes($text)
+                [System.IO.File]::WriteAllBytes($rankFile, $fixedBytes)
+                $fixedHash = Get-Sha256Hex $rankFile
+                if ($fixedHash -ne $entry.Value) {
+                    throw "Packaged tiktoken rank file '$rankFile' hash mismatch ($fixedHash != $($entry.Value))."
+                }
+            }
+        }
+    }
+}
 
 Copy-VoiceProcessingDlls -BackendRoot $finalBackendRoot -PythonExe $pythonExe -RequireFastTranscription:$requirementsIncludesVoice
 

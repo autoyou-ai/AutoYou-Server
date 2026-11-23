@@ -34,6 +34,13 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Optional, List, Dict, Any
 
+try:
+    from shared.platform_runtime import configure_tiktoken_cache_environment as _configure_tiktoken_cache
+
+    _configure_tiktoken_cache("AutoYou")
+except Exception:
+    pass
+
 import litellm
 
 from autoyou_agents import prompt as root_prompt
@@ -4639,6 +4646,60 @@ def _is_files_agent_request(user_text: str) -> bool:
         return False
     return True
 
+_MEDIA_FACTORY_SPECIALIST_PATTERN = re.compile(
+    r"\b(?:"
+    r"media\s+factory|video\s+factory|video\s+project|media\s+project|"
+    r"media\s+(?:generation\s+)?(?:settings?|config(?:uration)?|engine|hardware|models?)|"
+    r"(?:video|image)\s+(?:generation\s+)?settings?|"
+    r"wan2gp|comfyui|mflux|mlx[- ]?video|draw\s*things|sdcpp|"
+    r"edit\s+(?:this|the|my|that)\s+(?:image|photo|picture|video|script|scene)|"
+    r"modify\s+(?:this|the|my|that)\s+(?:image|photo|picture|video)|"
+    r"animate\s+(?:this|the|my|that)\s+(?:image|photo|picture)|"
+    r"restyle\s+(?:this|the|my|that)\s+(?:image|photo|picture)|"
+    r"(?:plan|edit|refine|assemble|pause|resume)\s+(?:the\s+|my\s+)?(?:video|scenes?|script|storyboard|project)"
+    r")\b",
+    re.IGNORECASE,
+)
+_MEDIA_COMPLEX_QUALIFIER_PATTERN = re.compile(
+    r"\b(?:"
+    r"project|factory|script|storyboard|scenes?|stages?|refine|refinement|assemble|"
+    r"pause|resume|cancel|edit|modify|restyle|inpaint|upscale|transform|replace|"
+    r"settings?|config(?:uration)?|memory\s+profile|resolution|frames|steps|engine|"
+    r"wan2gp|comfyui|mlx|draw\s*things|sdcpp|hardware|gpu|vram|install|verify|detect|"
+    r"long\s+video|multi[- ]?scene|goal\s*loop|plan\s+first|without\s+rendering"
+    r")\b|\b\d+(?:\.\d+)?\s*(?:sec|secs|second|seconds|min|mins|minute|minutes|hr|hrs|hour|hours)\b",
+    re.IGNORECASE,
+)
+
+
+def _callback_has_turn_attachments(callback_context: Any) -> bool:
+    state = getattr(callback_context, "state", None)
+    if state is None:
+        return False
+    try:
+        raw = state.get("autoyou_turn_attachments") if hasattr(state, "get") else None
+        return bool(isinstance(raw, list) and raw)
+    except Exception:
+        return False
+
+
+def _is_media_factory_specialist_request(user_text: str, callback_context: Any = None) -> bool:
+    normalized = " ".join(str(user_text or "").split()).strip()
+    if not normalized:
+        return False
+    if normalized.lower().startswith("[voice transcript]"):
+        normalized = normalized[len("[voice transcript]"):].strip()
+    if _MEDIA_FACTORY_SPECIALIST_PATTERN.search(normalized):
+        return True
+    if _is_media_generation_request(normalized) and (
+        _MEDIA_COMPLEX_QUALIFIER_PATTERN.search(normalized)
+        or "attachments:" in normalized.lower()
+        or _callback_has_turn_attachments(callback_context)
+    ):
+        return True
+    return False
+
+
 def _is_media_generation_request(user_text: str) -> bool:
     normalized = " ".join(str(user_text or "").split()).strip()
     if not normalized:
@@ -5261,6 +5322,24 @@ async def _root_router_before_model_callback(callback_context: Any, llm_request:
         if _is_runtime_agent_installed_but_unavailable(_FILES_RUNTIME_AGENT_NAME):
             return _unavailable_agent_response(_FILES_RUNTIME_AGENT_NAME)
 
+    if _provider_requires_explicit_agent_tools() and _is_media_factory_specialist_request(user_text, callback_context):
+        if _is_runtime_agent_enabled(_MEDIA_RUNTIME_AGENT_NAME):
+            _mark_tool_dispatched_for_invocation(callback_context.state, invocation_id)
+            _set_root_preferred_agent(callback_context.state, _MEDIA_RUNTIME_AGENT_NAME)
+            _set_root_last_routed_agent(callback_context.state, _MEDIA_RUNTIME_AGENT_NAME)
+            return _dispatch_specialist_tool_call(
+                _MEDIA_RUNTIME_AGENT_NAME,
+                {"request": user_text},
+                custom_metadata={
+                    "response_author": root_prompt.AGENT_NAME,
+                    "route_target": _MEDIA_RUNTIME_AGENT_NAME,
+                    "route_reason": "deterministic_media_factory",
+                },
+            )
+
+        if _is_runtime_agent_installed_but_unavailable(_MEDIA_RUNTIME_AGENT_NAME):
+            return _unavailable_agent_response(_MEDIA_RUNTIME_AGENT_NAME)
+
     if _provider_requires_explicit_agent_tools() and _is_media_generation_request(user_text):
         if _is_runtime_agent_enabled(_MEDIA_RUNTIME_AGENT_NAME):
             _mark_tool_dispatched_for_invocation(callback_context.state, invocation_id)
@@ -5748,6 +5827,13 @@ def process_media_content(
                 "visual search",
                 "search image",
             ]
+            media_gen_keywords = [
+                "generate video", "generate image", "edit image", "modify image",
+                "modify photo", "edit photo", "restyle", "inpaint", "animate this",
+                "media factory", "video factory", "turn into video", "image to video",
+            ]
+            if any(k in hint_text for k in media_gen_keywords):
+                return "media_generation"
             if any(k in hint_text for k in internet_keywords):
                 return "internet"
             if any(k in hint_text for k in ["page", "feed", "for you", "page tool"]):
@@ -5806,6 +5892,7 @@ def process_media_content(
                 route_order.append(candidate)
 
         route_agent_map = {
+            "media_generation": "media_generation_agent",
             "internet": "internet_agent",
             "notes": "notes_agent",
             "page": "page_agent",
@@ -5817,7 +5904,17 @@ def process_media_content(
             if ingest_callable is None:
                 continue
 
-            if candidate_route == "page":
+            if candidate_route == "media_generation":
+                res = ingest_callable(
+                    attachments=attachments,
+                    source=source,
+                    user_id=user_id,
+                    session_id=session_id,
+                    message_id=message_id,
+                    intent_hint=intent_hint,
+                    tool_context=tool_context,
+                )
+            elif candidate_route == "page":
                 res = ingest_callable(
                     attachments=attachments,
                     source=source,

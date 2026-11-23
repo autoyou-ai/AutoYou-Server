@@ -40,6 +40,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
+from shared.platform_runtime import get_service_data_dir, is_compiled
 from shared.secure_storage import append_secure_file, read_secure_file, write_secure_file
 
 __debug_provenance_e__ = "AUTOYOU-PROVENANCE-E-pay-1f80abcd8a8f9f23df7ec824"
@@ -51,7 +52,15 @@ DEFAULT_AI_AGENT_PORT = 8081
 DEFAULT_AUTH_PORT = 8002
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PASSWORD = "1234"
-OUTPUT_DIR = REPO_ROOT / "output" / "autoyou_self_improvement"
+
+
+def _default_output_dir() -> Path:
+    if is_compiled() or os.getenv("AUTOYOU_TEST_ROOT"):
+        return get_service_data_dir("autoyou_self_improvement", anchor=__file__)
+    return REPO_ROOT / "output" / "autoyou_self_improvement"
+
+
+OUTPUT_DIR = _default_output_dir()
 
 _ERROR_LOG_RE = re.compile(
     r"(?:(?:^|\s|\[)(?:ERROR|CRITICAL)\s*[:\]])|"
@@ -1391,6 +1400,7 @@ def paraphrase_scenarios() -> list[Scenario]:
 
 
 REMOTE_DESKTOP_AGENT = "autoyou_remote_desktop_agent"
+MEDIA_AGENT = "autoyou_media_generation_agent"
 
 
 def personal_harness_scenarios() -> list[Scenario]:
@@ -1441,12 +1451,502 @@ def personal_harness_scenarios() -> list[Scenario]:
     ]
 
 
+def media_factory_scenarios() -> list[Scenario]:
+    """Multi-turn scenarios exercising media_generation_agent chat control, scripting, settings, and factory loop."""
+    return [
+        Scenario(
+            name="media_factory_hardware_and_settings",
+            description="Chat can inspect media hardware and update video generation settings without errors.",
+            turns=(
+                ScenarioTurn(
+                    "@media Show my current media generation hardware status and memory profile.",
+                    MEDIA_AGENT,
+                    must_match=(r"(?i)\b(?:wan2gp|mlx|comfyui|draw|sdcpp|gpu|profile|ready|engine)\b",),
+                ),
+                ScenarioTurn(
+                    "@media What are my current media generation settings?",
+                    MEDIA_AGENT,
+                    must_match=(r"(?i)\b(?:resolution|model|engine|frames|steps|profile)\b",),
+                ),
+            ),
+        ),
+        Scenario(
+            name="media_factory_script_and_scene_editing",
+            description="Chat can plan a multi-scene video project, edit a scene, and inspect project status.",
+            turns=(
+                ScenarioTurn(
+                    "@media Create a 15 second video factory project titled 'GL-{tok} Orbital Dawn' about a sunrise over an orbital station, plan the script first without rendering yet.",
+                    MEDIA_AGENT,
+                    must_match=(r"(?i)\b(?:project|scene|script|planned|created)\b",),
+                ),
+                ScenarioTurn(
+                    "@media List my video factory projects.",
+                    MEDIA_AGENT,
+                    must_match=(r"(?i)\b(?:orbital|project|scene)\b",),
+                ),
+            ),
+        ),
+    ]
+
+
 SUITES = {
     "continuity": continuity_scenarios,
     "paraphrase": paraphrase_scenarios,
     "personal_harness": personal_harness_scenarios,
     "qwen35": personal_harness_scenarios,
+    "media_factory": media_factory_scenarios,
 }
+
+
+# ── Long-Running Media Factory Goal Controller ───────────────────────────────
+#
+# Drives autoyou_agents.media_generation_agent through multi-stage, potentially
+# multi-hour video production (plan -> keyframes -> render -> refine -> assemble)
+# with checkpointing, bounded self-repair retries, pause/resume/cancel control,
+# verification probes, and optional chat/client notifications.
+
+
+@dataclasses.dataclass(frozen=True)
+class MediaGoalConfig:
+    """Execution settings for a goal-loop controlled Media Factory production."""
+
+    project_id: int
+    stages: tuple[str, ...] = ("plan", "render", "refine", "assemble")
+    use_keyframes: bool = False
+    scene_indices: Optional[tuple[int, ...]] = None
+    max_scene_repair_attempts: int = 2
+    refinement_direction: str = ""
+    audio_path: str = ""
+    force_rerender: bool = False
+    notify_on_stage: bool = True
+    owner_key: Optional[str] = None
+    canonical_user_id: Optional[str] = None
+    canonical_session_id: Optional[str] = None
+    conversation_session_id: Optional[str] = None
+    reply_target: Optional[dict[str, Any]] = None
+
+
+@dataclasses.dataclass
+class MediaGoalRun:
+    """Live state of a Media Factory goal-loop execution."""
+
+    goal_run_id: str
+    project_id: int
+    status: str  # queued | running | paused | completed | failed | cancelled
+    stages: tuple[str, ...]
+    current_stage: str = ""
+    completed_stages: list[str] = dataclasses.field(default_factory=list)
+    iterations: int = 0
+    started_at: str = ""
+    updated_at: str = ""
+    finished_at: str = ""
+    last_result: dict[str, Any] = dataclasses.field(default_factory=dict)
+    error: str = ""
+    report_path: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "goal_run_id": self.goal_run_id,
+            "project_id": self.project_id,
+            "status": self.status,
+            "stages": list(self.stages),
+            "current_stage": self.current_stage,
+            "completed_stages": list(self.completed_stages),
+            "iterations": self.iterations,
+            "started_at": self.started_at,
+            "updated_at": self.updated_at,
+            "finished_at": self.finished_at,
+            "last_result": dict(self.last_result),
+            "error": self.error,
+            "report_path": self.report_path,
+        }
+
+
+_MEDIA_GOAL_LOCK = threading.Lock()
+_MEDIA_GOAL_RUNS: dict[int, MediaGoalRun] = {}
+_MEDIA_GOAL_STOP_EVENTS: dict[int, threading.Event] = {}
+_MEDIA_GOAL_CANCEL_FLAGS: dict[int, bool] = {}
+
+
+def _utc_now() -> str:
+    return _dt.datetime.now(_dt.timezone.utc).isoformat()
+
+
+def _write_media_goal_report(run: MediaGoalRun, project_snapshot: Optional[Mapping[str, Any]] = None) -> str:
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = _dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+    path = OUTPUT_DIR / f"media-goal-{run.project_id}-{stamp}-{run.goal_run_id[:10]}.json"
+    payload = {
+        "run": run.to_dict(),
+        "project_summary": {
+            "id": (project_snapshot or {}).get("id", run.project_id),
+            "title": (project_snapshot or {}).get("title", ""),
+            "status": (project_snapshot or {}).get("status", ""),
+            "scene_count": (project_snapshot or {}).get("scene_count", 0),
+            "rendered_scene_count": (project_snapshot or {}).get("rendered_scene_count", 0),
+            "final_file_name": (project_snapshot or {}).get("final_file_name", ""),
+        },
+    }
+    write_secure_file(path, (json.dumps(payload, indent=2, ensure_ascii=False) + "\n").encode("utf-8"))
+    run.report_path = str(path)
+    return str(path)
+
+
+def _notify_media_goal_progress(
+    config: MediaGoalConfig,
+    *,
+    message: str,
+    status: str,
+    final_result: Optional[dict[str, Any]] = None,
+) -> None:
+    if not config.reply_target:
+        return
+    try:
+        from autoyou_agents.media_generation_agent import agent as media_agent
+
+        if final_result and final_result.get("status") == "success":
+            media_agent._notify_generation_finished(
+                result=final_result,
+                media_type="video",
+                item_id=int(final_result.get("item_id") or 0),
+                owner_key=config.owner_key,
+                canonical_user_id=config.canonical_user_id,
+                canonical_session_id=config.canonical_session_id,
+                conversation_session_id=config.conversation_session_id,
+                reply_target=config.reply_target,
+            )
+            return
+        if not config.notify_on_stage:
+            return
+        metadata = media_agent._build_delivery_metadata(
+            media_type="video",
+            item_id=int(config.project_id),
+            owner_key=config.owner_key,
+            canonical_user_id=config.canonical_user_id,
+            canonical_session_id=config.canonical_session_id,
+            conversation_session_id=config.conversation_session_id,
+            reply_target=config.reply_target,
+            status=status,
+        )
+        metadata["media_factory_project_id"] = int(config.project_id)
+        media_agent._post_reply_target_message(
+            reply_target=config.reply_target,
+            message=message,
+            metadata=metadata,
+            context=[],
+        )
+    except Exception:
+        pass
+
+
+def _resolve_stages_for_config(config: MediaGoalConfig) -> tuple[str, ...]:
+    valid = ("plan", "keyframes", "render", "refine", "assemble")
+    stages: list[str] = []
+    for stage in config.stages:
+        norm = str(stage or "").strip().lower()
+        if norm in valid and norm not in stages:
+            stages.append(norm)
+    if config.use_keyframes and "keyframes" not in stages and "render" in stages:
+        idx = stages.index("render")
+        stages.insert(idx, "keyframes")
+    return tuple(stages) or ("plan", "render", "refine", "assemble")
+
+
+def run_media_factory_goal(
+    config: MediaGoalConfig,
+    *,
+    goal_run_id: Optional[str] = None,
+    stop_event: Optional[threading.Event] = None,
+) -> MediaGoalRun:
+    """Execute the Media Factory goal loop synchronously across all requested stages."""
+    from autoyou_agents.media_generation_agent import factory
+
+    project_id = int(config.project_id)
+    stages = _resolve_stages_for_config(config)
+    run_id = goal_run_id or f"mg-{uuid.uuid4().hex[:12]}"
+    event = stop_event or threading.Event()
+    run = MediaGoalRun(
+        goal_run_id=run_id,
+        project_id=project_id,
+        status="running",
+        stages=stages,
+        started_at=_utc_now(),
+        updated_at=_utc_now(),
+    )
+    with _MEDIA_GOAL_LOCK:
+        _MEDIA_GOAL_RUNS[project_id] = run
+        _MEDIA_GOAL_STOP_EVENTS[project_id] = event
+        _MEDIA_GOAL_CANCEL_FLAGS[project_id] = False
+
+    def _should_stop() -> bool:
+        return event.is_set()
+
+    def _is_cancelled() -> bool:
+        with _MEDIA_GOAL_LOCK:
+            return bool(_MEDIA_GOAL_CANCEL_FLAGS.get(project_id, False))
+
+    factory.update_project(project_id, {"goal_run_id": run_id})
+    factory.append_stage_log(project_id, "goal_loop", f"Goal loop {run_id} started for stages: {', '.join(stages)}.")
+
+    final_assemble_result: Optional[dict[str, Any]] = None
+    try:
+        for stage in stages:
+            if _should_stop():
+                run.status = "cancelled" if _is_cancelled() else "paused"
+                run.updated_at = _utc_now()
+                factory.update_project(
+                    project_id,
+                    {"status": run.status, "progress_message": f"Goal loop {run.status} before stage '{stage}'."},
+                )
+                break
+
+            run.current_stage = stage
+            run.iterations += 1
+            run.updated_at = _utc_now()
+            project = factory.get_project(project_id, include_scenes=True)
+            if not project:
+                raise ValueError(f"Media project #{project_id} no longer exists.")
+
+            if stage == "plan":
+                if not project.get("scenes") or config.force_rerender:
+                    planned = factory.plan_project_script(project_id, instructions=config.refinement_direction)
+                    stage_res: dict[str, Any] = {
+                        "status": "success",
+                        "scene_count": planned.get("scene_count", 0),
+                    }
+                else:
+                    stage_res = {"status": "skipped", "scene_count": len(project.get("scenes") or [])}
+            elif stage == "keyframes":
+                stage_res = factory.run_keyframes_stage(
+                    project_id,
+                    scene_indices=config.scene_indices,
+                    stop_check=_should_stop,
+                )
+            elif stage == "render":
+                stage_res = factory.run_render_stage(
+                    project_id,
+                    scene_indices=config.scene_indices,
+                    force_rerender=config.force_rerender,
+                    stop_check=_should_stop,
+                )
+            elif stage == "refine":
+                stage_res = factory.run_refine_stage(
+                    project_id,
+                    scene_indices=config.scene_indices,
+                    direction=config.refinement_direction,
+                    force_rerender=bool(config.refinement_direction and config.scene_indices),
+                    max_repair_attempts=max(1, int(config.max_scene_repair_attempts)),
+                    stop_check=_should_stop,
+                )
+            elif stage == "assemble":
+                stage_res = factory.run_assemble_stage(
+                    project_id,
+                    audio_path=config.audio_path or None,
+                    stop_check=_should_stop,
+                )
+                if stage_res.get("status") == "success":
+                    final_assemble_result = dict(stage_res)
+            else:
+                continue
+
+            run.last_result = dict(stage_res)
+            run.updated_at = _utc_now()
+
+            if stage_res.get("status") == "paused" or _should_stop():
+                run.status = "cancelled" if _is_cancelled() else "paused"
+                factory.update_project(project_id, {"status": run.status})
+                break
+
+            if stage_res.get("status") == "error":
+                run.status = "failed"
+                run.error = str(stage_res.get("message") or f"Stage '{stage}' failed.")
+                factory.append_stage_log(project_id, "goal_loop", f"Stage '{stage}' failed: {run.error}", level="error")
+                break
+
+            # Allow partial render to flow into refine so goal_loop can self-repair failed scenes!
+            if stage_res.get("status") == "partial" and stage != "render":
+                run.status = "failed"
+                run.error = f"Stage '{stage}' still has {stage_res.get('failed', 1)} unresolved scene(s)."
+                factory.update_project(project_id, {"status": "paused", "error_message": run.error})
+                factory.append_stage_log(project_id, "goal_loop", run.error, level="warning")
+                break
+
+            run.completed_stages.append(stage)
+            factory.append_stage_log(project_id, "goal_loop", f"Stage '{stage}' completed ({stage_res.get('status')}).")
+            if stage != "assemble":
+                _notify_media_goal_progress(
+                    config,
+                    message=f"Media Factory #{project_id}: stage '{stage}' finished.",
+                    status="progress",
+                )
+        else:
+            run.status = "completed"
+    except Exception as exc:
+        run.status = "failed"
+        run.error = str(exc)
+        factory.update_project(project_id, {"status": "failed", "error_message": str(exc)})
+        factory.append_stage_log(project_id, "goal_loop", f"Goal loop crashed: {exc}", level="error")
+    finally:
+        run.finished_at = _utc_now()
+        run.updated_at = run.finished_at
+        snapshot = factory.get_project(project_id, include_scenes=True)
+        try:
+            _write_media_goal_report(run, snapshot)
+        except Exception:
+            pass
+        if final_assemble_result:
+            _notify_media_goal_progress(
+                config,
+                message=str(final_assemble_result.get("message") or "Your Media Factory video is ready."),
+                status="completed",
+                final_result=final_assemble_result,
+            )
+        elif run.status == "failed":
+            _notify_media_goal_progress(
+                config,
+                message=f"Media Factory #{project_id} paused/failed in '{run.current_stage}': {run.error}",
+                status="failed",
+            )
+    return run
+
+
+def start_media_factory_goal(config: MediaGoalConfig) -> dict[str, Any]:
+    """Start a non-blocking goal-loop controlled Media Factory run in a daemon thread."""
+    project_id = int(config.project_id)
+    with _MEDIA_GOAL_LOCK:
+        existing = _MEDIA_GOAL_RUNS.get(project_id)
+        if existing and existing.status == "running":
+            return {
+                "status": "already_running",
+                "message": f"Goal loop {existing.goal_run_id} is already running for project #{project_id}.",
+                "run": existing.to_dict(),
+            }
+        run_id = f"mg-{uuid.uuid4().hex[:12]}"
+        stop_event = threading.Event()
+        stages = _resolve_stages_for_config(config)
+        run = MediaGoalRun(
+            goal_run_id=run_id,
+            project_id=project_id,
+            status="queued",
+            stages=stages,
+            started_at=_utc_now(),
+            updated_at=_utc_now(),
+        )
+        _MEDIA_GOAL_RUNS[project_id] = run
+        _MEDIA_GOAL_STOP_EVENTS[project_id] = stop_event
+        _MEDIA_GOAL_CANCEL_FLAGS[project_id] = False
+
+    thread = threading.Thread(
+        target=run_media_factory_goal,
+        args=(config,),
+        kwargs={"goal_run_id": run_id, "stop_event": stop_event},
+        daemon=True,
+        name=f"media-goal-loop-{project_id}",
+    )
+    thread.start()
+    return {
+        "status": "started",
+        "goal_run_id": run_id,
+        "project_id": project_id,
+        "stages": list(stages),
+        "message": f"Goal loop started for Media Factory project #{project_id} ({' -> '.join(stages)}).",
+    }
+
+
+def pause_media_factory_goal(project_id: int) -> dict[str, Any]:
+    pid = int(project_id)
+    with _MEDIA_GOAL_LOCK:
+        event = _MEDIA_GOAL_STOP_EVENTS.get(pid)
+        _MEDIA_GOAL_CANCEL_FLAGS[pid] = False
+        if event:
+            event.set()
+        run = _MEDIA_GOAL_RUNS.get(pid)
+    from autoyou_agents.media_generation_agent import factory
+
+    factory.update_project(pid, {"status": "paused", "progress_message": "Pause requested — will checkpoint cleanly after active step."})
+    return {
+        "status": "pausing" if (run and run.status == "running") else "paused",
+        "project_id": pid,
+        "message": f"Paused Media Factory project #{pid}. Completed scenes are preserved for resume.",
+    }
+
+
+def cancel_media_factory_goal(project_id: int) -> dict[str, Any]:
+    pid = int(project_id)
+    with _MEDIA_GOAL_LOCK:
+        _MEDIA_GOAL_CANCEL_FLAGS[pid] = True
+        event = _MEDIA_GOAL_STOP_EVENTS.get(pid)
+        if event:
+            event.set()
+    from autoyou_agents.media_generation_agent import factory
+
+    factory.update_project(pid, {"status": "cancelled", "progress_message": "Cancelled by operator."})
+    return {"status": "cancelled", "project_id": pid, "message": f"Cancelled Media Factory project #{pid}."}
+
+
+def resume_media_factory_goal(
+    project_id: int,
+    *,
+    use_keyframes: bool = False,
+    reply_target: Optional[dict[str, Any]] = None,
+    owner_key: Optional[str] = None,
+    canonical_user_id: Optional[str] = None,
+    canonical_session_id: Optional[str] = None,
+    conversation_session_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """Resume a paused or interrupted project from the first incomplete stage/scene."""
+    from autoyou_agents.media_generation_agent import factory
+
+    project = factory.get_project(int(project_id), include_scenes=True)
+    if not project:
+        return {"status": "error", "message": f"Project #{project_id} not found."}
+    scenes = project.get("scenes") or []
+    stages: list[str] = []
+    if not scenes:
+        stages.append("plan")
+    if use_keyframes and any(not s.get("has_keyframe") for s in scenes):
+        stages.append("keyframes")
+    if not scenes or any(not s.get("has_clip") or s.get("status") in {"pending", "failed", "rendering"} for s in scenes):
+        stages.append("render")
+    stages.extend(["refine", "assemble"])
+    cfg = MediaGoalConfig(
+        project_id=int(project_id),
+        stages=tuple(stages),
+        use_keyframes=use_keyframes,
+        reply_target=reply_target,
+        owner_key=owner_key,
+        canonical_user_id=canonical_user_id,
+        canonical_session_id=canonical_session_id,
+        conversation_session_id=conversation_session_id,
+    )
+    return start_media_factory_goal(cfg)
+
+
+def get_media_factory_goal_status(project_id: int) -> dict[str, Any]:
+    with _MEDIA_GOAL_LOCK:
+        run = _MEDIA_GOAL_RUNS.get(int(project_id))
+        if run:
+            return run.to_dict()
+    from autoyou_agents.media_generation_agent import factory
+
+    project = factory.get_project(int(project_id), include_scenes=True)
+    if not project:
+        return {"project_id": int(project_id), "status": "not_found"}
+    return {
+        "goal_run_id": project.get("goal_run_id") or "",
+        "project_id": int(project_id),
+        "status": project.get("status") or "idle",
+        "current_stage": project.get("current_stage") or "plan",
+        "progress_percent": project.get("progress_percent", 0.0),
+        "progress_message": project.get("progress_message", ""),
+        "scene_count": project.get("scene_count", 0),
+        "rendered_scene_count": project.get("rendered_scene_count", 0),
+    }
+
+
+def list_media_factory_goals() -> list[dict[str, Any]]:
+    with _MEDIA_GOAL_LOCK:
+        return [run.to_dict() for run in _MEDIA_GOAL_RUNS.values()]
 
 
 def _fill_token(text: str, token: str) -> str:
@@ -1767,12 +2267,19 @@ def _parse_cli(argv: Sequence[str]) -> GoalLoopConfig:
     parser.add_argument("--repeat", type=int, default=1, help="Attempts per model-dependent scenario.")
     parser.add_argument("--log-file", default="", help="Server log to scan for errors during the run.")
     parser.add_argument("--offline", action="store_true", help="Skip scenarios that need live internet.")
+    parser.add_argument("--media-project", type=int, default=0, help="Run the Media Factory goal controller for this project ID.")
+    parser.add_argument("--media-stages", default="plan,render,refine,assemble", help="Comma-separated Media Factory stages.")
     args = parser.parse_args(list(argv))
     if args.list_scenarios:
         for builder in SUITES.values():
             for scenario in builder():
                 print(f"{scenario.name}: {scenario.description}")
         raise SystemExit(0)
+    if int(args.media_project or 0) > 0:
+        stages = tuple(s.strip() for s in str(args.media_stages or "").split(",") if s.strip())
+        run = run_media_factory_goal(MediaGoalConfig(project_id=int(args.media_project), stages=stages or ("plan", "render", "refine", "assemble")))
+        print(json.dumps(run.to_dict(), indent=2, ensure_ascii=False))
+        raise SystemExit(0 if run.status == "completed" else 2)
     goal = str(args.goal_opt or args.goal or "").strip()
     scenario_mode = bool(args.suite or args.scenario)
     if not goal and not scenario_mode:

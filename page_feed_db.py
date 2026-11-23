@@ -337,7 +337,7 @@ class PageFeedDB:
             )
             item_id = int(cur.lastrowid)
         from shared.content_library import publish_content
-        publish_content("page_agent", str(item_id), title or "Saved page", "page", href="/agent/page_agent/")
+        publish_content("page_agent", str(item_id), title or "Saved page", "page", href="/agent/page_agent/", source_text=content)
         return FeedItem(
             id=item_id,
             type=item_type,
@@ -405,7 +405,7 @@ class PageFeedDB:
             changed = cur.rowcount > 0
         if changed:
             from shared.content_library import publish_content
-            publish_content("page_agent", str(item_id), title or "Saved page", "page", href="/agent/page_agent/", force_revision=True)
+            publish_content("page_agent", str(item_id), title or "Saved page", "page", href="/agent/page_agent/", force_revision=True, source_text=content)
         return changed
 
     def delete(self, item_id: int) -> bool:
@@ -608,6 +608,8 @@ class PageFeedDB:
                 "INSERT INTO blobs (id, filename, mimetype, size, path, created_at) VALUES (?, ?, ?, ?, ?, ?)",
                 (new_id, filename, mimetype or "", int(size or 0), path, created_at),
             )
+        from shared.content_library import publish_content, infer_kind
+        publish_content("page_agent", "attachment:" + new_id, filename, infer_kind(filename), path=path, source_collection="Attachments")
         return BlobMeta(
             id=new_id,
             filename=str(filename),

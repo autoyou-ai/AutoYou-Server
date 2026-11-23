@@ -31,6 +31,56 @@ AUTOYOU_ASSISTANT_TURN_STATE_KEY = "autoyou_assistant_turn"
 # message). Set by the server on every run; the root then adds a system note
 # instead of the server sending made-up words as the user.
 AUTOYOU_TURN_CONTINUATION_STATE_KEY = "autoyou_turn_continuation"
+# Lightweight descriptors for media/file attachments present on the current turn
+# and the most recent media attachments in the session (no raw base64 payloads).
+AUTOYOU_TURN_ATTACHMENTS_STATE_KEY = "autoyou_turn_attachments"
+AUTOYOU_RECENT_MEDIA_ATTACHMENTS_STATE_KEY = "user:autoyou_recent_media_attachments"
+
+
+def normalize_turn_attachments(value: Any, *, max_items: int = 12) -> list[Dict[str, Any]]:
+    """Keep only compact, JSON-safe attachment descriptors for ADK session state."""
+    if not isinstance(value, (list, tuple)):
+        return []
+    out: list[Dict[str, Any]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        path = str(item.get("path") or "").strip()
+        filename = str(item.get("filename") or "").strip()
+        mimetype = str(item.get("mimetype") or "").strip().lower()
+        if not path and not filename:
+            continue
+        meta = item.get("meta") if isinstance(item.get("meta"), dict) else {}
+        kind = str(item.get("kind") or meta.get("kind") or "").strip().lower()
+        if not kind:
+            if mimetype.startswith("image/"):
+                kind = "image"
+            elif mimetype.startswith("video/"):
+                kind = "video"
+            elif mimetype.startswith("audio/"):
+                kind = "audio"
+            else:
+                kind = "file"
+        entry: Dict[str, Any] = {
+            "filename": filename or (path.replace("\\", "/").rsplit("/", 1)[-1] if path else "attachment"),
+            "mimetype": mimetype or "application/octet-stream",
+            "kind": kind,
+        }
+        if path:
+            entry["path"] = path
+        try:
+            size_bytes = int(item.get("size_bytes") or 0)
+            if size_bytes > 0:
+                entry["size_bytes"] = size_bytes
+        except (TypeError, ValueError):
+            pass
+        source = str(item.get("source") or meta.get("source") or "").strip()
+        if source:
+            entry["source"] = source[:64]
+        out.append(entry)
+        if len(out) >= max(1, int(max_items)):
+            break
+    return out
 
 
 def normalize_assistant_turn(value: Any) -> Optional[Dict[str, Any]]:

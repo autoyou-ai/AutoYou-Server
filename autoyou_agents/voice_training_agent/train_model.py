@@ -547,6 +547,12 @@ def run_training_sync(reference_clip_ids: Optional[Sequence[str]] = None) -> Non
         pointer = set_active_custom_voice_model_dir(output_dir)
         activated = True
         superseded = _remove_superseded_outputs(keep=output_dir)
+        try:
+            from shared.content_library_scan import scan_voice
+            scan_voice()
+        except Exception:
+            # Catalog maintenance cannot undo a completed, consented build.
+            pass
 
         warnings = list(selection.get("warnings") or [])
         message = (

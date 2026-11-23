@@ -39,7 +39,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from typing import MutableMapping, Optional
+from typing import MutableMapping, Optional, Sequence
 
 __debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-via-9a5c0333be42478d3f47960f"
 
@@ -260,8 +260,93 @@ def get_whisper_cache_dir(app_name: str = "AutoYou") -> Path:
     return cache_dir
 
 
+_TIKTOKEN_KNOWN_HASHES: dict[str, str] = {
+    "9b5ad71b2ce5302211f9c61530b329a4922fc6a4": "223921b76ee99bde995b7ff738513eef100fb51d18c93597a113bcffe865b2a7",
+    "fb374d419588a4632f3f557e76b4b70aebbca790": "446a9538cb6c348e3516120d7c08b09f57c36495e2acfffe59a5bf8b0cfb1a2d",
+    "ec7223a39ce59f226a68acc30dc1af2788490e15": "94b5ca7dff4d00767bc256fdd1b27e5b17361d7b8a5f968547fcbc023cbddf7c",
+}
+
+
+def get_tiktoken_cache_dir(app_name: str = "AutoYou") -> Path:
+    """Return a writable per-user tiktoken cache directory.
+
+    Packaged installs (such as Microsoft Store MSIX under WindowsApps or signed
+    macOS app bundles) reside on read-only paths. LiteLLM's default_encoding
+    otherwise forces TIKTOKEN_CACHE_DIR to its package tokenizers directory,
+    causing PermissionError whenever tiktoken refreshes or writes a cache file.
+    """
+    cache_dir = get_user_data_dir(app_name) / "tiktoken_cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir
+
+
+def _seed_tiktoken_cache_dir(cache_dir: Path, source_dirs: Optional[Sequence[Path]] = None) -> None:
+    """Copy bundled tiktoken rank files into cache_dir with verified LF bytes."""
+    import hashlib
+
+    candidates: list[Path] = []
+    if source_dirs:
+        candidates.extend(Path(d) for d in source_dirs)
+    else:
+        for env_root in (os.getenv(PACKAGED_RESOURCES_ROOT_ENV),):
+            if env_root:
+                candidates.append(
+                    Path(env_root) / "runtime_site_packages" / "litellm" / "litellm_core_utils" / "tokenizers"
+                )
+        for entry in list(sys.path):
+            if not entry:
+                continue
+            cand = Path(entry) / "litellm" / "litellm_core_utils" / "tokenizers"
+            if cand.is_dir():
+                candidates.append(cand)
+
+    seen_dirs: set[str] = set()
+    for src_dir in candidates:
+        key = str(src_dir)
+        if key in seen_dirs or not src_dir.is_dir():
+            continue
+        seen_dirs.add(key)
+        for filename, expected_sha256 in _TIKTOKEN_KNOWN_HASHES.items():
+            dst = cache_dir / filename
+            if dst.is_file():
+                try:
+                    if hashlib.sha256(dst.read_bytes()).hexdigest() == expected_sha256:
+                        continue
+                except OSError:
+                    pass
+            src = src_dir / filename
+            if not src.is_file():
+                continue
+            try:
+                raw = src.read_bytes()
+                if hashlib.sha256(raw).hexdigest() != expected_sha256 and b"\r\n" in raw:
+                    normalized = raw.replace(b"\r\n", b"\n")
+                    if hashlib.sha256(normalized).hexdigest() == expected_sha256:
+                        raw = normalized
+                if hashlib.sha256(raw).hexdigest() == expected_sha256:
+                    tmp = cache_dir / f".{filename}.{os.getpid()}.tmp"
+                    tmp.write_bytes(raw)
+                    tmp.replace(dst)
+            except OSError:
+                continue
+
+
+def configure_tiktoken_cache_environment(
+    app_name: str = "AutoYou",
+    *,
+    source_dirs: Optional[Sequence[Path]] = None,
+) -> Path:
+    """Point LiteLLM and tiktoken at a writable, offline-seeded cache directory."""
+    cache_dir = get_tiktoken_cache_dir(app_name)
+    _seed_tiktoken_cache_dir(cache_dir, source_dirs=source_dirs)
+    cache_str = str(cache_dir)
+    os.environ["CUSTOM_TIKTOKEN_CACHE_DIR"] = cache_str
+    os.environ["TIKTOKEN_CACHE_DIR"] = cache_str
+    return cache_dir
+
+
 def configure_whisper_cache_environment(app_name: str = "AutoYou") -> Path:
-    """Point Whisper/Hugging Face caches at a writable user directory."""
+    """Point Whisper/Hugging Face and tiktoken caches at writable user directories."""
     cache_dir = get_whisper_cache_dir(app_name)
     hub_dir = cache_dir / "hub"
     hub_dir.mkdir(parents=True, exist_ok=True)
@@ -276,6 +361,11 @@ def configure_whisper_cache_environment(app_name: str = "AutoYou") -> Path:
     for variable_name, target_path in defaults.items():
         if not os.getenv(variable_name):
             os.environ[variable_name] = str(target_path)
+
+    try:
+        configure_tiktoken_cache_environment(app_name)
+    except Exception:
+        pass
 
     return cache_dir
 
