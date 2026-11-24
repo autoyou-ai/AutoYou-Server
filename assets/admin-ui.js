@@ -11220,10 +11220,26 @@
                 window.AutoYouContent.mount(current, contentScreenContext());
             }
         }).catch(function (error) {
-            var current = root.querySelector("[data-content-host]");
-            if (current) {
-                current.innerHTML = "<div class=\"ayu-note ayu-note-red\" role=\"alert\">My Content could not load. " + escapeHtml(error && error.message || "") + "</div>";
-            }
+            return contentServerPredatesScreen().then(function (outdated) {
+                var current = root.querySelector("[data-content-host]");
+                if (!current) {
+                    return;
+                }
+                current.innerHTML = outdated
+                    ? "<div class=\"ayu-note ayu-note-amber\" role=\"alert\"><strong>Restart AutoYou to load My Content.</strong><p>This screen was updated after the running server started, and the server does not have its routes yet. Restart AutoYou, then reload this page.</p></div>"
+                    : "<div class=\"ayu-note ayu-note-red\" role=\"alert\">My Content could not load. " + escapeHtml(error && error.message || "") + "</div>";
+            });
+        });
+    }
+
+    // The console's files are read from disk on every request, but its routes only when the
+    // server starts. A server started before an update serves the new screen and answers 404
+    // for the routes it does not have yet.
+    function contentServerPredatesScreen() {
+        return fetch(contentApiBase() + "/summary", { credentials: "same-origin", cache: "no-store" }).then(function (response) {
+            return response.status === 404;
+        }, function () {
+            return false;
         });
     }
 
