@@ -177,12 +177,15 @@ class Browser:
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         port_file = Path(self.profile) / "DevToolsActivePort"
         deadline = time.time() + 30
-        while not port_file.exists() and time.time() < deadline:
-            time.sleep(0.1)
-        if not port_file.exists():
+        self.port = 0
+        while not self.port and time.time() < deadline:
+            try:  # the file appears before the browser has finished writing (and releasing) it
+                self.port = int(port_file.read_text().splitlines()[0])
+            except (OSError, ValueError, IndexError):
+                time.sleep(0.1)
+        if not self.port:
             self.close()
             raise RuntimeError("The browser did not start")
-        self.port = int(port_file.read_text().splitlines()[0])
         self.pages: list[Page] = []
 
     def new_page(self) -> Page:
