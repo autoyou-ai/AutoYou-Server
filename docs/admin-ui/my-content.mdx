@@ -1,0 +1,88 @@
+---
+title: "Admin UI: My Content"
+description: "The My Content screen of the admin console: one library for what your agents and your phones have made, with search, preview, organizing, uploads and permission-checked removal."
+---
+
+# My Content
+
+The **My Content** screen is one library for what your agents have made, plus anything you add yourself. It also lists what agents you created on a phone have saved, by the name, icon and accent the phone chose. The screen is `assets/content-screen.js` with `content-store.js` and `content-screen.css`; `admin-ui.js` loads them the first time the screen opens (`renderContentScreen()`) and hands them a place to sit. The routes are under `/api/admin/content`.
+
+---
+
+## What you can do
+
+| Task | How |
+| :--- | :--- |
+| See what is new | **By agent** shows the newest items from every agent, in one shelf each |
+| Find something | Search titles, labels, notes and agent names; filter by type, agent or collection; sort by date, name or size |
+| Look closer | Open an item for a preview (image, video, audio or the start of a note), its details and its labels |
+| Organize | Set a collection, labels and a note on one item, or add a collection or label to many at once |
+| Add | Choose files or a folder, or drop them on the screen. Uploads resume if the page is reloaded |
+| Download or open | Download any stored file, or open it in its agent |
+| Delete | Asks first. See [What delete means](#what-delete-means) |
+
+The agent list comes from the library itself: the built-in agents, **Files**, and every custom agent that has published a record. Agents with nothing in the library are not shown.
+
+---
+
+## Why it is quick on a slow connection
+
+The screen does not poll the whole library. It keeps an index in memory and asks only what changed.
+
+1. `GET /summary` returns counts, agents, what you may do, and one revision. It carries an `ETag`; asking again with `If-None-Match` costs a `304` with no body.
+2. `GET /changes?after=<cursor>` returns compact rows (no paths, hashes or note text) in pages of up to 1,000. The first walk skips removals; later walks include them as tombstones.
+3. Search, filters, sorting and grouping run on that index. Words that only appear inside a note's text are asked of the server once, after a short pause.
+4. While nothing changes, the screen asks `GET /summary` every 5 seconds, backing off to one minute, and not at all while the tab is hidden.
+5. `GET /groups` returns the newest items per agent in one query for the first paint, and `GET /items/{id}/thumbnail` returns small previews made in memory, never written to disk.
+
+Nothing about what is in the library is stored in the browser. The index lives in the page and is dropped when the tab closes; the only thing kept is a resume marker for an upload in progress, in session storage.
+
+---
+
+## Who may do what
+
+The person at this computer may do everything. A device paired from elsewhere carries the role its pairing was given, and the server checks it on every route, so a hidden button is never the only guard.
+
+| Action | Viewer | Editor | Admin |
+| :--- | :--- | :--- | :--- |
+| Browse, search, preview | Yes | Yes | Yes |
+| Organize, add files, sync | No | Yes | Yes |
+| Delete items | No | No | Yes |
+| Storage folder and organizing settings | No | No | Yes |
+
+---
+
+## What delete means
+
+My Content is an index of other agents' data, so deleting through it must keep both sides in step. Each item is removed in one of three ways, shown in its details:
+
+- **Catalog.** My Content owns the item (files you added, records from agents made on a phone). It is removed, and a stored file is deleted only when no other item uses it and it lives in a managed AutoYou folder.
+- **Agent.** Notes, Pages, Media Generation, TV and Voice Training own their data. My Content asks that agent to delete the item, so it disappears there too.
+- **Open.** Locations and Music have no safe remote removal. The item offers **Delete in** that agent instead.
+
+A file outside AutoYou's managed folders, a symbolic link, or a path that escapes them is never deleted. An item that changed on another device since the screen loaded it is skipped and reported, not overwritten.
+
+---
+
+## Agents made on a phone
+
+An agent created in the iOS or Android app publishes its records to `POST /content/native` with its name, handle, icon and accent. The server validates and keeps them in `content_agents`, so the agent appears in My Content with its own identity. Attachments belong to their record and are removed with it.
+
+The **Diary** keeps its own sign-in, so its entries are listed only if you turn on **Include Diary entries** in **Storage**. Turning it off removes them from the library again; the Diary itself is untouched.
+
+---
+
+## Files
+
+| File | Role |
+| :--- | :--- |
+| `assets/content-store.js` | The cached index: merging changes, search, filters, grouping. No DOM, so it is unit tested in Node |
+| `assets/content-screen.js` / `.css` | The screen. Built from the console's own `--ayu-*` tokens, so light and dark follow the shell |
+| `shared/content_index.py` | Summary, change feed, groups and listing queries, and ETags |
+| `shared/content_agents.py` | Names, icons and accents for built-in and phone-made agents |
+| `shared/content_access.py` | Role checks used by every route |
+| `shared/content_removal.py` | The three removal outcomes and the agent adapters |
+| `shared/content_thumbs.py` | In-memory image previews |
+| `shared/content_library_routes.py` | The routes above |
+
+`assets/content-library.html` (the former framed page) is still served at `/api/admin/content/view` for older clients; the console no longer uses it.

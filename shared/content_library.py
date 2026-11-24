@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import re
 import sqlite3
+import threading
 import time
 import uuid
 
@@ -37,12 +38,16 @@ def settings() -> dict:
     root = Path(configured) if configured else state_root() / "content"
     return {"output_root": str(root.resolve()), "encrypted_at_rest": secure_storage_enabled(),
             "auto_organize": values.get("auto_organize", True) is not False,
-            "semantic_labels": values.get("semantic_labels", True) is not False}
+            "semantic_labels": values.get("semantic_labels", True) is not False,
+            # Self-data agents (the Diary) keep their own sign-in, so they are listed only when the owner opts in.
+            "index_private": values.get("index_private", False) is True}
 
 
-def configure_organization(*, auto_organize: bool, semantic_labels: bool) -> dict:
+def configure_organization(*, auto_organize: bool, semantic_labels: bool, index_private: bool | None = None) -> dict:
     values = load_secure_json(state_root() / "settings.json", default={})
     values.update(auto_organize=auto_organize, semantic_labels=semantic_labels)
+    if index_private is not None:
+        values["index_private"] = bool(index_private)
     save_secure_json(state_root() / "settings.json", values)
     return settings()
 
@@ -97,11 +102,30 @@ def labels_for(title: str, kind: str, source: str) -> list[str]:
     return list(dict.fromkeys([kind, source_label] + words[:6]))
 
 
+# Schema work takes the catalog's write lock. Every API request builds a
+# ContentLibrary, so it runs once per catalog file and process, not per request.
+_SCHEMA_READY: set[str] = set()
+_SCHEMA_LOCK = threading.Lock()
+
+# Index rows are small on purpose: a remote client walks the whole catalog once,
+# then only fetches changes. Heavy or private fields never travel in the index.
+INDEX_FIELDS = ("id", "source", "source_id", "title", "kind", "href", "labels", "annotation", "collection",
+                "source_collection", "revision", "updated", "organization_state", "byte_size")
+
+
 class ContentLibrary:
     def __init__(self):
         self.root = state_root()
         self.root.mkdir(parents=True, exist_ok=True)
         self.db_path = self.root / "catalog.sqlite3"
+        key = str(self.db_path)
+        if key in _SCHEMA_READY and self.db_path.exists():
+            return
+        with _SCHEMA_LOCK:
+            self._migrate()
+            _SCHEMA_READY.add(key)
+
+    def _migrate(self):
         with self.connect() as db:
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS content(
@@ -142,6 +166,15 @@ class ContentLibrary:
             db.execute("CREATE INDEX IF NOT EXISTS content_digest ON content(digest) WHERE deleted=0")
             db.execute("CREATE INDEX IF NOT EXISTS content_parent ON content(parent_id)")
             db.execute("CREATE TABLE IF NOT EXISTS content_state(key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+            # Live-row indexes keep the recency, per-agent and per-type views off a table scan.
+            db.execute("CREATE INDEX IF NOT EXISTS content_live_updated ON content(deleted,updated DESC,id)")
+            db.execute("CREATE INDEX IF NOT EXISTS content_live_source ON content(deleted,source,updated DESC)")
+            db.execute("CREATE INDEX IF NOT EXISTS content_live_kind ON content(deleted,kind,updated DESC)")
+            # Identity of agents that have no code on this computer (agents created on a phone).
+            db.execute("""CREATE TABLE IF NOT EXISTS content_agents(
+                source TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '', handle TEXT NOT NULL DEFAULT '',
+                icon TEXT NOT NULL DEFAULT '', accent TEXT NOT NULL DEFAULT '', base_kind TEXT NOT NULL DEFAULT '',
+                updated REAL NOT NULL DEFAULT 0)""")
 
     @contextmanager
     def connect(self):
@@ -214,7 +247,22 @@ class ContentLibrary:
         data["has_file"] = bool(row["path"])
         return data
 
-    def list(self, *, q="", kind="", source="", collection="", after=None, offset=0, limit=100) -> dict:
+    @staticmethod
+    def compact(item) -> dict:
+        """The wire shape of the walkable index: enough to list, group and filter.
+
+        Takes a `public()` row. A removed row travels as a bare tombstone so a
+        client can drop it. Paths, digests, note bodies and worker bookkeeping
+        never leave the computer in this shape.
+        """
+        if item["deleted"]:
+            return {"id": item["id"], "source": item["source"], "deleted": 1, "revision": item["revision"]}
+        out = {key: item[key] for key in INDEX_FIELDS}
+        out["has_file"] = item["has_file"]
+        out["deleted"] = 0
+        return out
+
+    def list(self, *, q="", kind="", source="", collection="", after=None, offset=0, limit=100, sort="updated") -> dict:
         where, args = [], []
         if after is None:
             where.append("deleted=0")
@@ -235,7 +283,8 @@ class ContentLibrary:
             db.execute("BEGIN")
             revision = db.execute("SELECT revision FROM clock WHERE id=1").fetchone()[0]
             total = db.execute("SELECT COUNT(*) FROM content" + clause, args).fetchone()[0]
-            rows = db.execute("SELECT * FROM content" + clause + " ORDER BY " + ("revision" if after is not None else "updated DESC,id") + " LIMIT ? OFFSET ?", [*args, limit, offset]).fetchall()
+            order = "revision" if after is not None else {"title": "lower(title),id", "size": "byte_size DESC,id"}.get(sort, "updated DESC,id")
+            rows = db.execute("SELECT * FROM content" + clause + " ORDER BY " + order + " LIMIT ? OFFSET ?", [*args, limit, offset]).fetchall()
         items = [self.public(row) for row in rows]
         return {"items": items, "total": total, "offset": offset, "has_more": offset + len(items) < total,
                 "cursor": items[-1]["revision"] if after is not None and items else revision, "revision": revision}

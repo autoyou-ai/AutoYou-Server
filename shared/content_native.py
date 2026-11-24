@@ -2,6 +2,7 @@
 import json
 import re
 import uuid
+from shared import content_agents
 from shared.content_library import ContentLibrary
 
 
@@ -41,10 +42,15 @@ def import_record(payload):
                 raise ValueError("An attachment has not finished uploading to this agent")
         db.execute("INSERT INTO native_content VALUES(?,?,?,?) ON CONFLICT(source,source_id) DO UPDATE SET updated=excluded.updated,payload=excluded.payload",
                    (source, identifier, updated, encoded))
+        # The phone names its own agent; keep that so My Content shows it by name, icon and accent.
+        content_agents.remember(db, source, content_agents.clean_identity(payload))
         kind = {"notes": "note", "diary": "note", "page": "page", "music": "audio"}.get(base, "agent")
         item = library.publish(source, identifier, title, kind, _db=db,
                                force_revision=bool(existing and existing["payload"] != encoded),
                                href="/agent/organizer_agent/api/content/native/" + source + "/" + identifier)
+        # Attachments belong to their record, so removing the record removes them with it.
+        for attachment in attachments:
+            db.execute("UPDATE content SET parent_id=? WHERE id=? AND source=? AND deleted=0", (item["id"], attachment, source))
     return {"item": item, "updated_at": updated}
 
 

@@ -11132,6 +11132,101 @@
             + "</div>" + renderInteractVideoPanel() + "</div>";
     }
 
+    // My Content lives in its own modules (content-store.js, content-screen.js, content-screen.css),
+    // loaded the first time the screen opens. The module keeps its own state and DOM, so the shell
+    // only hands it a place to sit and re-attaches it after each render instead of rebuilding it.
+    var CONTENT_SCREEN_VERSION = "20261124";
+    var contentScreenLoad = null;
+
+    function contentApiBase() {
+        return window.AUTOYOU_CONTENT_API_BASE || "/api/admin/content";
+    }
+
+    function contentAssetBase() {
+        return window.AUTOYOU_CONTENT_ASSET_BASE || "/api/admin/content/assets/";
+    }
+
+    function renderContentScreen() {
+        return "<div class=\"ayu-screen ayu-content-screen\"><div data-content-host><div class=\"ayu-empty\" role=\"status\">Loading My Content…</div></div></div>";
+    }
+
+    function loadContentScreen() {
+        if (contentScreenLoad) {
+            return contentScreenLoad;
+        }
+        var base = contentAssetBase();
+        var version = "?v=" + CONTENT_SCREEN_VERSION;
+        var link = document.createElement("link");
+        link.rel = "stylesheet";
+        link.href = base + "content-screen.css" + version;
+        document.head.appendChild(link);
+        function loadScript(name) {
+            return new Promise(function (resolve, reject) {
+                var element = document.createElement("script");
+                element.src = base + name + version;
+                element.onload = resolve;
+                element.onerror = function () { reject(new Error(name + " could not be loaded.")); };
+                document.head.appendChild(element);
+            });
+        }
+        contentScreenLoad = loadScript("content-store.js").then(function () {
+            return loadScript("content-screen.js");
+        }).catch(function (error) {
+            contentScreenLoad = null;
+            throw error;
+        });
+        return contentScreenLoad;
+    }
+
+    function contentScreenContext() {
+        return {
+            assetBase: contentAssetBase(),
+            url: function (path) { return typeof window.AUTOYOU_CONTENT_URL === "function" ? window.AUTOYOU_CONTENT_URL(path) : contentApiBase() + path; },
+            request: function (path, options) {
+                return fetch(contentApiBase() + path, Object.assign({ credentials: "same-origin" }, options || {}));
+            },
+            notice: function (kind, message) { setNotice(kind, message); },
+            navigate: function (screen) {
+                var target = root && root.querySelector("[data-action=\"nav:" + screen + "\"]");
+                if (target) { target.click(); }
+            }
+        };
+    }
+
+    function detachContentScreen() {
+        if (window.AutoYouContent) {
+            window.AutoYouContent.detach();
+        }
+    }
+
+    function syncContentScreen() {
+        if (state.screen !== "content") {
+            if (window.AutoYouContent) {
+                window.AutoYouContent.unmount();
+            }
+            return;
+        }
+        var host = root.querySelector("[data-content-host]");
+        if (!host) {
+            return;
+        }
+        if (window.AutoYouContent) {
+            window.AutoYouContent.mount(host, contentScreenContext());
+            return;
+        }
+        loadContentScreen().then(function () {
+            var current = root.querySelector("[data-content-host]");
+            if (state.screen === "content" && current && window.AutoYouContent) {
+                window.AutoYouContent.mount(current, contentScreenContext());
+            }
+        }).catch(function (error) {
+            var current = root.querySelector("[data-content-host]");
+            if (current) {
+                current.innerHTML = "<div class=\"ayu-note ayu-note-red\" role=\"alert\">My Content could not load. " + escapeHtml(error && error.message || "") + "</div>";
+            }
+        });
+    }
+
     function renderCurrentScreen() {
         var markup = renderCurrentScreenContent();
         if (state.screen === "connectivity") {
@@ -11166,7 +11261,7 @@
         } else if (state.screen === "agents") {
             markup = renderAgentScreen();
         } else if (state.screen === "content") {
-            markup = '<iframe class="ayu-content-frame" title="My Content" src="/api/admin/content/view"></iframe>';
+            markup = renderContentScreen();
         } else if (state.screen === "page") {
             markup = renderPageScreen();
         } else if (state.screen === "messaging") {
@@ -11269,12 +11364,14 @@
         // this markup string unchanged while the screen still has to change.
         if (!options.passive || markup !== renderState.markup) {
             renderState.markup = markup;
+            detachContentScreen();
             root.innerHTML = markup;
             root.querySelectorAll('input[type="file"]').forEach(function (input) {
                 input.tabIndex = -1;
                 input.setAttribute("aria-hidden", "true");
             });
             organizeSettingsSections();
+            syncContentScreen();
             if (state.screen === "agents" && (state.sections.agents || "library") === "library") {
                 var sectionNav = root.querySelector(".ayu-section-nav");
                 var libraryToolbar = document.createElement("div");

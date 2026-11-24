@@ -10,7 +10,7 @@ from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
-from shared import content_files
+from shared import content_access, content_files
 from shared.content_library import ContentLibrary, configure_output_root, configure_organization, infer_kind, output_dir, settings
 from shared.platform_runtime import get_resources_root
 
@@ -29,6 +29,7 @@ class Destination(BaseModel):
 class Organization(BaseModel):
     auto_organize: bool = True
     semantic_labels: bool = True
+    index_private: bool | None = None  # omitted by older screens, which must not switch it off
 
 
 class TransferInput(BaseModel):
@@ -60,6 +61,9 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
             body.extend(chunk)
         return bytes(body)
 
+    from shared.content_library_routes import register as register_screen_routes
+    register_screen_routes(app, authorize, prefix, worker)
+
     @app.get(prefix + "/activity")
     async def library_activity(request: Request):
         denied = authorize(request)
@@ -81,6 +85,9 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
         denied = authorize(request)
         if denied is not None:
             return denied
+        denied = content_access.deny(request, "manage")
+        if denied is not None:
+            return denied
         result = await asyncio.to_thread(configure_organization, **payload.model_dump())
         if worker:
             worker.wake.set()
@@ -89,6 +96,9 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
     @app.post(prefix + "/migration/preview")
     async def preview_migration(request: Request, payload: Destination):
         denied = authorize(request)
+        if denied is not None:
+            return denied
+        denied = content_access.deny(request, "manage")
         if denied is not None:
             return denied
         from shared.content_storage import migration_plan
@@ -100,6 +110,9 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
     @app.post(prefix + "/migration")
     async def migrate(request: Request, payload: Destination):
         denied = authorize(request)
+        if denied is not None:
+            return denied
+        denied = content_access.deny(request, "manage")
         if denied is not None:
             return denied
         from shared.content_worker import start_migration
@@ -118,6 +131,9 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
         denied = authorize(request)
         if denied is not None:
             return denied
+        denied = content_access.deny(request, "manage")
+        if denied is not None:
+            return denied
         from shared.content_worker import cancel_migration as cancel
         await asyncio.to_thread(cancel, identifier)
         return json_response({"success": True})
@@ -125,6 +141,9 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
     @app.post(prefix + "/retry")
     async def retry_organization(request: Request):
         denied = authorize(request)
+        if denied is not None:
+            return denied
+        denied = content_access.deny(request, "edit")
         if denied is not None:
             return denied
         def retry():
@@ -140,6 +159,9 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
         denied = authorize(request)
         if denied is not None:
             return denied
+        denied = content_access.deny(request, "upload")
+        if denied is not None:
+            return denied
         from shared.content_transfers import ContentTransfers
         return json_response(await asyncio.to_thread(lambda: ContentTransfers().begin(owner(request), **payload.model_dump())))
 
@@ -148,6 +170,10 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
         denied = authorize(request)
         if denied is not None:
             return denied
+        if request.method != "GET":
+            denied = content_access.deny(request, "upload")
+            if denied is not None:
+                return denied
         from shared.content_transfers import ContentTransfers, CHUNK_BYTES
         identity = owner(request)
         transfers = ContentTransfers()
@@ -163,6 +189,9 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
     @app.post(prefix + "/upload-sessions/{identifier}/complete")
     async def complete_transfer(identifier: str, request: Request):
         denied = authorize(request)
+        if denied is not None:
+            return denied
+        denied = content_access.deny(request, "upload")
         if denied is not None:
             return denied
         from shared.content_transfers import ContentTransfers
@@ -183,6 +212,9 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
     @app.post(prefix + "/native")
     async def native_import(request: Request):
         denied = authorize(request)
+        if denied is not None:
+            return denied
+        denied = content_access.deny(request, "upload")
         if denied is not None:
             return denied
         from shared.content_native import import_record
@@ -225,6 +257,9 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
         denied = authorize(request)
         if denied is not None:
             return denied
+        denied = content_access.deny(request, "edit")
+        if denied is not None:
+            return denied
         from shared.content_library_scan import refresh_existing as scan
         if worker and (await asyncio.to_thread(settings))["auto_organize"]:
             worker.last_scan = 0
@@ -237,7 +272,8 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
         denied = authorize(request)
         if denied is not None:
             return denied
-        if name not in {"content-library.js", "content-drop.js", "content-library.css", "content-motion.css", "open-motion-LICENSE.txt"}:
+        if name not in {"content-library.js", "content-drop.js", "content-library.css", "content-motion.css", "open-motion-LICENSE.txt",
+                        "content-store.js", "content-screen.js", "content-screen.css"}:
             raise HTTPException(404)
         from fastapi.responses import FileResponse
         return FileResponse(assets / name, headers={"Cache-Control": "no-cache"})
@@ -255,6 +291,9 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
         denied = authorize(request)
         if denied is not None:
             return denied
+        denied = content_access.deny(request, "manage")
+        if denied is not None:
+            return denied
         try:
             return json_response(await asyncio.to_thread(configure_output_root, payload.output_root))
         except (ValueError, OSError) as error:
@@ -263,6 +302,9 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
     @app.patch(prefix + "/items/{item_id}")
     async def annotate(item_id: str, request: Request, payload: Annotation):
         denied = authorize(request)
+        if denied is not None:
+            return denied
+        denied = content_access.deny(request, "edit")
         if denied is not None:
             return denied
         try:
@@ -277,6 +319,9 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
     @app.post(prefix + "/import")
     async def import_file(request: Request, filename: str = "file", source: str = "files_agent"):
         denied = authorize(request)
+        if denied is not None:
+            return denied
+        denied = content_access.deny(request, "upload")
         if denied is not None:
             return denied
         name = Path(filename.replace("\\", "/")).name[:180] or "file"
@@ -308,7 +353,7 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
 
     @app.api_route(prefix + "/stream/{item_id}", methods=["GET", "HEAD"])
     @app.api_route(prefix + "/items/{item_id}/content", methods=["GET", "HEAD"])
-    async def content(item_id: str, request: Request):
+    async def content(item_id: str, request: Request, download: int = 0):
         denied = authorize(request)
         if denied is not None:
             return denied
@@ -323,7 +368,7 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
         import mimetypes
         response = content_files.response(path, request, mimetypes.guess_type(row["path"])[0])
         # User-supplied HTML/SVG must not execute with the owner's origin.
-        if Path(row["path"]).suffix.lower() not in {".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".mp4", ".webm", ".mov", ".mp3", ".m4a", ".ogg", ".opus", ".wav", ".flac", ".aac"}:
+        if download or Path(row["path"]).suffix.lower() not in {".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".mp4", ".webm", ".mov", ".mp3", ".m4a", ".ogg", ".opus", ".wav", ".flac", ".aac"}:
             from urllib.parse import quote
             response.headers["Content-Disposition"] = "attachment; filename*=UTF-8''" + quote(row["title"], safe="")
         response.headers["Content-Security-Policy"] = "sandbox"

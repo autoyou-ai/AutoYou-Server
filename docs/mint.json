@@ -68,6 +68,7 @@
         "admin-ui/ai-and-speech",
         "admin-ui/messaging-bridges",
         "admin-ui/agent-workbench-ui",
+        "admin-ui/my-content",
         "admin-ui/setup-and-recipes"
       ]
     },

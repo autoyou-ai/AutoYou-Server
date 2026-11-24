@@ -45,7 +45,7 @@ def refresh_existing(cancelled=lambda: False):
         except Exception:
             # Do not return file paths or database exception details to clients.
             result["errors"].append(source + ": unable to read its catalog")
-    for source, scan in (("attachments", scan_attachments), ("voice_training_agent", scan_voice), ("audio_folders", scan_audio_folders)):
+    for source, scan in (("attachments", scan_attachments), ("voice_training_agent", scan_voice), ("audio_folders", scan_audio_folders), ("persona_agent", scan_private)):
         if cancelled():
             break
         try:
@@ -188,6 +188,28 @@ def scan_voice(catalog=None, cancelled=lambda: False):
                 count += 1
     for prefix in ("transcript:", "recording:", "model:"):
         _reconcile(catalog, "voice_training_agent", prefix, seen)
+    return count
+
+
+def scan_private(catalog=None, cancelled=lambda: False):
+    """List Diary entries by title and a short preview, only when the owner has opted in.
+
+    The Diary guards its own pages with a separate sign-in, so the library never lists it on
+    its own. Switching the option off removes the entries from the library again.
+    """
+    from shared.content_library import settings
+    catalog = catalog or ContentLibrary()
+    seen, count = set(), 0
+    if settings()["index_private"]:
+        from autoyou_agents.persona_agent.agent import list_diary_entries
+        for entry in list_diary_entries():
+            if cancelled():
+                return count
+            catalog.publish("persona_agent", entry["id"], entry["title"] or entry["date"], "note", href="/agent/persona_agent/",
+                            source_collection="Diary", source_labels=["diary"], source_text=(entry["date"] + " " + entry["preview"]).strip())
+            seen.add(entry["id"])
+            count += 1
+    _reconcile(catalog, "persona_agent", "", seen)
     return count
 
 
