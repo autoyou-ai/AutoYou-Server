@@ -84,6 +84,19 @@ class Store:
             self.root.chmod(0o700)
             self.db_path.chmod(0o600)
 
+    def media_roots(self) -> list[Path]:
+        """Folders that hold the catalog's own files: uploads, downloads and browser versions.
+
+        Since agent content moved to the shared content folder, new files go to
+        ``media_dir``. Files made before that stay in ``<data>/media`` and remain the
+        catalog's own, so a browser version made there is still a valid browser version.
+        """
+        return list(dict.fromkeys((self.media_dir.resolve(), (self.root / "media").resolve())))
+
+    def owns_media(self, path: Path) -> bool:
+        resolved = Path(path).resolve()
+        return any(resolved.is_relative_to(root) for root in self.media_roots())
+
     @contextmanager
     def connect(self):
         db = sqlite3.connect(self.db_path, timeout=30)

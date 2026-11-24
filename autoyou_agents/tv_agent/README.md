@@ -22,7 +22,12 @@ Settings mounts existing server folders. Indexing preserves their directory
 tree, recognizes titles/years and `S01E02` episode names, and discovers SRT/VTT
 sidecar subtitles. Studio creates virtual folders, uploads media, adds public
 HTTP(S) media links and queues downloads. Removing a catalog entry never deletes
-the source file. Scans and imports retain status across restart.
+the source file. Scans and imports retain status across restart. Preparing a
+compatible video for a viewer resumes after a restart; an interrupted download
+waits for a retry from Studio. A failed preparation is tried once more before
+the viewer sees it, and an editor's cancel stands. Browser versions made before
+agent content moved to the shared content folder stay in `tv_agent_data/media`
+and keep playing.
 
 The website uploads files in 2 MB requests, with durable offsets, exact chunk
 retry checks and resume after a page reload when the same file is selected in

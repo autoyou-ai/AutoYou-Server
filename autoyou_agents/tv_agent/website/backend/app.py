@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from autoyou_agents.shared_tools.scheduler_mission_control import install_agent_website_auth
 
 from .auth import Auth, COOKIE_NAME, SESSION_SECONDS
-from .jobs import Jobs, executable, probe
+from .jobs import INTERRUPTED, Jobs, executable, probe
 from . import playback
 from .media import (MEDIA_EXTENSIONS, CONTENT_TYPES, file_stream, media_kind, parse_name, permitted_path, public_url,
                     read_ticket, remote_stream, subtitle_content, subtitles, photo_thumbnail)
@@ -25,6 +25,8 @@ from .store import Store, uid
 from .uploads import MAX_UPLOAD_BYTES, Uploads, upload_owner
 
 FRONTEND = Path(__file__).resolve().parents[1] / "frontend" / "web"
+# Automatic attempts at a compatible video before its failure is shown to the viewer.
+PREPARATION_ATTEMPTS = 2
 
 
 class Login(BaseModel):
@@ -444,10 +446,24 @@ def create_app(data_dir: Path | None = None, *, otp_verifier=None) -> FastAPI:
         needs_version = compatible and not optimized and not browser_ready and playback.requires_compatibility(item)
         if needs_version:
             source_version = playback.fingerprint(permitted_path(store, item["file_path"]))
-            candidates = [j for j in store.jobs() if j["kind"] == "transcode" and j["payload"].get("item_id") == item_id
-                          and j["payload"].get("source_version") == source_version and j["status"] != "completed"]
-            if candidates:
-                preparation = candidates[0]
+            attempts = []  # This source version's attempts since its last finished one, newest first.
+            for job in store.jobs():
+                if job["kind"] == "transcode" and job["payload"].get("item_id") == item_id and job["payload"].get("source_version") == source_version:
+                    if job["status"] == "completed":
+                        break
+                    attempts.append(job)
+            active = next((j for j in attempts if j["status"] in {"queued", "running"}), None)
+            # A restart is not a failure of the video, so it never blocks a new attempt. A real
+            # failure is tried once more before the viewer sees it. An editor's cancel stands
+            # until an editor starts it again from Studio.
+            failures = [j for j in attempts if j["status"] == "failed" and j["message"] != INTERRUPTED]
+            if active:
+                preparation = active
+            elif attempts and attempts[0]["status"] == "cancelled":
+                preparation = attempts[0]
+                message = "Video preparation was cancelled. An editor can start it again from Studio."
+            elif len(failures) >= PREPARATION_ATTEMPTS:
+                preparation = failures[0]
             elif not executable("ffmpeg"):
                 preparation = {"status": "failed", "progress": 0}
                 message = "Install FFmpeg on the computer to prepare a compatible video for this device."

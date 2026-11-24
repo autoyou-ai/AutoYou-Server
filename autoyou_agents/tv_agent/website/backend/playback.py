@@ -26,7 +26,7 @@ def browser_ready(store, item: dict) -> bool:
         return False
     path = Path(technical["browser_path"]).resolve()
     source = Path(item["file_path"])
-    return (path.is_relative_to(store.media_dir.resolve()) and path.is_file() and source.is_file()
+    return (store.owns_media(path) and path.is_file() and source.is_file()
             and technical.get("browser_source") == fingerprint(source))
 
 

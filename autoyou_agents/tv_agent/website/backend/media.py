@@ -154,7 +154,7 @@ def parse_range(value: str, size: int) -> tuple[int, int] | None:
 
 def permitted_path(store: Store, raw: str) -> Path:
     path = Path(raw).resolve()
-    roots = [store.media_dir.resolve(), (store.root / "media").resolve()]
+    roots = store.media_roots()
     for folder in store.folders(all_folders=True):
         if folder["root_path"] and not folder["relative_path"]:
             roots.append(Path(folder["root_path"]).resolve())

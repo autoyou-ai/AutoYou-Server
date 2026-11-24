@@ -23,6 +23,13 @@ from .media import MEDIA_EXTENSIONS, VIDEO_EXTENSIONS, fetch_response, http_sess
 from . import playback
 from .store import Store, uid
 
+# Jobs that only read files on this computer and write outputs named after the job resume
+# after a restart. Downloads fetch from elsewhere, so an interrupted one waits for a retry.
+RESUMABLE_KINDS = ("scan", "metadata", "prepare", "transcode", "streaming")
+INTERRUPTED = "Interrupted by server restart. Retry this import."
+PARTIAL_OUTPUT = re.compile(r"([a-f0-9]{24})\.partial\.mp4(?:\.sealed)?\Z")
+BROWSER_PIXEL_FORMATS = {None, "yuv420p", "yuvj420p"}
+
 
 def executable(name: str) -> str | None:
     env_key = "AUTOYOU_TV_" + name.replace("-", "_").upper()
@@ -139,7 +146,7 @@ def probe(path: Path) -> dict:
         video = next((s for s in media.get("streams", []) if s.get("codec_type") == "video"), {})
         audio = next((s for s in media.get("streams", []) if s.get("codec_type") == "audio"), {})
         info.update(width=video.get("width"), height=video.get("height"), video_codec=video.get("codec_name"),
-                    audio_codec=audio.get("codec_name"))
+                    pixel_format=video.get("pix_fmt"), audio_codec=audio.get("codec_name"))
     except (OSError, subprocess.SubprocessError, ValueError, StopIteration):
         info["probe_error"] = True
     return info
@@ -235,14 +242,27 @@ class Jobs:
         if self.workers:
             return
         with self.store.connect() as db:
-            # Scan and metadata operations are idempotent. Interrupted external
-            # downloads/renditions need a deliberate retry, not duplicate work.
-            db.execute("UPDATE jobs SET status='queued' WHERE status='running' AND kind IN ('scan','metadata','prepare')")
-            db.execute("UPDATE jobs SET status='failed',message='Interrupted by server restart. Retry this import.' WHERE status='running'")
+            # A viewer who pressed play is still waiting for the compatible version after a
+            # restart, so local preparation resumes. Interrupted downloads need a deliberate retry.
+            db.execute("UPDATE jobs SET status='queued' WHERE status='running' AND kind IN (%s)"
+                       % ",".join("?" * len(RESUMABLE_KINDS)), RESUMABLE_KINDS)
+            db.execute("UPDATE jobs SET status='failed',message=? WHERE status='running'", (INTERRUPTED,))
             ids = db.execute("SELECT id FROM jobs WHERE status='queued' ORDER BY created").fetchall()
+        await asyncio.to_thread(self.discard_stale_partials, {row[0] for row in ids})
         for row in ids:
             self.queue.put_nowait(row[0])
         self.workers = [asyncio.create_task(self.worker()) for _ in range(2)]
+
+    def discard_stale_partials(self, queued: set[str]):
+        """Remove half-written browser versions left by a run that was killed mid-encode."""
+        for root in self.store.media_roots():
+            if not root.is_dir():
+                continue
+            for path in root.iterdir():
+                match = PARTIAL_OUTPUT.fullmatch(path.name)
+                if match and match[1] not in queued and path.is_file():
+                    with suppress(OSError, ValueError):
+                        content_files.discard(path)
 
     async def stop(self):
         for process in list(self.processes.values()):
@@ -504,6 +524,8 @@ class Jobs:
             root = playback.rendition_root(self.store, item["id"], job["id"])
             if not root.resolve().is_relative_to(self.store.root.resolve()):
                 raise ValueError("Streaming directory is outside the TV data root")
+            # A resumed job starts clean instead of mixing segments from the interrupted run.
+            await asyncio.to_thread(shutil.rmtree, root, True)
             root.mkdir(parents=True, exist_ok=True)
             published = False
             try:
@@ -565,8 +587,14 @@ class Jobs:
         source_version = playback.fingerprint(source)
         info = await asyncio.to_thread(probe, source)
         duration = info.get("duration", 0)
-        codecs = (["-c:v", "copy", "-c:a", "copy"] if info.get("video_codec") == "h264" and info.get("audio_codec") in {None, "aac", "mp3"}
-                  else ["-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k"])
+        # Only convert what the browser cannot play: an 8-bit H.264 picture is kept as it is
+        # (an HDTV .mkv usually needs just its AC-3 sound converted, seconds instead of minutes).
+        codecs = (["-c:v", "copy"] if info.get("video_codec") == "h264" and info.get("pixel_format") in BROWSER_PIXEL_FORMATS
+                  else ["-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p"])
+        codecs += ["-c:a", "copy"] if info.get("audio_codec") in {None, "aac", "mp3"} else ["-c:a", "aac", "-b:a", "192k"]
+        for leftover in (partial_path, partial_path.with_name(partial_path.name + ".sealed")):
+            if leftover.exists():
+                content_files.discard(leftover)
         try:
             await self.run_process(job, [ffmpeg, "-nostdin", "-hide_banner", "-y", "-i", str(source),
                                         "-map", "0:v:0", "-map", "0:a:0?", "-sn", "-dn", *codecs,
@@ -578,6 +606,9 @@ class Jobs:
         finally:
             if partial_path.exists():
                 content_files.discard(partial_path)
-        technical = {**item["technical"], "browser_path": str(destination), "browser_ready": True, "browser_source": source_version}
+        current = self.store.item(item["id"])["technical"]
+        if not info.get("probe_error"):
+            current = {key: value for key, value in current.items() if key != "probe_error"}
+        technical = {**current, **info, "browser_path": str(destination), "browser_ready": True, "browser_source": source_version}
         self.store.update_item(item["id"], {"technical": technical})
         return {"item_id": item["id"]}
