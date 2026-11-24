@@ -3184,7 +3184,7 @@
         "value": "Not a resolved environment or an inspected release artifact."
       }
     ],
-    "timestamp": "2026-11-17T10:21:40+00:00",
+    "timestamp": "2026-11-23T23:45:34+00:00",
     "tools": [
       {
         "name": "generate_release_legal_artifacts.py",
@@ -3193,7 +3193,7 @@
       }
     ]
   },
-  "serialNumber": "urn:uuid:6edfe0f1-07e5-4be6-a090-4bce663541bc",
+  "serialNumber": "urn:uuid:df5662d9-8c9f-4ac0-922b-06c5b38167d1",
   "specVersion": "1.5",
   "version": 1
 }

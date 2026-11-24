@@ -52,6 +52,22 @@ def test_configure_tiktoken_cache_repairs_crlf_and_sets_custom_env(tmp_path, mon
     assert hashlib.sha256(seeded.read_bytes()).hexdigest() == expected_sha256
 
 
+def test_configure_tiktoken_cache_default_packaged_resources_lookup(tmp_path, monkeypatch):
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path / "pkg_runtime"))
+    pkg_root = tmp_path / "packaged_resources"
+    tok_dir = pkg_root / "runtime_site_packages" / "litellm" / "litellm_core_utils" / "tokenizers"
+    tok_dir.mkdir(parents=True)
+    monkeypatch.setenv("AUTOYOU_PACKAGED_RESOURCES_ROOT", str(pkg_root))
+    monkeypatch.delenv("CUSTOM_TIKTOKEN_CACHE_DIR", raising=False)
+    monkeypatch.delenv("TIKTOKEN_CACHE_DIR", raising=False)
+
+    # Exercises source_dirs=None (the exact code path taken by compiled AutoYouServer.exe)
+    cache_dir = platform_runtime.configure_tiktoken_cache_environment("AutoYou")
+    assert cache_dir.is_dir()
+    assert os.environ["CUSTOM_TIKTOKEN_CACHE_DIR"] == str(cache_dir)
+    assert os.environ["TIKTOKEN_CACHE_DIR"] == str(cache_dir)
+
+
 def test_admin_ui_supports_hash_deep_links():
     admin_js = Path(__file__).resolve().parents[3] / "assets" / "admin-ui.js"
     text = admin_js.read_text(encoding="utf-8")

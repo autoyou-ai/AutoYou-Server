@@ -1689,7 +1689,7 @@ foreach ($svc in @("whatsapp", "tunnelmole")) {
     if ($svc -eq "tunnelmole") { $npmArguments += "--ignore-scripts" }
     if ((Test-Path $bundledNodeCmd) -and (Test-Path $npmScript)) {
         $pathWithNode = "$nodeRuntimeRoot;$env:PATH"
-        Invoke-CheckedCommand -FilePath $bundledNodeCmd -Arguments (@($npmScript) + $npmArguments + @("--prefix", $svcDir)) -Environment @{ "npm_config_cache" = (Join-Path $downloadRoot "npm-cache"); "PATH" = $pathWithNode; "TUNNELMOLE_TELEMETRY" = "0" }
+        Invoke-CheckedCommand -FilePath $bundledNodeCmd -Arguments (@($npmScript) + $npmArguments + @("--prefix", $svcDir)) -Environment @{ "npm_config_cache" = (Join-Path $downloadRoot "npm-cache"); "PATH" = $pathWithNode; "TUNNELMOLE_TELEMETRY" = "0"; "PUPPETEER_SKIP_DOWNLOAD" = "1" }
     } else {
         # Fall back to system npm (PS 5.1-compatible: no ?. operator)
         $npmCmdObj = Get-Command "npm" -ErrorAction SilentlyContinue
@@ -1699,7 +1699,7 @@ foreach ($svc in @("whatsapp", "tunnelmole")) {
         }
         Push-Location $svcDir
         try {
-            Invoke-CheckedCommand -FilePath $npmCmd -Arguments $npmArguments -Environment @{ "TUNNELMOLE_TELEMETRY" = "0" }
+            Invoke-CheckedCommand -FilePath $npmCmd -Arguments $npmArguments -Environment @{ "TUNNELMOLE_TELEMETRY" = "0"; "PUPPETEER_SKIP_DOWNLOAD" = "1" }
         } finally {
             Pop-Location
         }
