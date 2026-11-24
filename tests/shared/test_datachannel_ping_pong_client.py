@@ -24,6 +24,7 @@ import time
 
 import pytest
 
+import shared.datachannel_manager as datachannel_manager
 from shared.datachannel_manager import (
     DataChannelManager,
     DataChannelMessage,
@@ -119,9 +120,29 @@ async def test_second_ping_reports_measured_round_trip():
     assert second_ping["payload"]["rtt_ms"] == manager._last_measured_rtt_ms
 
 
+class _TickingClock:
+    """The real ``time`` module, except that every ``monotonic()`` reading is 20 ms later than the last.
+
+    Python 3.12 on Windows reads the monotonic clock at a 15.6 ms resolution, so a loopback round trip can measure
+    exactly 0 and the manager (rightly) records no sample. This test is about which clock the RTT comes from, so it
+    gives the manager a clock that moves.
+    """
+
+    def __init__(self):
+        self._now = 1000.0
+
+    def monotonic(self):
+        self._now += 0.02
+        return self._now
+
+    def __getattr__(self, name):
+        return getattr(time, name)
+
+
 @pytest.mark.asyncio
-async def test_rtt_is_not_derived_from_peer_wall_clock():
+async def test_rtt_is_not_derived_from_peer_wall_clock(monkeypatch):
     """A peer clock skewed by hours must not corrupt our measurement."""
+    monkeypatch.setattr(datachannel_manager, "time", _TickingClock())
     manager, channel = _client_manager()
     await manager.send_ping()
     ping = channel.sent_of_type("ping")[0]
@@ -131,6 +152,7 @@ async def test_rtt_is_not_derived_from_peer_wall_clock():
     await manager.handle_received_message(json.dumps(skewed))
 
     # Measured locally, so the bogus peer timestamp is irrelevant.
+    assert manager._last_measured_rtt_ms is not None
     assert 0 <= manager._last_measured_rtt_ms < 5000
 
 

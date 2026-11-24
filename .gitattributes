@@ -17,3 +17,8 @@ assets/intent_router/vocab.txt -text
 # Keep the primary codec notice hashes stable on Windows, macOS, and Linux.
 ffmpeg-LGPL-3.0-NOTICES.txt text eol=lf
 openh264-BSD-2-Clause.txt text eol=lf
+
+# The built-in game package is built from this file, and scripts/sync_bundled_games.py --check compares it
+# byte for byte with the copy bundled in the iOS and Android apps. With core.autocrlf=true a CRLF checkout builds a
+# different package revision than every LF platform, so the bundled game looks out of date on Windows.
+assets/game/*.html text eol=lf

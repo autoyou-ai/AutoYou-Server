@@ -1028,6 +1028,7 @@ def test_adk_dev_server_delegates_web_assets_dir_to_api_server(monkeypatch):
     instance = DevServer.__new__(DevServer)
     instance._trace_dict = {}
     instance._memory_exporter = None
+    instance._log_exporter = None  # ADK 2.14 reads it too
     instance._register_dev_endpoints = lambda *args, **kwargs: None
 
     instance.get_fast_api_app(web_assets_dir="/packaged/browser")
