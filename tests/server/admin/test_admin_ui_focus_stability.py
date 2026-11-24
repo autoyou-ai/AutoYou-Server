@@ -7,6 +7,8 @@
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
+import re
+
 from tests.support.paths import REPO_ROOT
 
 __debug_provenance_d__ = "AUTOYOU-PROVENANCE-D-to-904a692a5eff8c354ee2f53b"
@@ -70,7 +72,10 @@ def test_empty_chat_keeps_the_conversation_space_for_history_and_composer():
     assert "What would you like to do?" not in chat_renderer
     assert "chat-suggestion:" not in script
     assert "ayu-chat-history" in chat_renderer and "ayu-chat-composer" in chat_renderer
-    assert "min-height: 320px" not in styles
+    # Only the chat's own rules may not reserve a fixed block of space; other screens (the My Content frame) may set one.
+    chat_rules = [body for selector, body in re.findall(r"([^{}]+)\{([^{}]*)\}", styles) if "ayu-chat" in selector]
+    assert chat_rules
+    assert not any("min-height: 320px" in body for body in chat_rules)
     assert "max-height: 190px" in styles
 
 
