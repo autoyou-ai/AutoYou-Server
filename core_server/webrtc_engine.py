@@ -10110,7 +10110,9 @@ class WebRTCManager:
             f'_pd(typeof HTMLFormElement==="undefined"?null:HTMLFormElement,"action");'
             f'}})();</script>'
         )
-        shim_bytes = shim.encode("utf-8")
+        from shared.agent_otp_paste import OTP_PASTE_SCRIPT
+
+        shim_bytes = (shim + OTP_PASTE_SCRIPT).encode("utf-8")
         lower = html_bytes[:4096].lower()
         head_open = lower.find(b"<head>")
         if head_open != -1:

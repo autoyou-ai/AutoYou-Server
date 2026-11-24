@@ -41,6 +41,22 @@ def test_incremental_cursor_does_not_skip_pages(sandbox):
     assert len({row["id"] for page in [first, second, third] for row in page["items"]}) == 5
 
 
+def test_agent_collection_is_filterable_until_the_owner_organizes_it(sandbox):
+    from shared.content_worker import activity
+
+    library = ContentLibrary()
+    note = library.publish("notes_agent", "7", "Synthetic note", "note",
+                           source_collection="Studio", source_text="Microphone checklist")
+    library.publish("page_agent", "3", "Synthetic page", "page", source_collection="References")
+    assert activity()["collections"] == ["References", "Studio"]
+    result = library.list(source="notes_agent", collection="Studio", q="microphone")
+    assert [item["id"] for item in result["items"]] == [note["id"]]
+    assert "source_text" not in result["items"][0]
+    library.annotate(note["id"], labels=[], annotation="", collection="Production", expected_revision=note["revision"])
+    assert library.list(collection="Studio")["total"] == 0
+    assert activity()["collections"] == ["Production", "References"]
+
+
 def test_test_root_dominates_custom_destination(sandbox):
     with pytest.raises(ValueError):
         configure_output_root(str(sandbox.parent / "operator-content"))

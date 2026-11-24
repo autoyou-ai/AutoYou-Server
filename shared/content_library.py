@@ -21,6 +21,7 @@ from shared.secure_storage import load_secure_json, save_secure_json, secure_sto
 
 KINDS = {"page", "note", "audio", "voice", "video", "image", "location", "file", "agent"}
 SOURCE = re.compile(r"[a-z][a-z0-9_-]{0,79}\Z")
+COLLECTION = "COALESCE(NULLIF(collection,''),source_collection)"
 
 
 def state_root() -> Path:
@@ -222,7 +223,8 @@ class ContentLibrary:
             args.append(max(0, int(after)))
         for key, value in (("kind", kind), ("source", source), ("collection", collection)):
             if value:
-                where.append(key + "=?")
+                column = COLLECTION if key == "collection" else key
+                where.append(column + "=?")
                 args.append(value)
         if q:
             where.append("(instr(lower(title),lower(?)) OR instr(lower(labels),lower(?)) OR instr(lower(annotation),lower(?)) OR instr(lower(source_text),lower(?)))")
@@ -233,7 +235,7 @@ class ContentLibrary:
             db.execute("BEGIN")
             revision = db.execute("SELECT revision FROM clock WHERE id=1").fetchone()[0]
             total = db.execute("SELECT COUNT(*) FROM content" + clause, args).fetchone()[0]
-            rows = db.execute("SELECT * FROM content" + clause + " ORDER BY " + ("revision" if after is not None else "updated DESC") + " LIMIT ? OFFSET ?", [*args, limit, offset]).fetchall()
+            rows = db.execute("SELECT * FROM content" + clause + " ORDER BY " + ("revision" if after is not None else "updated DESC,id") + " LIMIT ? OFFSET ?", [*args, limit, offset]).fetchall()
         items = [self.public(row) for row in rows]
         return {"items": items, "total": total, "offset": offset, "has_more": offset + len(items) < total,
                 "cursor": items[-1]["revision"] if after is not None and items else revision, "revision": revision}

@@ -1882,3 +1882,8 @@ bootstrapFromPayload(initialPayload);
 setupMediaViewer();
 setupInfiniteScroll();
 setupAutoRefresh();
+const linkedNote = /^#note-(\d+)$/.exec(window.location.hash);
+if (linkedNote) {
+  const noteId = Number(linkedNote[1]);
+  if (Number.isSafeInteger(noteId) && noteId > 0) void openNote(noteId);
+}

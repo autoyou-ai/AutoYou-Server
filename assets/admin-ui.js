@@ -11166,7 +11166,7 @@
         } else if (state.screen === "agents") {
             markup = renderAgentScreen();
         } else if (state.screen === "content") {
-            markup = '<iframe title="Your content library" src="/api/admin/content/view" style="width:100%;height:calc(100vh - 120px);min-height:600px;border:0;border-radius:16px"></iframe>';
+            markup = '<iframe class="ayu-content-frame" title="My Content" src="/api/admin/content/view"></iframe>';
         } else if (state.screen === "page") {
             markup = renderPageScreen();
         } else if (state.screen === "messaging") {

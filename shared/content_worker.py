@@ -6,7 +6,7 @@ import threading
 import time
 import uuid
 
-from shared.content_library import ContentLibrary, configure_output_root, settings
+from shared.content_library import COLLECTION, ContentLibrary, configure_output_root, settings
 from shared.content_library_scan import refresh_existing
 from shared.content_organization import suggest
 from shared.content_storage import index_file, migration_plan
@@ -62,7 +62,9 @@ def activity():
             counts = {r[0]: r[1] for r in db.execute("SELECT status,COUNT(*) FROM content_operation_items WHERE operation_id=? GROUP BY status", (op["id"],))}
             operations.append({**dict(op), "counts": counts, "total": sum(counts.values())})
         sources = [{"source": r[0], "count": r[1]} for r in db.execute("SELECT source,COUNT(*) FROM content WHERE deleted=0 GROUP BY source ORDER BY source")]
-        collections = [r[0] for r in db.execute("SELECT DISTINCT collection FROM content WHERE deleted=0 AND collection!='' ORDER BY collection LIMIT 200")]
+        collections = [r[0] for r in db.execute(
+            f"SELECT DISTINCT {COLLECTION} AS name FROM content WHERE deleted=0 AND {COLLECTION}!='' ORDER BY name LIMIT 200"
+        )]
     return {"summary": summary, "worker": json.loads(state[0]) if state else {"state": "waiting", "message": "Organization starts after the server is unlocked"}, "operations": operations, "sources": sources, "collections": collections}
 
 
@@ -73,6 +75,7 @@ class ContentWorker:
         self.wake = threading.Event()
         self.owner = uuid.uuid4().hex
         self.last_scan = 0
+        self.last_scan_errors = []
         self.heartbeat = 0
         self.thread = None
 
@@ -135,11 +138,11 @@ class ContentWorker:
             return
         try:
             preferences = settings()
-            scan_result = None
             if scan and preferences["auto_organize"] and time.time() - self.last_scan >= 300:
                 self.state(library, state="indexing", message="Finding content from your agents")
                 scan_result = refresh_existing(cancelled=self.cancelled)
                 self.last_scan = time.time()
+                self.last_scan_errors = scan_result["errors"]
             self.process_migration(library)
             if preferences["auto_organize"]:
                 with library.connect() as db:
@@ -152,7 +155,7 @@ class ContentWorker:
                     self.process(library, dict(row), preferences)
             self.state(library, state="idle" if preferences["auto_organize"] else "paused",
                        message="Your library stays organized automatically" if preferences["auto_organize"] else "Automatic organization is paused",
-                       last_scan=self.last_scan, scan_errors=(scan_result or {}).get("errors", []))
+                       last_scan=self.last_scan, scan_errors=self.last_scan_errors)
         finally:
             with library.connect() as db:
                 db.execute("DELETE FROM content_state WHERE key='lease' AND json_extract(value,'$.owner')=?", (self.owner,))

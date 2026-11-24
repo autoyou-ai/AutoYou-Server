@@ -215,8 +215,7 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
             return denied
         from fastapi.responses import HTMLResponse
         template = (Path(__file__).resolve().parents[1] / "assets" / "content-library.html").read_text(encoding="utf-8")
-        relative = "../" + prefix.rstrip("/").rsplit("/", 1)[-1]
-        return HTMLResponse(template.replace("__CONTENT_API__", relative), headers={"Cache-Control": "no-store"})
+        return HTMLResponse(template.replace("__CONTENT_API__", prefix), headers={"Cache-Control": "no-store"})
 
     @app.post(prefix + "/refresh-existing")
     async def refresh_existing(request: Request):
@@ -224,7 +223,7 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
         if denied is not None:
             return denied
         from shared.content_library_scan import refresh_existing as scan
-        if worker:
+        if worker and (await asyncio.to_thread(settings))["auto_organize"]:
             worker.last_scan = 0
             worker.wake.set()
             return json_response({"queued": True, "indexed": 0, "errors": []}, 202)
@@ -238,7 +237,7 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
         if name not in {"content-library.js", "content-drop.js", "content-library.css", "content-motion.css", "open-motion-LICENSE.txt"}:
             raise HTTPException(404)
         from fastapi.responses import FileResponse
-        return FileResponse(Path(__file__).resolve().parents[1] / "assets" / name)
+        return FileResponse(Path(__file__).resolve().parents[1] / "assets" / name, headers={"Cache-Control": "no-cache"})
 
     @app.get(prefix)
     async def listing(request: Request, q: str = "", kind: str = "", source: str = "", collection: str = "", after: int | None = None, offset: int = 0, limit: int = 100):
