@@ -196,7 +196,11 @@ def test_existing_webrtc_encoder_decodes_changing_layout_dimensions(sources, cod
     from aiortc.codecs.h264 import H264Encoder, h264_depayload
     from aiortc.codecs.vpx import Vp8Encoder, vp8_depayload
     from fractions import Fraction
+    from shared.h264_encoders import install_aiortc_h264_encoder
 
+    # The server installs this before it creates any peer, so calls use whichever H.264
+    # encoder the PyAV build has; a codec-clean build has no libx264 for aiortc's default.
+    install_aiortc_h264_encoder()
     encoder, depayload = (H264Encoder(), h264_depayload) if codec == "h264" else (Vp8Encoder(), vp8_depayload)
     decoder = av.CodecContext.create(codec, "r")
     track = _track(sources)
@@ -302,7 +306,9 @@ def test_video_settings_ui_saves_and_reloads_layout(monkeypatch, tmp_path):
             page = browser.new_page(viewport={"width": 1280, "height": 1600})
             page.route("**/*", handle)
             page.goto("http://admin.test/")
+            # The layout controls are in "Display and capture quality", on the Sharing sources tab.
             page.get_by_role("button", name="Video & Calls", exact=True).click()
+            page.get_by_role("button", name="Sharing sources", exact=True).click()
             placement = page.locator('[data-bind="videoCall.composite.layout"]')
             size = page.locator('[data-bind="videoCall.composite.secondary_size_percent"]')
             assert placement.input_value() == "grid"
@@ -315,6 +321,8 @@ def test_video_settings_ui_saves_and_reloads_layout(monkeypatch, tmp_path):
             assert bootstrap["config"]["video_call"]["composite"] == {"layout": "below", "secondary_size_percent": 15}
             page.reload()
             page.get_by_role("button", name="Video & Calls", exact=True).click()
+            page.get_by_role("button", name="Sharing sources", exact=True).click()
+            assert placement.is_visible()
             assert placement.input_value() == "below"
             assert size.input_value() == "15"
             assert size.get_attribute("min") == "10"

@@ -2,8 +2,10 @@
 # Licensed under the AutoYou Source-Available License.
 # See LICENSE in the project root for license information.
 
+import os
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 import builtins
 
 import pytest
@@ -12,6 +14,16 @@ import shared.platform_runtime as platform_runtime
 import shared.windows_runtime_support as windows_runtime_support
 import shared.macos_runtime_support as macos_runtime_support
 import shared.whisper_downloader as whisper_downloader
+
+
+@pytest.fixture(autouse=True)
+def _restore_process_environment():
+    # configure_runtime() and configure_packaged_runtime_environment() write os.environ
+    # directly. monkeypatch.delenv records nothing for a variable that was not set, so
+    # without this PLAYWRIGHT_BROWSERS_PATH outlived these tests, pointed at a deleted
+    # temporary folder, and every later browser test in the run skipped instead of running.
+    with mock.patch.dict(os.environ):
+        yield
 
 
 @pytest.fixture(autouse=True)

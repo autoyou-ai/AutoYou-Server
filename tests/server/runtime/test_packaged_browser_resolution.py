@@ -12,12 +12,23 @@ __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 import os
 from pathlib import Path
+from unittest import mock
+
+import pytest
 
 from shared import macos_runtime_support
 from shared import windows_runtime_support
 from shared import platform_runtime
 
 __debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-yearly-4ef9236ad2306849e8d46ba1"
+
+
+@pytest.fixture(autouse=True)
+def _restore_process_environment():
+    # configure_packaged_runtime_environment() writes os.environ directly (browser paths,
+    # SSL_CERT_FILE, model folders). Restore it so no value outlives the test.
+    with mock.patch.dict(os.environ):
+        yield
 
 
 def _touch_executable(path: Path) -> Path:
