@@ -8150,7 +8150,7 @@
         return (statusError ? "<div class=\"ayu-note ayu-note-amber\">Telegram User status is unavailable right now. Try Refresh status.</div>" : "") + renderStatusRows([
             { label: "Status", value: prettyLabel(summary.displayStatus), help: summary.connected ? "Connected to your Saved Messages." : "Connect your own Telegram account to use Saved Messages." },
             { label: "Connected", value: summary.connected ? "Yes" : "No" },
-            { label: "Owner chat", value: "Saved Messages" }
+            { label: "Your chat", value: "Saved Messages" }
         ]) + "<div class=\"ayu-note ayu-note-blue\">Connect only a Telegram account you own. Saved Messages stays separate from approved direct contacts.</div>" + checkbox("messaging.telegramUser.enabled", "Enable Telegram User") + "<div class=\"ayu-grid-2\">" + field("Telegram app ID", input("messaging.telegramUser.api_id", { placeholder: "Telegram app ID", type: "text" }), "Get this once from your Telegram developer settings.") + field("Telegram app key", input("messaging.telegramUser.api_hash", { placeholder: "Leave blank to keep the saved key", type: "password" }), "Leave this blank unless you need to change it.") + "</div>" + checkbox("messaging.telegramUser.prompt_builder_enabled", "Enable Telegram Prompt Builder mode", "When enabled, Saved Messages are appended exactly to the selected desktop composer until you send exit confirm.") + field("Prompt Builder desktop agent", select("messaging.telegramUser.prompt_builder_agent", [{ value: "codex_desktop_agent", label: "Codex Desktop" }, { value: "claude_desktop_agent", label: "Claude Desktop" }, { value: "antigravity_agent", label: "Antigravity" }]), "The website and Telegram mode use this same selected desktop application.") + checkbox("messaging.telegramUser.training_export_consent", "Allow local training tools to use Saved Messages", "Choose this only if you want this account's Saved Messages available to local training tools.") + "<div class=\"ayu-inline-actions\">" + button("Save Telegram User", "save-telegram-user", "primary", "save") + button("Open Prompt Builder", "open-prompt-builder", "secondary", "external", "sm") + button("Connect", "telegram-user-connect", "green", "qr", "sm") + button("Restart", "telegram-user-restart", "secondary", "refresh", "sm") + button("Disconnect", "telegram-user-disconnect", "danger", "trash", "sm") + "</div>";
     }
 
@@ -9687,7 +9687,7 @@
         var mcpSettingsMarkup = renderMcpSetupPanelBody(mcpStatus);
         var telegramUserDiagnosticsMarkup = renderStatusRows([
             { label: "Connection", value: prettyLabel(telegramUserSummary.displayStatus), help: telegramUserSummary.connected ? "Saved Messages is ready." : "Connect your account to begin." },
-            { label: "Owner chat", value: "Saved Messages" }
+            { label: "Your chat", value: "Saved Messages" }
         ]) + "<div class=\"ayu-soft-divider\"></div><h3 style=\"margin:0 0 10px;font-size:15px;\">Recent Saved Messages activity</h3>" + renderTelegramUserMessages();
 
         return (
