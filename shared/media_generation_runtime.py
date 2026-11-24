@@ -116,6 +116,18 @@ os._exit(0 if result["ready"] else 1)
 '''
 
 
+def _group_has_live_members(group_id: int) -> bool:
+    import psutil
+
+    for pid in psutil.pids():
+        try:
+            if os.getpgid(pid) == group_id and psutil.Process(pid).status() != psutil.STATUS_ZOMBIE:
+                return True
+        except (ProcessLookupError, psutil.NoSuchProcess):
+            continue
+    return False
+
+
 def _stop_owned_process(process: subprocess.Popen, job: OwnedProcessJob | None) -> bool:
     """Kill only this launch and its children, and never wait indefinitely."""
     if job is not None:
@@ -128,6 +140,10 @@ def _stop_owned_process(process: subprocess.Popen, job: OwnedProcessJob | None) 
             os.killpg(process.pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
+        except PermissionError:
+            # macOS returns EPERM for a group whose members have all exited.
+            if sys.platform != "darwin" or _group_has_live_members(process.pid):
+                raise
     elif process.poll() is None:
         if os.name == "nt":
             try:

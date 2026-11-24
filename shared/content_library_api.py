@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from shared import content_files
 from shared.content_library import ContentLibrary, configure_output_root, configure_organization, infer_kind, output_dir, settings
+from shared.platform_runtime import get_resources_root
 
 
 class Annotation(BaseModel):
@@ -39,6 +40,8 @@ class TransferInput(BaseModel):
 
 
 def register_content_routes(app, authorize, prefix="/api/admin/content", worker=None):
+    assets = get_resources_root(Path(__file__).resolve().parents[1] / "server.py") / "assets"
+
     def json_response(data, status=200):
         return JSONResponse(data, status_code=status, headers={"Cache-Control": "no-store"})
 
@@ -214,7 +217,7 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
         if denied is not None:
             return denied
         from fastapi.responses import HTMLResponse
-        template = (Path(__file__).resolve().parents[1] / "assets" / "content-library.html").read_text(encoding="utf-8")
+        template = (assets / "content-library.html").read_text(encoding="utf-8")
         return HTMLResponse(template.replace("__CONTENT_API__", prefix), headers={"Cache-Control": "no-store"})
 
     @app.post(prefix + "/refresh-existing")
@@ -237,7 +240,7 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
         if name not in {"content-library.js", "content-drop.js", "content-library.css", "content-motion.css", "open-motion-LICENSE.txt"}:
             raise HTTPException(404)
         from fastapi.responses import FileResponse
-        return FileResponse(Path(__file__).resolve().parents[1] / "assets" / name, headers={"Cache-Control": "no-cache"})
+        return FileResponse(assets / name, headers={"Cache-Control": "no-cache"})
 
     @app.get(prefix)
     async def listing(request: Request, q: str = "", kind: str = "", source: str = "", collection: str = "", after: int | None = None, offset: int = 0, limit: int = 100):

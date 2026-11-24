@@ -134,6 +134,27 @@ def test_interrupted_promotion_and_uncommitted_append_recover(sandbox, monkeypat
     assert b"".join(content_files.read_range(target)) == b"committed"
 
 
+def test_content_view_resolves_assets_from_packaged_resources(sandbox, monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from shared import content_library_api
+
+    assets = sandbox / "bundle" / "assets"
+    assets.mkdir(parents=True)
+    (assets / "content-library.html").write_text('<script src="__CONTENT_API__/assets/content-library.js"></script>')
+    (assets / "content-library.js").write_text("// packager test")
+    module = sandbox / "bundle" / "runtime_modules" / "shared" / "content_library_api.py"
+    monkeypatch.setattr(content_library_api, "__file__", str(module))
+    monkeypatch.setattr(content_library_api, "get_resources_root", lambda anchor: assets.parent)
+    app = FastAPI()
+    content_library_api.register_content_routes(app, lambda _request: None)
+    with TestClient(app) as client:
+        response = client.get("/api/admin/content/view")
+        assert response.status_code == 200
+        assert "/api/admin/content/assets/content-library.js" in response.text
+        assert client.get("/api/admin/content/assets/content-library.js").text == "// packager test"
+
+
 def test_owner_api_auth_ranges_and_untrusted_download(sandbox):
     from fastapi import FastAPI
     from fastapi.responses import JSONResponse
