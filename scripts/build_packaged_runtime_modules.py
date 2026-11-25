@@ -144,6 +144,13 @@ SKIP_ASSET_SUFFIXES = frozenset(
         ".sqlite",
         ".sqlite3",
         ".db-journal",
+        ".db-wal",
+        ".db-shm",
+        ".sqlite-wal",
+        ".sqlite-shm",
+        ".sqlite3-journal",
+        ".sqlite3-wal",
+        ".sqlite3-shm",
         ".log",
         ".old",
         ".sav",
@@ -348,6 +355,21 @@ def _is_agent_asset(relative_path: Path) -> bool:
     )
 
 
+def _is_agent_runtime_data_path(relative_path: Path) -> bool:
+    """True for files an agent wrote at run time, never source assets.
+
+    Agents keep libraries, caches, transcodes and databases in ``data`` or
+    ``<name>_data`` folders beside their code (for example
+    ``tv_agent/website/backend/tv_agent_data``). They are git-ignored, so a
+    developer checkout that has run the agent holds the owner's own files there,
+    and the website-asset rule would otherwise package them into the app.
+    """
+    return any(
+        part.lower() == "data" or part.lower().endswith("_data")
+        for part in relative_path.parts[1:-1]
+    )
+
+
 def _desktop_asset_sources(agent_package_root: Path) -> set[Path] | None:
     """Return only public setup files; personal manifests and imagery stay local."""
     assets_root = agent_package_root / "desktop_assets"
@@ -440,6 +462,8 @@ def _iter_agent_asset_files(repo_root: Path) -> Iterator[Path]:
             allowed_sources = desktop_asset_sources.get(package_name)
             if allowed_sources is not None and source_path.resolve() not in allowed_sources:
                 continue
+        if _is_agent_runtime_data_path(relative_path):
+            continue
         if not _is_skipped_path(relative_path) and _is_trusted_runtime_source(relative_path) and _is_agent_asset(relative_path):
             yield relative_path
 

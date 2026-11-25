@@ -93,6 +93,36 @@ def test_tv_runtime_plan_includes_native_modules_and_built_frontend():
     assert not any(path.startswith(prefix) and "node_modules" in path for path in assets)
 
 
+def test_tv_runtime_plan_never_packages_the_agents_run_time_library(tmp_path):
+    """A checkout that has run the TV agent holds a library, renditions and a
+    database beside the code; none of it may reach a packaged app."""
+    from scripts.build_packaged_runtime_modules import _iter_agent_asset_files
+
+    web = tmp_path / "autoyou_agents" / "tv_agent" / "website"
+    shipped = web / "frontend" / "web" / "index.html"
+    shipped.parent.mkdir(parents=True)
+    shipped.write_text("<html></html>", encoding="utf-8")
+    data = web / "backend" / "tv_agent_data"
+    for name in (
+        "renditions/synthetic-id/720p/segment-000.ts",
+        "renditions/synthetic-id/720p/index.m3u8",
+        "artwork/synthetic-poster.jpg",
+        "library.json",
+        "library.sqlite3-wal",
+        "library.sqlite3-shm",
+    ):
+        path = data / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"synthetic")
+    (web / "backend" / "cache.db-wal").write_bytes(b"synthetic")
+
+    assets = {path.as_posix() for path in _iter_agent_asset_files(tmp_path)}
+
+    assert "autoyou_agents/tv_agent/website/frontend/web/index.html" in assets
+    assert not [path for path in assets if "tv_agent_data" in path]
+    assert not [path for path in assets if path.endswith(("-wal", "-shm"))]
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("native", [False, True])
 async def test_tv_range_streams_as_bounded_datachannel_frames(tv_proxy, monkeypatch, native):
