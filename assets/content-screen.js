@@ -697,7 +697,7 @@
         var main = h("button", { type: "button", class: "ayc-rowmain", "data-act": "open-preview", "data-id": row.id, "data-nav": "", "aria-label": row.title + ", " + meta },
             thumbFor(row, 96), h("span", { class: "ayc-rowtext" }, h("span", { class: "ayc-rowtitle", text: row.title }), h("span", { class: "ayc-rowmeta", text: meta })));
         var chips = h("span", { class: "ayc-rowlabels" });
-        (row.labels || []).slice(0, 2).forEach(function (label) { chips.appendChild(h("span", { class: "ayc-label", text: label })); });
+        Array.from(new Set((row.source_labels || []).concat(row.labels || []))).slice(0, 2).forEach(function (label) { chips.appendChild(h("span", { class: "ayc-label", text: label })); });
         var actions = h("span", { class: "ayc-rowactions" });
         var link = openLink(row);
         if (link) { actions.appendChild(link); }
@@ -818,7 +818,7 @@
         s.preview_el.hidden = !open;
         if (!open) { s.previewShown = false; return; }
         var row = s.store.get(s.active);
-        var signature = [s.active, s.previewState, s.preview ? s.preview.item.revision : 0, s.editing, s.previewState === "error" ? s.previewError : "", can("delete"), can("edit"), sheet].join("~");
+        var signature = [s.active, s.previewState, s.preview ? s.preview.item.revision : 0, s.store.revision, s.editing, s.previewState === "error" ? s.previewError : "", can("delete"), can("edit"), sheet].join("~");
         once("preview", signature, function () {
             var held = heldFocus(s.previewBody);
             clear(s.previewBody);
@@ -857,6 +857,8 @@
             box.appendChild(h("video", { class: "ayc-media-player", controls: true, preload: "metadata", src: url, "aria-label": "Video: " + row.title }));
         } else if ((row.kind === "audio" || row.kind === "voice") && url) {
             box.appendChild(h("div", { class: "ayc-media-audio" }, icon(kindIcon(row.kind)), h("audio", { controls: true, preload: "metadata", src: url, "aria-label": "Audio: " + row.title })));
+        } else if (type === "application/pdf" && url) {
+            box.appendChild(h("iframe", { class: "ayc-document", src: url + "?preview=true", sandbox: "", title: row.title }));
         } else if (data && data.text) {
             box.classList.add("is-text");
             box.appendChild(h("pre", { class: "ayc-text", tabindex: "0", "aria-label": "Text preview" }, data.text));
@@ -864,7 +866,6 @@
         } else {
             box.appendChild(h("div", { class: "ayc-media-fallback" }, icon(kindIcon(row.kind)), h("span", { text: type && row.has_file ? type : singular(row.kind) })));
         }
-        void type;
         return box;
     }
     function details(row, data, agent) {
@@ -878,6 +879,19 @@
         facts.forEach(function (pair) { dl.appendChild(h("div", null, h("dt", { text: pair[0] }), h("dd", { text: pair[1] }))); });
         wrap.appendChild(dl);
         if ((item.labels || []).length) { wrap.appendChild(h("div", { class: "ayc-rowlabels ayc-labels", "aria-label": "Labels" }, item.labels.map(function (label) { return h("span", { class: "ayc-label", text: label }); }))); }
+        if ((item.source_labels || []).length) {
+            wrap.appendChild(h("p", { class: "ayc-hint", text: "Source tags · " + item.source_labels.join(", ") }));
+        }
+        var related = S.store.all().filter(function (child) { return child.parent_id === row.id; });
+        if (related.length) {
+            var attachments = h("div", { class: "ayc-related" }, h("h3", { text: "Attachments" }));
+            related.forEach(function (child) {
+                attachments.appendChild(button(child.title, { icon: kindIcon(child.kind), act: "open-preview", id: child.id, variant: "ghost" }));
+            });
+            wrap.appendChild(attachments);
+        }
+        var parent = item.parent_id && S.store.get(item.parent_id);
+        if (parent) { wrap.appendChild(button("Back to " + parent.title, { act: "open-preview", id: parent.id, variant: "ghost" })); }
         if (item.annotation) { wrap.appendChild(h("p", { class: "ayc-annotation", text: item.annotation })); }
         var actions = h("div", { class: "ayu-inline-actions ayc-preview-actions" });
         var url = itemUrl(row);
@@ -1056,6 +1070,7 @@
         var auto = h("input", { type: "checkbox", id: "ayc-auto", checked: current.auto_organize });
         var labels = h("input", { type: "checkbox", id: "ayc-labels", checked: current.semantic_labels });
         var priv = h("input", { type: "checkbox", id: "ayc-private", checked: current.index_private });
+        var syncNotes = h("input", { type: "checkbox", id: "ayc-notes-sync", checked: current.notes_sync_enabled !== false });
         var save = h("button", { type: "button", class: "ayu-btn ayu-btn-primary", "data-act": "save-storage" }, icon("check"), h("span", { text: "Use this folder" }));
         dlg.appendChild(h("div", { class: "ayc-dialog-body" },
             h("div", { class: "ayc-dialog-head" }, h("h2", { id: "ayc-storage-title", text: "Storage and organizing" }), iconButton("close", "Close", "cancel-dialog", "", "ayc-close")),
@@ -1065,6 +1080,7 @@
             h("label", { class: "ayu-checkbox" }, auto, h("span", null, "Organize new content automatically", h("small", { text: "Adds suggested labels and collections. You can always change them." }))),
             h("label", { class: "ayu-checkbox" }, labels, h("span", null, "Use the local AI for suggested labels", h("small", { text: "Runs on this computer. Without it, labels come from titles and agent names." }))),
             h("label", { class: "ayu-checkbox" }, priv, h("span", null, "Include Diary entries", h("small", { text: "Lists each entry's title and first words here. The Diary keeps its own sign-in on other devices, which this does not replace. Turn off to remove them from My Content." }))),
+            h("label", { class: "ayc-check", for: "ayc-notes-sync" }, syncNotes, h("span", { text: "Allow Notes sync from paired devices" })),
             status, h("div", { class: "ayu-inline-actions ayc-dialog-actions" }, button("Done", { act: "cancel-dialog" }), save)));
         save.addEventListener("click", function () {
             save.disabled = true;
@@ -1072,10 +1088,13 @@
             api("/settings", json("PUT", { output_root: folder.value })).then(function (result) { status.textContent = result.body.message || "Saved."; return loadSummary(true); })
                 .catch(function (error) { status.textContent = error.message; }).then(function () { save.disabled = false; });
         });
-        [auto, labels, priv].forEach(function (box) {
+        [auto, labels, priv, syncNotes].forEach(function (box) {
             box.addEventListener("change", function () {
-                api("/organization", json("PUT", { auto_organize: auto.checked, semantic_labels: labels.checked, index_private: priv.checked })).then(function () { status.textContent = "Saved."; if (box === priv) { runSync(); } return loadSummary(true); })
-                    .catch(function (error) { status.textContent = error.message; });
+                var controls = [auto, labels, priv, syncNotes];
+                controls.forEach(function (control) { control.disabled = true; });
+                api("/organization", json("PUT", { auto_organize: auto.checked, semantic_labels: labels.checked, index_private: priv.checked, notes_sync_enabled: syncNotes.checked })).then(function () { status.textContent = "Saved."; if (box === priv) { runSync(); } return loadSummary(true); },
+                    function (error) { box.checked = !box.checked; status.textContent = error.message; })
+                    .finally(function () { controls.forEach(function (control) { control.disabled = false; }); });
             });
         });
         openDialog(dlg);

@@ -26,8 +26,8 @@ def _filters(q="", kind="", source="", collection=""):
             where.append((COLLECTION if key == "collection" else key) + "=?")
             args.append(value)
     if q:
-        where.append("(instr(lower(title),lower(?)) OR instr(lower(labels),lower(?)) OR instr(lower(annotation),lower(?)) OR instr(lower(source_text),lower(?)))")
-        args.extend([q[:300]] * 4)
+        where.append("(instr(lower(title),lower(?)) OR instr(lower(labels),lower(?)) OR instr(lower(source_labels),lower(?)) OR instr(lower(annotation),lower(?)) OR instr(lower(source_text),lower(?)))")
+        args.extend([q[:300]] * 5)
     return " WHERE " + " AND ".join(where), args
 
 

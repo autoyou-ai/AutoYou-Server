@@ -8,19 +8,61 @@ from __future__ import annotations
 
 import asyncio
 import gzip
+import io
 import json
 import mimetypes
+import re
+import zipfile
 from pathlib import Path
+from xml.etree import ElementTree
 
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
-from shared import content_access, content_agents, content_index, content_removal, content_thumbs
+from shared import content_access, content_agents, content_files, content_index, content_removal, content_thumbs
 from shared.content_library import ContentLibrary, settings
 
 CACHE_HEADERS = {"Cache-Control": "no-store", "Vary": "Accept-Encoding"}
 PREVIEW_CHARS = 4000
+
+
+def document_excerpt(path: Path, suffix: str) -> str:
+    """Read a small excerpt without extracting archive members or rendering their markup."""
+    if suffix not in {".epub", ".docx", ".pptx", ".xlsx", ".zip"} or path.stat().st_size > 8 * 1024 * 1024:
+        return ""
+    limit = 8 * 1024 * 1024
+    data = b"".join(content_files.read_range(path, 0, limit))
+    if len(data) > limit:
+        return ""
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            if len(archive.filelist) > 2048:
+                return ""
+            if suffix == ".zip":
+                return "\n".join(info.filename for info in archive.filelist[:80])
+            pattern = {".docx": r"word/document\.xml", ".xlsx": r"xl/(?:sharedStrings|worksheets/sheet1)\.xml",
+                       ".pptx": r"ppt/slides/slide\d+\.xml", ".epub": r".+\.x?html?"}[suffix]
+            excerpts = []
+            for info in [item for item in archive.filelist if re.fullmatch(pattern, item.filename, re.IGNORECASE)][:6]:
+                if info.file_size > 512 * 1024 or info.flag_bits & 1:
+                    continue
+                xml = archive.read(info)
+                if b"<!DOCTYPE" in xml.upper() or b"<!ENTITY" in xml.upper() or b"\x00" in xml:
+                    continue
+                root = ElementTree.fromstring(xml)
+                body = root.find(".//{*}body")
+                if body is not None:
+                    root = body
+                for tag in ("style", "script"):
+                    for node in root.iterfind(".//{*}" + tag):
+                        node.clear()
+                excerpts.append(" ".join(part.strip() for part in root.itertext() if part.strip()))
+                if sum(map(len, excerpts)) > PREVIEW_CHARS:
+                    break
+            return "\n".join(excerpts)
+    except (ValueError, OSError, zipfile.BadZipFile, ElementTree.ParseError, NotImplementedError):
+        return ""
 
 
 class Target(BaseModel):
@@ -127,9 +169,8 @@ def register(app, authorize, prefix: str, worker=None):
         def build():
             library, row = live(item_id)
             item = library.public(row)
-            text = ""
+            text = row["source_text"] or ""
             if row["kind"] in ("note", "page", "agent"):
-                text = row["source_text"] or ""
                 if not text and content_agents.is_custom(row["source"]):
                     try:
                         from shared.content_native import read_record
@@ -140,6 +181,17 @@ def register(app, authorize, prefix: str, worker=None):
             if row["path"]:
                 media = {"type": mimetypes.guess_type(row["path"])[0] or "application/octet-stream",
                          "thumbnail": row["kind"] == "image"}
+                path = Path(row["managed_path"] or row["path"])
+                if not text and path.is_file() and Path(row["path"]).suffix.lower() in {
+                    ".txt", ".md", ".csv", ".tsv", ".json", ".yaml", ".yml", ".xml", ".html", ".srt", ".vtt", ".log", ".py", ".js", ".css"
+                }:
+                    # Bound legacy whole-envelope reads as well as the preview returned to the screen.
+                    if path.stat().st_size <= 2 * 1024 * 1024:
+                        sample = b"".join(content_files.read_range(path, 0, PREVIEW_CHARS * 4 + 3))
+                        if b"\x00" not in sample:
+                            text = sample.decode("utf-8-sig", errors="replace")
+                elif not text and path.is_file():
+                    text = document_excerpt(path, Path(row["path"]).suffix.lower())
             identity = content_agents.describe_all(library, [row["source"]])[row["source"]]
             return {"item": item, "text": text[:PREVIEW_CHARS], "truncated": len(text) > PREVIEW_CHARS, "media": media,
                     "agent": identity, "removal": content_removal.plan(row), "abilities": content_access.abilities(request)}

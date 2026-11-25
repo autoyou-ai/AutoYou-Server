@@ -30,6 +30,7 @@ class Organization(BaseModel):
     auto_organize: bool = True
     semantic_labels: bool = True
     index_private: bool | None = None  # omitted by older screens, which must not switch it off
+    notes_sync_enabled: bool | None = None
 
 
 class TransferInput(BaseModel):
@@ -244,12 +245,12 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
         return HTMLResponse(body, headers={"Cache-Control": "no-store", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'self'"})
 
     @app.get(prefix + "/view")
-    async def view(request: Request):
+    async def view(request: Request, preview: bool = False):
         denied = authorize(request)
         if denied is not None:
             return denied
         from fastapi.responses import HTMLResponse
-        template = (assets / "content-library.html").read_text(encoding="utf-8")
+        template = (assets / ("content-workspace.html" if preview else "content-library.html")).read_text(encoding="utf-8")
         return HTMLResponse(template.replace("__CONTENT_API__", prefix), headers={"Cache-Control": "no-store"})
 
     @app.post(prefix + "/refresh-existing")
@@ -273,7 +274,7 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
         if denied is not None:
             return denied
         if name not in {"content-library.js", "content-drop.js", "content-library.css", "content-motion.css", "open-motion-LICENSE.txt",
-                        "content-store.js", "content-screen.js", "content-screen.css"}:
+                        "content-store.js", "content-screen.js", "content-screen.css", "content-workspace.js", "admin-ui.css"}:
             raise HTTPException(404)
         from fastapi.responses import FileResponse
         return FileResponse(assets / name, headers={"Cache-Control": "no-cache"})
@@ -353,7 +354,7 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
 
     @app.api_route(prefix + "/stream/{item_id}", methods=["GET", "HEAD"])
     @app.api_route(prefix + "/items/{item_id}/content", methods=["GET", "HEAD"])
-    async def content(item_id: str, request: Request, download: int = 0):
+    async def content(item_id: str, request: Request, download: int = 0, preview: bool = False):
         denied = authorize(request)
         if denied is not None:
             return denied
@@ -368,7 +369,9 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
         import mimetypes
         response = content_files.response(path, request, mimetypes.guess_type(row["path"])[0])
         # User-supplied HTML/SVG must not execute with the owner's origin.
-        if download or Path(row["path"]).suffix.lower() not in {".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".mp4", ".webm", ".mov", ".mp3", ".m4a", ".ogg", ".opus", ".wav", ".flac", ".aac"}:
+        suffix = Path(row["path"]).suffix.lower()
+        inline_pdf = preview and suffix == ".pdf" and b"".join(content_files.read_range(path, 0, 4)) == b"%PDF-"
+        if download or (not inline_pdf and suffix not in {".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".mp4", ".webm", ".mov", ".mp3", ".m4a", ".ogg", ".opus", ".wav", ".flac", ".aac"}):
             from urllib.parse import quote
             response.headers["Content-Disposition"] = "attachment; filename*=UTF-8''" + quote(row["title"], safe="")
         response.headers["Content-Security-Policy"] = "sandbox"

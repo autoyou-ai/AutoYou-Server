@@ -39,15 +39,18 @@ def settings() -> dict:
     return {"output_root": str(root.resolve()), "encrypted_at_rest": secure_storage_enabled(),
             "auto_organize": values.get("auto_organize", True) is not False,
             "semantic_labels": values.get("semantic_labels", True) is not False,
+            "notes_sync_enabled": values.get("notes_sync_enabled", True) is not False,
             # Self-data agents (the Diary) keep their own sign-in, so they are listed only when the owner opts in.
             "index_private": values.get("index_private", False) is True}
 
 
-def configure_organization(*, auto_organize: bool, semantic_labels: bool, index_private: bool | None = None) -> dict:
+def configure_organization(*, auto_organize: bool, semantic_labels: bool, index_private: bool | None = None, notes_sync_enabled: bool | None = None) -> dict:
     values = load_secure_json(state_root() / "settings.json", default={})
     values.update(auto_organize=auto_organize, semantic_labels=semantic_labels)
     if index_private is not None:
         values["index_private"] = bool(index_private)
+    if notes_sync_enabled is not None:
+        values["notes_sync_enabled"] = notes_sync_enabled
     save_secure_json(state_root() / "settings.json", values)
     return settings()
 
@@ -110,7 +113,7 @@ _SCHEMA_LOCK = threading.Lock()
 # Index rows are small on purpose: a remote client walks the whole catalog once,
 # then only fetches changes. Heavy or private fields never travel in the index.
 INDEX_FIELDS = ("id", "source", "source_id", "title", "kind", "href", "labels", "annotation", "collection",
-                "source_collection", "revision", "updated", "organization_state", "byte_size")
+                "source_collection", "source_labels", "parent_id", "revision", "updated", "organization_state", "byte_size")
 
 
 class ContentLibrary:
@@ -275,8 +278,8 @@ class ContentLibrary:
                 where.append(column + "=?")
                 args.append(value)
         if q:
-            where.append("(instr(lower(title),lower(?)) OR instr(lower(labels),lower(?)) OR instr(lower(annotation),lower(?)) OR instr(lower(source_text),lower(?)))")
-            args.extend([q[:300]] * 4)
+            where.append("(instr(lower(title),lower(?)) OR instr(lower(labels),lower(?)) OR instr(lower(source_labels),lower(?)) OR instr(lower(annotation),lower(?)) OR instr(lower(source_text),lower(?)))")
+            args.extend([q[:300]] * 5)
         clause = " WHERE " + " AND ".join(where) if where else ""
         limit, offset = min(200, max(1, int(limit))), max(0, int(offset))
         with self.connect() as db:

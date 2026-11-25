@@ -451,3 +451,26 @@ def test_diary_entries_are_listed_only_when_the_owner_opts_in_and_leave_when_it_
     assert client.put(f"{PREFIX}/organization", json={**on, "index_private": False}).json()["index_private"] is False
     refresh_existing()
     assert ContentLibrary().list(source="persona_agent")["total"] == 0
+
+
+def test_document_previews_are_inert_and_keep_attachment_downloads(client):
+    import zipfile
+    pdf = add_file(client, "garden.pdf", b"%PDF-1.7\nsynthetic")["id"]
+    route = f"{PREFIX}/items/{pdf}/content"
+    assert client.get(route).headers["Content-Disposition"].startswith("attachment")
+    preview = client.get(route, params={"preview": True}, headers={"Range": "bytes=0-4"})
+    assert preview.status_code == 206 and preview.content == b"%PDF-"
+    assert preview.headers["Content-Type"] == "application/pdf"
+    assert preview.headers["Content-Security-Policy"] == "sandbox"
+    assert preview.headers["X-Content-Type-Options"] == "nosniff"
+    renamed = add_file(client, "garden-page.pdf", b"<html>plant list</html>")["id"]
+    assert "attachment" in client.get(f"{PREFIX}/items/{renamed}/content?preview=true").headers["Content-Disposition"]
+    book = io.BytesIO()
+    with zipfile.ZipFile(book, "w") as archive:
+        archive.writestr("OEBPS/field.xhtml", "<html><body><p>Field notes</p><script>hidden code</script></body></html>")
+    item = add_file(client, "field.epub", book.getvalue())["id"]
+    assert client.get(f"{PREFIX}/items/{item}/preview").json()["text"] == "Field notes"
+    tagged = ContentLibrary().publish("notes_agent", "42", "Field log", "note", source_labels=["Rosemary"])
+    listing = client.get(PREFIX + "/index", params={"q": "rosemary"}).json()
+    assert [row["id"] for row in listing["items"]] == [tagged["id"]]
+    assert listing["items"][0]["source_labels"] == ["Rosemary"]

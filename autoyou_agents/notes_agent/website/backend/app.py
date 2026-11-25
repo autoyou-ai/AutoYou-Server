@@ -53,6 +53,7 @@ from shared.media_messaging import is_adts_aac
 from shared.secure_storage import read_secure_file, sealed_envelope_kind, secure_storage_enabled
 from shared.http_errors import internal_error_message
 from shared.path_safety import contained_path
+from autoyou_agents.notes_agent.website.backend.sync_routes import router as notes_sync_router
 
 
 LOGGER = logging.getLogger("autoyou.notes_website")
@@ -440,6 +441,8 @@ def normalize_note_payload(
         "updated_at": note.get("updated_at"),
         "attachments": attachment_summary(metadata),
     }
+    if note.get("key"):
+        payload.update(key=note["key"], revision=note["revision"])
     if include_content:
         payload["content"] = content
     if include_metadata:
@@ -703,6 +706,7 @@ install_agent_website_auth(
     title="AutoYou Notes",
     register_auth_routes=True,
 )
+app.include_router(notes_sync_router(lambda: get_notes_tool() if notes_agent_installed() else None))
 app.add_middleware(GZipMiddleware, minimum_size=500)
 app.mount("/assets", StaticFiles(directory=FRONTEND_DIR), name="assets")
 
@@ -753,6 +757,7 @@ def health() -> Dict[str, Any]:
     return {
         "status": "ok",
         "agent_name": "notes_agent",
+        "notes_sync_version": 1,
         "proxy_path": "/agent/notes_agent/",
         "installed": notes_agent_installed(),
     }
@@ -881,6 +886,8 @@ async def api_serve_media(attachment_id: int, request: Request) -> Any:
         "Accept-Ranges": "bytes",
         "Cache-Control": "private, max-age=3600",
         "Content-Disposition": _inline_content_disposition(filename),
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "sandbox; default-src 'none'",
         "Content-Encoding": "identity",
         "ETag": etag,
         "Last-Modified": formatdate(stat_result.st_mtime, usegmt=True),

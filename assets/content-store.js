@@ -33,7 +33,7 @@
     // Everything searchable about a row, folded once and kept on the row.
     function haystack(row, agentName) {
         if (row._hay === undefined || row._hayAgent !== agentName || row._hayRevision !== row.revision) {
-            row._hay = fold([row.title, (row.labels || []).join(" "), row.annotation, row.collection || row.source_collection, agentName, row.kind].join(" "));
+            row._hay = fold([row.title, (row.labels || []).concat(row.source_labels || []).join(" "), row.annotation, row.collection || row.source_collection, agentName, row.kind].join(" "));
             row._hayAgent = agentName;
             row._hayRevision = row.revision;
         }

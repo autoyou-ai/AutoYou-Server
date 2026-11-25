@@ -125,6 +125,9 @@ class NotesTool:
         seen: set[str] = set()
         for candidate in candidates:
             resolved_candidate = candidate.expanduser().resolve()
+            test_root = os.environ.get("AUTOYOU_TEST_ROOT")
+            if test_root and not resolved_candidate.is_relative_to(Path(test_root).resolve()):
+                continue
             key = str(resolved_candidate).lower()
             if key == str(resolved_primary).lower() or key in seen:
                 continue
@@ -577,6 +580,8 @@ class NotesTool:
                 self._normalize_timestamp_column(conn, "notes", "created_at")
                 self._normalize_timestamp_column(conn, "notes", "updated_at")
                 self._normalize_timestamp_column(conn, "media_attachments", "created_at")
+                from autoyou_agents.notes_agent import sync
+                sync.install(conn)
         except Exception as exc:
             raise RuntimeError(f"Failed to initialize notes database: {exc}")
 
@@ -870,11 +875,11 @@ class NotesTool:
         with sqlite3.connect(self._db_path) as conn:
             conn.row_factory = sqlite3.Row
             cur = conn.execute(
-                "SELECT id, title, content, tags, category, metadata, created_at, updated_at FROM notes WHERE id = ?",
+                "SELECT n.*,s.key,s.revision FROM notes n JOIN note_sync s ON s.id=n.id WHERE n.id = ?",
                 (int(note_id),),
             )
             row = cur.fetchone()
-        return self._row_to_note(row) if row else None
+        return {**self._row_to_note(row), "key": row["key"], "revision": row["revision"]} if row else None
 
     def update_note(
         self,
@@ -923,41 +928,47 @@ class NotesTool:
         content: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Attach a saved media row to an existing note's metadata."""
-        note = self.get_note(note_id)
-        if not note:
-            return {"success": False, "error": f"note {note_id} not found"}
-
-        metadata = note.get("metadata") if isinstance(note.get("metadata"), dict) else {}
-        metadata = dict(metadata or {})
-        attachments = metadata.get("media_attachments")
-        if not isinstance(attachments, list):
-            attachments = []
-        attachments.append(
-            {
-                "id": attachment.get("id"),
-                **({"client_media_id": attachment["client_media_id"]} if attachment.get("client_media_id") else {}),
-                "filename": attachment.get("filename"),
-                "path": attachment.get("path"),
-                "mimetype": attachment.get("mimetype"),
-                "size_bytes": attachment.get("size_bytes"),
-            }
-        )
-        metadata["media_attachments"] = attachments
-
-        clean_content = str(content or "").strip()
-        note_content = str(note.get("content") or "")
-        updated_content = None
-        if clean_content:
-            updated_content = f"{note_content.rstrip()}\n\n{clean_content}".strip()
-
-        sets = ["metadata = ?", "updated_at = ?"]
-        params: list[Any] = [json.dumps(metadata), self._local_timestamp()]
-        if updated_content is not None:
-            sets.insert(0, "content = ?")
-            params.insert(0, updated_content)
-        params.append(int(note_id))
-
         with sqlite3.connect(self._db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            conn.execute("BEGIN IMMEDIATE")
+            note = self._row_to_note(conn.execute("SELECT * FROM notes WHERE id=?", (note_id,)).fetchone())
+            if not note:
+                return {"success": False, "error": f"note {note_id} not found"}
+
+            metadata = note.get("metadata") if isinstance(note.get("metadata"), dict) else {}
+            metadata = dict(metadata or {})
+            attachments = metadata.get("media_attachments")
+            if not isinstance(attachments, list):
+                attachments = []
+            if attachment.get("client_media_id"):
+                existing = next((item for item in attachments if item.get("client_media_id") == attachment["client_media_id"]), None)
+                if existing:
+                    return {"success": True, "note_id": note_id, "media_id": existing["id"]}
+            attachments.append(
+                {
+                    "id": attachment.get("id"),
+                    **({"client_media_id": attachment["client_media_id"]} if attachment.get("client_media_id") else {}),
+                    "filename": attachment.get("filename"),
+                    "path": attachment.get("path"),
+                    "mimetype": attachment.get("mimetype"),
+                    "size_bytes": attachment.get("size_bytes"),
+                }
+            )
+            metadata["media_attachments"] = attachments
+
+            clean_content = str(content or "").strip()
+            note_content = str(note.get("content") or "")
+            updated_content = None
+            if clean_content:
+                updated_content = f"{note_content.rstrip()}\n\n{clean_content}".strip()
+
+            sets = ["metadata = ?", "updated_at = ?"]
+            params: list[Any] = [json.dumps(metadata), self._local_timestamp()]
+            if updated_content is not None:
+                sets.insert(0, "content = ?")
+                params.insert(0, updated_content)
+            params.append(int(note_id))
+
             cur = conn.execute(f"UPDATE notes SET {', '.join(sets)} WHERE id = ?", params)
             if cur.rowcount <= 0:
                 return {"success": False, "error": f"note {note_id} not found"}

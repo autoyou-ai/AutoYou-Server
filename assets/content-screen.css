@@ -304,3 +304,4 @@ html.ayc-lock { overflow: hidden; }
     .ayc-iconbtn { width: 44px; height: 44px; }
     .ayc-chip, .ayc-seg button { min-height: 44px; }
 }
+.ayc-document { width: 100%; min-height: 22rem; border: 0; }

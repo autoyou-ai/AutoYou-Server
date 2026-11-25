@@ -569,6 +569,7 @@ def test_the_two_themes_really_differ_and_follow_the_shell(screen):
     settle(shot)
     light = shot.js("getComputedStyle(document.querySelector('.ayc-card')).backgroundColor")
     shot.js("document.documentElement.setAttribute('data-theme', 'dark')")
+    shot.page.wait("!getComputedStyle(document.querySelector('.ayc-card')).backgroundColor.startsWith('rgb(255')", 3, "the card theme transition")
     dark = shot.js("getComputedStyle(document.querySelector('.ayc-card')).backgroundColor")
     assert light != dark and light.startswith("rgb(255") and not dark.startswith("rgb(255")
 
@@ -616,3 +617,20 @@ def test_the_screen_reports_what_it_is_doing_to_assistive_technology(screen):
     assert shot.js("document.querySelector('.ayc-list').getAttribute('role')") == "list"
     assert shot.js("Array.from(document.querySelectorAll('.ayc-row')).every(r => r.getAttribute('role') === 'listitem')")
     assert shot.js("document.querySelector('.ayc-seg').getAttribute('role')") == "group"
+
+
+def test_organizer_workspace_opens_related_note_and_text_attachment(screen, sandbox):
+    s = screen(populated=False)
+    library = ContentLibrary()
+    parent = library.publish("notes_agent", "38", "Kitchen garden", "note", source_text="Growing mint", source_labels=["Herbs"])
+    path = sandbox / "field.txt"
+    path.write_text("Field observations")
+    child = library.publish("notes_agent", "attachment:42", "field.txt", "file", path=str(path), parent_id=parent["id"])
+    s.open()  # Establish the synthetic website session.
+    s.page.goto(s.server.url + PREFIX + "/view?preview=true")
+    s.page.wait("!!document.querySelector('[data-act=open-preview]')", 15, "the Organizer catalog")
+    s.js(f"document.querySelector('[data-act=open-preview][data-id=\"{parent['id']}\"]').click()")
+    s.page.wait("document.querySelector('.ayc-text')?.textContent === 'Growing mint'", 10, "the note preview")
+    s.js(f"document.querySelector('aside [data-act=open-preview][data-id=\"{child['id']}\"]').click()")
+    s.page.wait("document.querySelector('.ayc-text')?.textContent === 'Field observations'", 10, "the child file preview")
+    assert "Back to Kitchen garden" in s.js("document.querySelector('aside').textContent")
