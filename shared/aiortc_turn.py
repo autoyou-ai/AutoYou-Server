@@ -110,6 +110,24 @@ def _normalise(servers: Iterable[Any]) -> List[Dict[str, Any]]:
     return out
 
 
+def ice_servers_for_answer(offered: Iterable[Any], configured: Iterable[Any]) -> List[Dict[str, Any]]:
+    """Keep the offer's ICE order and retain relays configured on the answering computer."""
+    servers = _normalise(offered)
+    local = _normalise(configured)
+    if not servers:
+        return local
+    for server in local:
+        # A phone often offers only its default STUN. Only the answering transport
+        # receives these additional TURN URLs and their matching credentials.
+        urls = [uri for uri in server["urls"]
+                if (parsed := parse_turn_uri(uri)) and _usable_by_aiortc(parsed)]
+        if urls:
+            relay = {**server, "urls": urls}
+            if relay not in servers:
+                servers.append(relay)
+    return servers
+
+
 def udp_turn_targets(servers: Iterable[Any]) -> List[Tuple[str, int]]:
     """UDP TURN endpoints worth probing: only when a TCP/TLS alternative exists."""
     udp: List[Tuple[str, int]] = []

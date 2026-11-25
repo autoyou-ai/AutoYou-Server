@@ -45,6 +45,28 @@ def _aiortc_pick(servers):
     return connection_kwargs(RTCConfiguration(iceServers=ice).iceServers)
 
 
+def test_phone_stun_offer_keeps_the_computers_private_turn_credentials():
+    offer = ["stun:phone.example.test"]
+    local = [{"urls": ["stun:computer.example.test", "turn:relay.example.test"],
+              "username": "qa-device", "credential": "synthetic-password"}]
+    answer = aiortc_turn.ice_servers_for_answer(offer, local)
+    picked = _aiortc_pick(aiortc_turn.order_ice_servers_for_aiortc(answer))
+    assert picked["stun_server"] == ("phone.example.test", 3478)
+    assert picked["turn_server"] == ("relay.example.test", 3478)
+    assert picked["turn_username"] == "qa-device" and picked["turn_password"] == "synthetic-password"
+    assert offer == ["stun:phone.example.test"]
+    assert answer[0] == {"urls": offer}
+    assert local[0]["urls"] == ["stun:computer.example.test", "turn:relay.example.test"]
+
+
+def test_explicit_phone_relay_and_empty_offer_keep_their_order():
+    local = [{"urls": ["turn:computer.example.test"], "username": "qa", "credential": "test-only"}]
+    phone = [{"urls": ["turns:phone.example.test:443"], "username": "qa-phone", "credential": "test-only"}]
+    assert aiortc_turn.ice_servers_for_answer(phone, local) == phone + local
+    assert aiortc_turn.ice_servers_for_answer([], local) == local
+    assert aiortc_turn.ice_servers_for_answer(local, local) == local
+
+
 @pytest.fixture(autouse=True)
 def _fresh_cache():
     aiortc_turn.clear_turn_udp_verdicts()

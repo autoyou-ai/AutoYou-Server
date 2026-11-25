@@ -82,7 +82,7 @@ from shared.room_call_listener import computer_presence
 from shared.chat_history_identity import sanitize_peer_relay
 from shared.webrtc_transport import configure_sctp_fragment_size
 from shared.h264_encoders import install_aiortc_h264_encoder
-from shared.aiortc_turn import order_ice_servers_for_aiortc, prime_turn_udp_probe
+from shared.aiortc_turn import ice_servers_for_answer, order_ice_servers_for_aiortc, prime_turn_udp_probe
 from shared.live_pairing import LivePairing
 
 __debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-c309a67c34c2f465b86a7b30"
@@ -5877,6 +5877,11 @@ class WebRTCManager:
             _runtime.LOGGER.warning(f"Invalid RTC config: {e}")
             return _runtime.RTCConfiguration(iceServers=[])
 
+    async def _answer_rtc_configuration(self, offered: Optional[list]) -> Optional[RTCConfiguration]:
+        servers = ice_servers_for_answer(offered or [], _runtime._get_pairing_ice_servers())
+        await prime_turn_udp_probe(servers)
+        return self._create_rtc_configuration_with_custom_ice(servers)
+
     def _create_rtc_configuration_with_custom_ice(self, custom_ice_servers: Optional[list] = None) -> Optional[RTCConfiguration]:
         """Create RTC configuration with custom ICE servers if provided, otherwise use default config."""
         if _runtime.RTCConfiguration is None:
@@ -6803,8 +6808,7 @@ class WebRTCManager:
         configure_sctp_fragment_size()
         install_aiortc_h264_encoder()
         _runtime._apply_ice_consent_tolerance()
-        await prime_turn_udp_probe(custom_ice_servers or _runtime._get_pairing_ice_servers())
-        pc = _runtime.RTCPeerConnection(self._create_rtc_configuration_with_custom_ice(custom_ice_servers))
+        pc = _runtime.RTCPeerConnection(await self._answer_rtc_configuration(custom_ice_servers))
 
         if source_platform == "cloud":
             self.outgoing_trickle_candidates[str(chat_id)] = []
@@ -7309,8 +7313,7 @@ class WebRTCManager:
             configure_sctp_fragment_size()
             install_aiortc_h264_encoder()
             _runtime._apply_ice_consent_tolerance()
-            await prime_turn_udp_probe(custom_ice_servers or _runtime._get_pairing_ice_servers())
-            pc = _runtime.RTCPeerConnection(self._create_rtc_configuration_with_custom_ice(custom_ice_servers))
+            pc = _runtime.RTCPeerConnection(await self._answer_rtc_configuration(custom_ice_servers))
 
             @pc.on("icecandidate")
             def _on_local_icecandidate(candidate):
