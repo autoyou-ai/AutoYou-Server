@@ -1,1 +1,1 @@
-"""AutoYou TV personal media library."""
+"""AutoYou Media personal media library."""

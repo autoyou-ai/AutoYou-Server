@@ -77,7 +77,10 @@ def _extra_routes(app, agent_name):
     async def package_catalog(request: Request):
         if not _smc._describe_chat_auth_state(request, agent_name).get("authenticated"):
             return JSONResponse({"error": "Not authenticated"}, status_code=401)
-        return JSONResponse(await asyncio.to_thread(packages().listing), headers={"Cache-Control": "no-store"})
+        after = request.query_params.get("after", "")
+        if after and not game_rules.GAME_ID.fullmatch(after):
+            return JSONResponse({"error": "Invalid game catalog cursor"}, status_code=400)
+        return JSONResponse(await asyncio.to_thread(packages().listing, after), headers={"Cache-Control": "no-store"})
 
     @app.get("/api/game/packages/{game_id}/download")
     async def package_file(request: Request, game_id: str):

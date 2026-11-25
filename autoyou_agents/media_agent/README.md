@@ -1,4 +1,4 @@
-# AutoYou TV
+# AutoYou Media
 
 A personal movie, episode and video library under `/agent/media_agent/`, with a
 cinematic React interface, responsive phone navigation and a FastAPI backend.
@@ -11,7 +11,7 @@ editor or admin session. OTP-authenticated Settings creates expiring editor and
 admin invitations. An invitation with the admin role still cannot open Settings
 without verifying OTP. Revoking an invitation ends its sessions immediately.
 
-Settings uses the TV agent's assigned AutoYou 2FA profile, falling back to the
+Settings uses the Media agent's assigned AutoYou 2FA profile, falling back to the
 server authenticator. Standalone deployments can set `AUTOYOU_TV_TOTP_SECRET`.
 No configured authenticator means Settings stays locked. Settings unlock lasts
 30 minutes; role sessions last 8 hours. Invitations can last 1 to 30 days.
@@ -89,7 +89,7 @@ python -m uvicorn autoyou_agents.media_agent.website.backend.app:app --host 127.
 ```
 
 Open `http://127.0.0.1:8112/`. In the managed AutoYou installation, enable the
-opt-in TV agent and use its registered website. Settings verifies the operator's
+opt-in Media agent and use its registered website. Settings verifies the operator's
 authenticator; Studio can then be delegated with an expiring invitation.
 
 `AUTOYOU_TV_DATA_DIR` overrides the normal AutoYou mutable-data location.

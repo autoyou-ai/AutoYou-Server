@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ProgressMap } from './types';
 
-const personalPrefix = `autoyou-tv:${window.location.pathname}:`;
+const personalPrefix = `autoyou-media:${window.location.pathname}:`;
 function read<T>(key: string, fallback: T): T {
   try { return JSON.parse(localStorage.getItem(personalPrefix + key) || 'null') ?? fallback; } catch { return fallback; }
 }

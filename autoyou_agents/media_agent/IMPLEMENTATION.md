@@ -1,4 +1,4 @@
-# AutoYou TV implementation contract
+# AutoYou Media implementation contract
 
 This is the requested implementation scope. It is not a completion report.
 

@@ -204,7 +204,7 @@ def create_reminder(
     save_json(REMINDERS_FILE, reminders)
     append_scheduler_activity_log(
         "reminder_created",
-        agent_kind="notify",
+        agent_kind="reminders",
         item_id=entry_id,
         status="created",
         message=normalized_message,
@@ -265,7 +265,7 @@ def delete_reminder(id: str, tool_context: Optional[Any] = None, include_all: bo
     save_json(REMINDERS_FILE, updated)
     append_scheduler_activity_log(
         "reminder_deleted",
-        agent_kind="notify",
+        agent_kind="reminders",
         item_id=str(id or "").strip() or None,
         status="deleted",
         message=f"Deleted notification {id}.",
@@ -336,7 +336,7 @@ def update_reminder(
     save_json(REMINDERS_FILE, reminders)
     append_scheduler_activity_log(
         "reminder_updated",
-        agent_kind="notify",
+        agent_kind="reminders",
         item_id=entry_id,
         status="updated",
         message=str(updated_entry.get("message") or ""),
@@ -369,7 +369,7 @@ def delete_all_reminders(tool_context: Optional[Any] = None, include_all: bool =
     save_json(REMINDERS_FILE, retained)
     append_scheduler_activity_log(
         "reminder_bulk_deleted",
-        agent_kind="notify",
+        agent_kind="reminders",
         status="deleted",
         message=f"Deleted {len(removed_ids)} notification(s).",
         details={"removed_ids": removed_ids[:50]},

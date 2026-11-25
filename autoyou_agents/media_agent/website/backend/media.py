@@ -247,7 +247,7 @@ def rewrite_hls(store: Store, item_id: str, body: str, base_url: str) -> str:
 async def remote_stream(store: Store, item_id: str, url: str, request: Request):
     session = http_session()
     try:
-        headers = {"Accept-Encoding": "identity", "User-Agent": "AutoYou-TV/1.0"}
+        headers = {"Accept-Encoding": "identity", "User-Agent": "AutoYou-Media/1.0"}
         for key in ("Range", "If-Range", "If-None-Match"):
             if request.headers.get(key):
                 headers[key] = request.headers[key]

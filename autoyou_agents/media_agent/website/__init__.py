@@ -1,1 +1,1 @@
-"""AutoYou TV website package."""
+"""AutoYou Media website package."""

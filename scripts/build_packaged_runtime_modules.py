@@ -360,7 +360,7 @@ def _is_agent_runtime_data_path(relative_path: Path) -> bool:
 
     Agents keep libraries, caches, transcodes and databases in ``data`` or
     ``<name>_data`` folders beside their code (for example
-    ``tv_agent/website/backend/tv_agent_data``). They are git-ignored, so a
+    ``media_agent/website/backend/media_agent_data``). They are git-ignored, so a
     developer checkout that has run the agent holds the owner's own files there,
     and the website-asset rule would otherwise package them into the app.
     """

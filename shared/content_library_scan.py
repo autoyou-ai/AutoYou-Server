@@ -249,13 +249,19 @@ def scan_games(catalog, cancelled=lambda: False):
     root = Path(__file__).resolve().parents[1]
     packages = GamePackages(root, get_mutable_data_dir("AutoYou", anchor=__file__))
     seen = set()
-    for game in packages.listing()["games"]:
-        if cancelled():
-            return len(seen)
-        catalog.publish("games_agent", game["id"], game["title"], "agent", href="/agent/games_agent/",
-                        source_collection="Games", source_labels=["game"],
-                        source_text=game["title"] + (" · " + str(game["version"]) if game.get("version") else ""))
-        seen.add(game["id"])
+    after = ""
+    while True:
+        page = packages.listing(after)
+        for game in page["games"]:
+            if cancelled():
+                return len(seen)
+            catalog.publish("games_agent", game["id"], game["title"], "agent", href="/agent/games_agent/",
+                            source_collection="Games", source_labels=["game"],
+                            source_text=game["title"] + (" · " + str(game["version"]) if game.get("version") else ""))
+            seen.add(game["id"])
+        after = page["next_after"]
+        if not after:
+            break
     _reconcile(catalog, "games_agent", "", seen)
     return len(seen)
 

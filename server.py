@@ -3431,6 +3431,10 @@ MANAGED_FRONTEND_APPS: Dict[str, Dict[str, Any]] = {
         "app_import": "autoyou_agents.diary_agent.website.backend.app:app",
         "default_port": 8127,
     },
+    "organizer_agent": {
+        "app_import": "autoyou_agents.organizer_agent.website.backend.app:app",
+        "default_port": 8119,
+    },
     "profile_agent": {
         "app_import": "autoyou_agents.profile_agent.website.backend.app:app",
         "default_port": 8093,

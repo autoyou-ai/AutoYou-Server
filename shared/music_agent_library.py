@@ -6,7 +6,7 @@
 
 """Persistent, server-owned audio library source selection.
 
-The Audio Agent website is a separately hosted managed frontend, so it cannot
+The Music website is a separately hosted managed frontend, so it cannot
 rely on the main server module's in-memory config.  This small boundary keeps
 its source preferences in the normal mutable runtime directory and resolves
 the actual directories on the server for every scan.  That makes source runs,

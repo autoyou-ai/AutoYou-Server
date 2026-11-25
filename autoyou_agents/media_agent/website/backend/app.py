@@ -1,4 +1,4 @@
-"""AutoYou TV: open viewing, role-based Studio and OTP-only Settings."""
+"""AutoYou Media: open viewing, role-based Studio and OTP-only Settings."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 from typing import Literal
 from urllib.parse import unquote, urlsplit
+from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
@@ -68,12 +69,17 @@ class ItemEdit(BaseModel):
     episode: int | None = Field(default=None, ge=0, le=9999)
 
 
+class StreamCopy(BaseModel):
+    source: str = Field(pattern=r"^[a-f0-9]{24}$")
+    title: str = Field(min_length=1, max_length=300)
+
+
 class MatchInput(BaseModel):
     imdb_id: str = Field(default="", pattern=r"^(?:tt\d{7,10})?$", max_length=12)
 
 
 class SettingsInput(BaseModel):
-    library_name: str = Field(default="AutoYou TV", min_length=1, max_length=100)
+    library_name: str = Field(default="AutoYou Media", min_length=1, max_length=100)
     autoplay_next: bool = True
     adaptive_streaming: bool = True
     omdb_api_key: str | None = Field(default=None, max_length=512)
@@ -181,7 +187,7 @@ def create_app(data_dir: Path | None = None, *, otp_verifier=None) -> FastAPI:
     @application.get("/api/config")
     async def config(request: Request):
         store, auth, _ = services()
-        return {"library_name": store.setting("library_name", "AutoYou TV"),
+        return {"library_name": store.setting("library_name", "AutoYou Media"),
                 "autoplay_next": store.setting("autoplay_next", True), "auth": auth.session(request),
                 "capabilities": {"download": bool(executable("yt-dlp")), "transcode": bool(executable("ffmpeg")),
                                  "probe": bool(executable("ffprobe"))}}
@@ -388,6 +394,25 @@ def create_app(data_dir: Path | None = None, *, otp_verifier=None) -> FastAPI:
         await asyncio.to_thread(application.state.uploads.cancel, upload_id, upload_owner(request))
         return {"success": True}
 
+    @application.put("/api/sync/streams/{copy_id}")
+    def copy_stream(copy_id: UUID, payload: StreamCopy, request: Request):
+        from shared.paired_content import require_pair
+        from shared.content_access import deny
+        require_pair(request, "media_agent")
+        restricted = deny(request, "edit")
+        if restricted is not None:
+            return restricted
+        store, auth, _ = services()
+        auth.require_editor(request)
+        source = store.item(payload.source)
+        if source["status"] == "deleted" or not source.get("source_url"):
+            raise HTTPException(404, "Stream unavailable")
+        item, created = store.add_item(source_key="stream-copy:" + str(copy_id), title=payload.title, kind=source["kind"],
+                                 source_url=source["source_url"], folder_id=source.get("folder_id"))
+        if not created and (item["source_url"] != source["source_url"] or item["title"] != payload.title.strip() or item["status"] == "deleted"):
+            raise HTTPException(409, "This stream copy changed. Refresh the library.")
+        return public_item(item)
+
     @application.patch("/api/items/{item_id}")
     async def edit_item(request: Request, item_id: str, payload: ItemEdit):
         store, auth, _ = services()
@@ -564,7 +589,7 @@ def create_app(data_dir: Path | None = None, *, otp_verifier=None) -> FastAPI:
         item = store.item(item_id)
         if item["status"] == "deleted":
             raise HTTPException(404, "This title was removed")
-        if request.headers.get("X-AutoYou-TV-Presentation") == "1" and item["kind"] == "photo" and Path(item.get("file_path") or "").suffix.lower() in {".jpg", ".jpeg"}:
+        if request.headers.get("X-AutoYou-Media-Presentation") == "1" and item["kind"] == "photo" and Path(item.get("file_path") or "").suffix.lower() in {".jpg", ".jpeg"}:
             async with photo_decoders:
                 path = await asyncio.to_thread(photo_thumbnail, store, item, 1280)
             return file_stream(path, request)
@@ -625,7 +650,7 @@ def create_app(data_dir: Path | None = None, *, otp_verifier=None) -> FastAPI:
     async def settings(request: Request):
         store, auth, _ = services()
         auth.require_settings(request)
-        return {"library_name": store.setting("library_name", "AutoYou TV"),
+        return {"library_name": store.setting("library_name", "AutoYou Media"),
                 "adaptive_streaming": store.setting("adaptive_streaming", True),
                 "autoplay_next": store.setting("autoplay_next", True), "omdb_configured": bool(store.key()),
                 "sources": [f for f in store.folders(all_folders=True) if f["root_path"] and not f["relative_path"]],

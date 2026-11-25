@@ -22,7 +22,7 @@ export default function Studio({ config, folders, onChanged, onAuthenticated, on
         <UploadImport folders={folders} onChanged={onChanged} notify={notify} />}
     </section><aside className="panel studio-aside"><p className="eyebrow">A little organization</p><h2>Make room for more.</h2><p>Keep movies, series and personal videos together in folders that make sense to you.</p>
       <button className="button" onClick={onFolder}><Plus size={18} />New folder</button><hr /><h3>Already on this computer?</h3>
-      <p>Add a source folder in Settings. AutoYou TV will discover its videos, subfolders and episode names.</p><button className="text-button" onClick={() => navigate('settings')}>Open Settings</button>
+      <p>Add a source folder in Settings. AutoYou Media will discover its videos, subfolders and episode names.</p><button className="text-button" onClick={() => navigate('settings')}>Open Settings</button>
       <hr /><p className="small muted">IMDb matches appear automatically when the library has an OMDb key. You can correct any match from a title's editor tools.</p>
     </aside></div>
     <JobList onChanged={onChanged} notify={notify} />

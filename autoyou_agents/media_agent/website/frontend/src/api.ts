@@ -2,7 +2,7 @@ import type { Item } from './types';
 import { relativePath } from '../../../../../assets/content-drop.js';
 
 const base = new URL('./', window.location.href);
-const tokenKey = `autoyou-tv-session:${base.pathname}`;
+const tokenKey = `autoyou-media-session:${base.pathname}`;
 let token = '';
 try { token = sessionStorage.getItem(tokenKey) || ''; } catch { /* Cookies still work when storage is unavailable. */ }
 

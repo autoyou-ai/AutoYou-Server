@@ -42,12 +42,12 @@ async def test_mobile_game_download_uses_server_asset_and_stays_bounded(tmp_path
     channel = SimpleNamespace(send_message=AsyncMock(return_value=True))
     webrtc.datachannel_managers["synthetic-session"] = channel
 
-    async def request(path="/api/v1/games", method="GET"):
+    async def request(path="/api/v1/games", method="GET", headers=None):
         message = DataChannelMessage(
             header=MessageHeader("synthetic-message", MessageType.HTTP_REQUEST, 0.0,
                                  "synthetic-session", "synthetic-user"),
             payload={"request_id": "synthetic-request", "method": method,
-                     "url": path, "headers": {}},
+                     "url": path, "headers": headers or {}},
         )
         await webrtc._handle_http_request(message)
         return channel.send_message.call_args.args[0].payload
@@ -55,6 +55,13 @@ async def test_mobile_game_download_uses_server_asset_and_stays_bounded(tmp_path
     assert json.loads((await request())["body"]) == {
         "games": [{"id": "neon-horizon", "title": "Neon Horizon"}],
     }
+    scoped = {"X-AutoYou-Content-Sync": "games_agent"}
+    assert (await request(headers=scoped))["status_code"] == 200
+    assert (await request(headers={"X-AutoYou-Content-Sync": "diary_agent"}))["status_code"] == 403
+    from shared import content_library
+    with monkeypatch.context() as disabled:
+        disabled.setattr(content_library, "settings", lambda: {"content_sync_enabled": False})
+        assert (await request(headers=scoped))["status_code"] == 403
     second = asset.parent / "synthetic-runner.html"
     second.write_text("<html><head></head><body>another game</body></html>", encoding="utf-8")
     (asset.parent / "headless.html").write_text("<html>unplayable</html>", encoding="utf-8")

@@ -39,7 +39,7 @@ class GamePackages:
         result = {}
         for priority, folder in enumerate(self.folders):
             if not folder.is_dir(): continue
-            for path in sorted(folder.iterdir())[:256]:
+            for path in folder.iterdir():
                 identifier = path.stem if path.is_file() else path.name
                 if not package.GAME_ID.fullmatch(identifier) or path.is_symlink() or self.hidden(identifier).is_file(): continue
                 rank = 3 if path.suffix == ".aygame" else 2 if path.is_dir() and (path / "game.json").is_file() else 1 if path.suffix == ".html" else 0
@@ -82,15 +82,19 @@ class GamePackages:
                 if previous != target: previous.unlink(missing_ok=True)
         return target
 
-    def listing(self):
+    def listing(self, after=""):
+        if after and not package.GAME_ID.fullmatch(after):
+            raise ValueError("Invalid game catalog cursor")
+        ids = sorted(identifier for identifier in self.candidates() if identifier > after)
+        identifiers = ids[:64]
         result = []
-        for identifier in sorted(self.candidates())[:64]:
+        for identifier in identifiers:
             try:
                 path = self.resolve(identifier)
                 manifest, _ = package.read_manifest(path)
                 result.append({key: manifest[key] for key in ("id", "title", "version", "revision")})
             except (OSError, ValueError, TypeError, KeyError): continue
-        return {"format": 1, "games": result}
+        return {"format": 1, "games": result, "next_after": identifiers[-1] if len(ids) > len(identifiers) else None}
 
     def response(self, method, path, headers):
         """Bounded virtual HTTP response; bytes are base64-encoded by the caller."""

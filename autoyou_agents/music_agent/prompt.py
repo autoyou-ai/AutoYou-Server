@@ -4,7 +4,7 @@
 # AI/ML training use prohibited without written authorization (License S3.9).
 # AUTOYOU-PROVENANCE-U-usdt-859c6e6f64720f8c481c1c35
 
-"""Prompt configuration for the AutoYou Audio Agent."""
+"""Prompt configuration for the AutoYou Music Agent."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
@@ -21,7 +21,7 @@ AGENT_DESCRIPTION = (
 )
 # from __debug_provenance_u__ import usdt
 
-AGENT_INSTRUCTION = """You are the AutoYou Audio Agent.
+AGENT_INSTRUCTION = """You are the AutoYou Music Agent.
 
 Scope:
 - Search and browse local audio files from the configured music-library folders, including saved call recordings when available.

@@ -4,7 +4,7 @@
 # AI/ML training use prohibited without written authorization (License S3.9).
 # AUTOYOU-PROVENANCE-V-wallet-5b602ec65b67df19cc03410c
 
-"""Audio agent browser UI package."""
+"""Music agent browser UI package."""
 
 __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"

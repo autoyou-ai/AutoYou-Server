@@ -68,8 +68,11 @@ def import_record(payload):
             raise FileExistsError("This record was removed.")
         if base_revision is None and existing and (existing["updated"] > updated or (existing["updated"] == updated and existing["payload"] != encoded)):
             raise FileExistsError("A newer or conflicting copy is already on this computer. Refresh before publishing.")
+        parent = db.execute("SELECT id FROM content WHERE source=? AND source_id=?", (source, identifier)).fetchone()
         for attachment in attachments:
-            if not db.execute("SELECT 1 FROM content WHERE id=? AND source=? AND deleted=0", (attachment, source)).fetchone():
+            row = db.execute("SELECT parent_id FROM content WHERE id=? AND source=? AND path<>'' AND deleted=0",
+                             (attachment, source)).fetchone()
+            if not row or (row["parent_id"] and (not parent or row["parent_id"] != parent["id"])):
                 raise ValueError("An attachment has not finished uploading to this agent")
         db.execute("INSERT INTO native_content VALUES(?,?,?,?) ON CONFLICT(source,source_id) DO UPDATE SET updated=excluded.updated,payload=excluded.payload",
                    (source, identifier, updated, encoded))

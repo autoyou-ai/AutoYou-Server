@@ -66,7 +66,7 @@ function General({ settings, reload, notify }: { settings: SettingsData; reload:
     <label className="check-row"><span><strong>Play the next episode</strong><small>Continue a series when an episode ends.</small></span><input type="checkbox" name="autoplay" defaultChecked={settings.autoplay_next} /></label>
     <label className="check-row"><span><strong>Optimize streaming automatically</strong><small>Prepare smaller video segments for new uploads and scans. Requires FFmpeg, FFprobe and additional disk space.</small></span><input type="checkbox" name="adaptive" defaultChecked={settings.adaptive_streaming} /></label>
     <hr /><div className="panel-heading"><h3>IMDb details, automatically.</h3>{settings.omdb_configured && <span className="status-pill"><Check size={14} />Connected</span>}</div>
-    <p className="muted">AutoYou TV uses OMDb to find posters, plots, cast and IMDb ratings for your titles.</p>
+    <p className="muted">AutoYou Media uses OMDb to find posters, plots, cast and IMDb ratings for your titles.</p>
     <label>OMDb API key<input name="key" type="password" autoComplete="off" maxLength={512} placeholder={settings.omdb_configured ? 'A key is saved. Leave blank to keep it.' : 'Paste your OMDb API key'} /></label>
     <p className="field-help">Saved keys use this server's OS credential store. <a href="https://www.omdbapi.com/apikey.aspx" target="_blank" rel="noreferrer">Get an OMDb key</a>.</p>
     {error && <p className="inline-error" role="alert">{error}</p>}<div className="button-row"><button className="button primary" disabled={busy}>{busy ? 'Saving...' : 'Save Settings'}</button>

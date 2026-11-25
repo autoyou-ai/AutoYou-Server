@@ -16,6 +16,10 @@ def require_pair(request, agent):
     option = "notes_sync_enabled" if agent == "notes_agent" else "content_sync_enabled"
     if not settings()[option]:
         raise HTTPException(403, "Sync is disabled in My Content on this computer")
+    if request.method not in {"GET", "HEAD", "OPTIONS"} and not request.url.path.endswith("/auth/login") and not request.url.path.endswith("/publish-auth/login"):
+        action = "delete" if request.method == "DELETE" else "edit"
+        if not content_access.abilities(request)[action]:
+            raise HTTPException(403, "The paired device does not have permission for this change")
 
 
 def install_collection_sync(app, agent):

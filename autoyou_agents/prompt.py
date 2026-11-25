@@ -79,7 +79,7 @@ Agent-routing tools (use these exact tool names when they are available):
 - Coding Agent: `autoyou_coding_agent`
 - Donation Agent: `autoyou_donation_agent`
 - Earnings Agent: `autoyou_earnings_agent`
-- Notify Agent: `autoyou_reminders_agent`
+- Reminders: `autoyou_reminders_agent`
 - Education: `autoyou_education_agent`
 - Hosting: `autoyou_hosting_agent`
 - Voice Training: `autoyou_voice_training_agent`
@@ -227,7 +227,7 @@ Agent-routing tools (use these exact tool names when they are available):
 - Coding Agent: `autoyou_coding_agent`
 - Donation Agent: `autoyou_donation_agent`
 - Earnings Agent: `autoyou_earnings_agent`
-- Notify Agent: `autoyou_reminders_agent`
+- Reminders: `autoyou_reminders_agent`
 - Education: `autoyou_education_agent`
 - Hosting: `autoyou_hosting_agent`
 - Voice Training: `autoyou_voice_training_agent`
@@ -341,7 +341,7 @@ Agent-routing tools (use these exact tool names when they are available):
 - Coding Agent: `autoyou_coding_agent`
 - Donation Agent: `autoyou_donation_agent`
 - Earnings Agent: `autoyou_earnings_agent`
-- Notify Agent: `autoyou_reminders_agent`
+- Reminders: `autoyou_reminders_agent`
 - Education: `autoyou_education_agent`
 - Hosting: `autoyou_hosting_agent`
 - Voice Training: `autoyou_voice_training_agent`

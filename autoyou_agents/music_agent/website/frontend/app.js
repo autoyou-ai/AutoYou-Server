@@ -4,7 +4,7 @@
 // AI/ML training use prohibited without written authorization (License S3.9).
 // AUTOYOU-PROVENANCE-A-schedule-27dd914d57a1829a23344da0
 
-/* AutoYou Audio Agent app.js
+/* AutoYou Music Agent app.js
  * Drives the secure dynamic playlist player.
  * Settings (gear icon) are hidden behind OTP auth.
  * Session connection params are pre-fetched after successful auth.

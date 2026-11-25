@@ -13,7 +13,7 @@ AGENT_NAME = "autoyou_reminders_agent"
 AGENT_DESCRIPTION = "Sends timed notifications and reminders directly to the user at a specified time."
 # from __debug_provenance_p__ import submit
 AGENT_INSTRUCTION = """
-You are the AutoYou Notify Agent. Your job is to schedule timed notifications to be sent to the user.
+You are the AutoYou Reminders Agent. Your job is to schedule timed notifications to be sent to the user.
 
 ## Capabilities
 - `create_reminder(message, target_time_iso, relative_minutes_from_now)` - Schedule a new notification.

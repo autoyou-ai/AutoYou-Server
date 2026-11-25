@@ -10244,7 +10244,7 @@ class WebRTCManager:
                 from shared.content_library import settings as content_settings
                 valid_path = (request_path.startswith(f"/agent/{sync_agent}/") or request_path == "/api/v1/status"
                               or sync_agent == "games_agent" and (request_path in {"/api/v1/games","/api/v1/game-packages"} or request_path.startswith(("/api/v1/games/", "/api/v1/game-packages/"))))
-                if not valid_path or not (await asyncio.to_thread(content_settings))["content_sync_enabled"]:
+                if not valid_path or not (await _runtime.asyncio.to_thread(content_settings))["content_sync_enabled"]:
                     await self._send_remote_access_denied(message, request_id, method, url, websocket=websocket_upgrade)
                     return
             if not _runtime.remote_http_request_allowed(access_role, method, request_path, websocket=websocket_upgrade):

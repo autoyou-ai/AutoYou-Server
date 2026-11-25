@@ -9,7 +9,7 @@ import Studio from './Studio';
 import { usePersonal, useRoute } from './hooks';
 import type { Config, Folder, FolderPage, Item, LibraryPage, Notify } from './types';
 
-const defaultConfig: Config = { library_name: 'AutoYou TV', autoplay_next: true, auth: { role: 'viewer', otp_unlocked: false }, capabilities: { download: false, transcode: false, probe: false } };
+const defaultConfig: Config = { library_name: 'AutoYou Media', autoplay_next: true, auth: { role: 'viewer', otp_unlocked: false }, capabilities: { download: false, transcode: false, probe: false } };
 const views = [{ id: 'watch', label: 'Watch', icon: House }, { id: 'library', label: 'Library', icon: Film }, { id: 'folders', label: 'Folders', icon: FolderIcon }, { id: 'watchlist', label: 'Watchlist', icon: Bookmark }];
 
 export default function App() {
@@ -110,7 +110,7 @@ export default function App() {
 
   return <div className="app-shell">
     <a className="skip-link" href="#main-content" onClick={event => { event.preventDefault(); document.getElementById('main-content')?.focus(); }}>Skip to content</a>
-    <header className="site-header"><button className="wordmark" onClick={() => go('watch')}>{config.library_name === 'AutoYou TV' ? <>AutoYou <span>TV</span></> : config.library_name}</button>
+    <header className="site-header"><button className="wordmark" onClick={() => go('watch')}>{config.library_name === 'AutoYou Media' ? <>AutoYou <span>Media</span></> : config.library_name}</button>
       <nav className="desktop-nav" aria-label="Main navigation">{views.map(({ id, label }) => <button key={id} className={activeView === id ? 'active' : ''} aria-current={activeView === id ? 'page' : undefined} onClick={() => go(id)}>{label}</button>)}</nav>
       <div className="header-actions"><button className={`icon-button ${searchOpen ? 'active' : ''}`} aria-label="Search library" aria-expanded={searchOpen} onClick={() => setSearchOpen(value => !value)}><Search size={21} /></button>
         <button className={`studio-link ${view === 'studio' ? 'active' : ''}`} aria-label="Studio" onClick={() => go('studio')}><Clapperboard size={18} /><span>Studio</span></button>
@@ -168,7 +168,7 @@ export default function App() {
         <Detail item={detail} config={config} folders={allFolders} saved={personal.watchlist.includes(detail.id)} progress={personal.progress[detail.id]} onSave={() => toggle(detail.id)} onShare={() => setShare({ title: detail.title, path: `item/${detail.id}` })} onChanged={refresh} notify={notify} />)}
       {!['watch', 'library', 'folders', 'folder', 'watchlist', 'studio', 'settings', 'item', 'play'].includes(view) && <Empty title="This page has moved" description="Your library is one click away."><button className="button" onClick={() => go('watch')}>Go to Watch</button></Empty>}
     </main>
-    <footer className="site-footer"><span>AutoYou TV</span><p>Your library. On your terms.</p><button className="text-button" onClick={() => setShare({ title: config.library_name, path: 'watch' })}><Share2 size={15} />Share library</button></footer>
+    <footer className="site-footer"><span>AutoYou Media</span><p>Your library. On your terms.</p><button className="text-button" onClick={() => setShare({ title: config.library_name, path: 'watch' })}><Share2 size={15} />Share library</button></footer>
     <nav className="mobile-nav" aria-label="Mobile navigation">{views.map(({ id, label, icon: Icon }) => <button key={id} className={activeView === id ? 'active' : ''} aria-current={activeView === id ? 'page' : undefined} onClick={() => go(id)}><Icon size={22} strokeWidth={1.7} /><span>{label}</span></button>)}</nav>
     {view === 'play' && detail && <Player key={detail.id} item={detail} config={config} progress={personal.progress[detail.id]} record={personal.record} notify={notify} />}
     {folderModal && <NewFolder parent={view === 'folder' ? folderId : ''} folders={allFolders} onClose={() => setFolderModal(false)} onChanged={refresh} notify={notify} />}

@@ -52,7 +52,7 @@ def test_tv_media_ranges_head_assets_and_chunked_uploads_through_path_proxy(tv_p
     client, tv = tv_proxy
     prefix = "/agent/media_agent/"
     index = client.get(prefix)
-    assert index.status_code == 200 and "AutoYou TV" in index.text
+    assert index.status_code == 200 and "AutoYou Media" in index.text
     assert '<base href="/agent/media_agent/"' in index.text
     import re
     script = re.search(r'src="(\./assets/[^\"]+\.js)"', index.text)
@@ -98,11 +98,11 @@ def test_tv_runtime_plan_never_packages_the_agents_run_time_library(tmp_path):
     database beside the code; none of it may reach a packaged app."""
     from scripts.build_packaged_runtime_modules import _iter_agent_asset_files
 
-    web = tmp_path / "autoyou_agents" / "tv_agent" / "website"
+    web = tmp_path / "autoyou_agents" / "media_agent" / "website"
     shipped = web / "frontend" / "web" / "index.html"
     shipped.parent.mkdir(parents=True)
     shipped.write_text("<html></html>", encoding="utf-8")
-    data = web / "backend" / "tv_agent_data"
+    data = web / "backend" / "media_agent_data"
     for name in (
         "renditions/synthetic-id/720p/segment-000.ts",
         "renditions/synthetic-id/720p/index.m3u8",
@@ -118,8 +118,8 @@ def test_tv_runtime_plan_never_packages_the_agents_run_time_library(tmp_path):
 
     assets = {path.as_posix() for path in _iter_agent_asset_files(tmp_path)}
 
-    assert "autoyou_agents/tv_agent/website/frontend/web/index.html" in assets
-    assert not [path for path in assets if "tv_agent_data" in path]
+    assert "autoyou_agents/media_agent/website/frontend/web/index.html" in assets
+    assert not [path for path in assets if "media_agent_data" in path]
     assert not [path for path in assets if path.endswith(("-wal", "-shm"))]
 
 
