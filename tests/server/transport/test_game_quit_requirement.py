@@ -74,7 +74,7 @@ def test_catalog_still_serves_stored_packages_without_quit(tmp_path, monkeypatch
 
 
 def test_neon_horizon_has_its_own_quit_next_to_pause_and_settings():
-    for page in ("autoyou_agents/game_agent/website/frontend/play.html", "assets/game/neon-horizon.html"):
+    for page in ("autoyou_agents/games_agent/website/frontend/play.html", "assets/game/neon-horizon.html"):
         html = (ROOT / page).read_text(encoding="utf-8")
         corner = re.search(r'<div class="corner">(.*?)</div>', html, re.S).group(1)
         assert re.findall(r'<button id="([a-z-]+)"', corner) == ["pause", "settings-open", "quit"]

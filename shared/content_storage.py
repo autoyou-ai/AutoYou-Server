@@ -12,7 +12,7 @@ from shared import content_files
 from shared.content_library import ContentLibrary, managed_roots, settings
 from shared.secure_storage import secure_storage_enabled
 
-REFERENCE_SOURCES = {"audio_agent", "tv_agent", "media_generation_agent", "files_agent"}
+REFERENCE_SOURCES = {"music_agent", "media_agent", "media_generation_agent", "files_agent"}
 
 
 def stamp(path):

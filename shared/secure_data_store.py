@@ -135,12 +135,12 @@ class SecureDataStore:
         else:
             write_secure_file(self.path, str(text).encode("utf-8"))
 
-    def read(self) -> Optional[str]:
+    def read(self, *, migrate_plaintext: bool = True) -> Optional[str]:
         if not self.path.exists():
             return None
         if secure_storage_enabled():
             try:
-                raw = read_secure_file(self.path).decode("utf-8")
+                raw = read_secure_file(self.path, migrate_plaintext=migrate_plaintext).decode("utf-8")
             except UnicodeDecodeError as exc:
                 raise SecureDataError("Protected self-data is not valid UTF-8") from exc
         else:

@@ -22,7 +22,7 @@ __debug_trace_q__ = "AUTOYOU-PROVENANCE-Q-72697a6174696f6e2e000000-f36b4dc95b4a8
 
 ROOT = Path(__file__).resolve().parents[3]
 PAGES = (
-    "autoyou_agents/game_agent/website/frontend/play.html",
+    "autoyou_agents/games_agent/website/frontend/play.html",
     "assets/game/neon-horizon.html",
 )
 

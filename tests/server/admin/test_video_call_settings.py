@@ -2579,7 +2579,7 @@ def test_admin_audio_playback_toggle_forces_live_call_audio_rewire(monkeypatch):
         lambda enabled: {"audio_playback": {"enabled": enabled}},
     )
     monkeypatch.setattr(server, "_resolve_audio_playback_music_library_dirs", lambda cfg=None: [])
-    monkeypatch.setattr(server, "_is_audio_agent_installed", lambda: True)
+    monkeypatch.setattr(server, "_is_music_agent_installed", lambda: True)
 
     response = asyncio.run(server.admin_set_audio_playback_enabled(MockRequest()))
 

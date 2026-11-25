@@ -297,14 +297,14 @@ def test_initialize_root_agent_after_registry_change_rebuilds_graph_and_prompt(m
     ],
 )
 def test_initialize_root_agent_wraps_sub_agents_as_tools_for_ollama(monkeypatch, model_name):
-    installed_agents = ["internet_agent", "notes_agent", "page_agent", "audio_agent", "memory_agent", "persona_agent"]
+    installed_agents = ["internet_agent", "notes_agent", "page_agent", "music_agent", "memory_agent", "profile_agent"]
     factory_map = {
         "internet_agent": lambda model_config: _dummy_agent("autoyou_internet_agent"),
         "notes_agent": lambda model_config: _dummy_agent("autoyou_notes_agent"),
         "page_agent": lambda model_config: _dummy_agent("autoyou_page_agent"),
-        "audio_agent": lambda model_config: _dummy_agent("autoyou_audio_agent"),
+        "music_agent": lambda model_config: _dummy_agent("autoyou_music_agent"),
         "memory_agent": lambda model_config: _dummy_agent("autoyou_memory_agent"),
-        "persona_agent": lambda model_config: _dummy_agent("autoyou_persona_agent"),
+        "profile_agent": lambda model_config: _dummy_agent("autoyou_profile_agent"),
     }
 
     monkeypatch.setattr(
@@ -329,15 +329,15 @@ def test_initialize_root_agent_wraps_sub_agents_as_tools_for_ollama(monkeypatch,
     sub_agent_names = {agent.name for agent in root_agent.sub_agents}
 
     assert "autoyou_memory_agent" in tool_names
-    assert {"read_persona", "append_persona"} <= tool_names
+    assert {"read_profile", "append_profile"} <= tool_names
     assert "autoyou_internet_agent" in routable
     assert "autoyou_notes_agent" in routable
     assert "autoyou_page_agent" in routable
-    assert "autoyou_audio_agent" in routable
+    assert "autoyou_music_agent" in routable
     assert "autoyou_internet_agent" not in sub_agent_names
     assert "autoyou_notes_agent" not in sub_agent_names
     assert "autoyou_page_agent" not in sub_agent_names
-    assert "autoyou_audio_agent" not in sub_agent_names
+    assert "autoyou_music_agent" not in sub_agent_names
 
     # The reason the dispatcher exists: the advertised tool count must not grow
     # with the number of installed specialists.

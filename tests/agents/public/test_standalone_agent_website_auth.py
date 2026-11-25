@@ -17,7 +17,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-from autoyou_agents.audio_agent.website.backend import app as audio_backend
+from autoyou_agents.music_agent.website.backend import app as audio_backend
 from autoyou_agents.fine_tuning_agent.website.backend import app as fine_tuning_backend
 from autoyou_agents.media_generation_agent.website.backend import app as media_backend
 from autoyou_agents.voice_training_agent.website.backend import app as voice_backend
@@ -38,7 +38,7 @@ def test_global_otp_off_opens_audio_settings_without_an_agent_cookie(monkeypatch
 @pytest.mark.parametrize(
     ("backend", "agent_name"),
     [
-        (audio_backend, "audio_agent"),
+        (audio_backend, "music_agent"),
         (fine_tuning_backend, "fine_tuning_agent"),
         (media_backend, "media_generation_agent"),
         (voice_backend, "voice_training_agent"),

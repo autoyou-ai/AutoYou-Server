@@ -101,11 +101,11 @@
   "routing": [
     {
       "text": "Read my personal profile.",
-      "route": "persona_agent"
+      "route": "profile_agent"
     },
     {
       "text": "Remember that I prefer short answers.",
-      "route": "persona_agent"
+      "route": "profile_agent"
     },
     {
       "text": "Save it",
@@ -121,7 +121,7 @@
     },
     {
       "text": "Please pause the music",
-      "route": "audio_agent"
+      "route": "music_agent"
     },
     {
       "text": "Find the latest camera reviews",

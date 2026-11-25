@@ -251,6 +251,23 @@ class PageFeedDB:
                 PRIMARY KEY(item_id, position), UNIQUE(item_id, client_media_id)
             )""")
             con.execute("CREATE INDEX IF NOT EXISTS idx_feed_attachment_blob ON feed_attachments(blob_id)")
+            if "sync_revision" not in {col[1] for col in con.execute("PRAGMA table_info(feed_items)")}:
+                con.execute("ALTER TABLE feed_items ADD COLUMN sync_revision INTEGER NOT NULL DEFAULT 1")
+            con.execute("UPDATE feed_items SET client_post_id=lower(hex(randomblob(16))) WHERE client_post_id IS NULL")
+            con.execute("""CREATE TABLE IF NOT EXISTS deleted_page_posts(post_key TEXT PRIMARY KEY, item_id INTEGER UNIQUE NOT NULL, revision INTEGER NOT NULL)""")
+            con.execute("""CREATE TRIGGER IF NOT EXISTS page_sync_key AFTER INSERT ON feed_items WHEN NEW.client_post_id IS NULL
+                BEGIN UPDATE feed_items SET client_post_id=lower(hex(randomblob(16))) WHERE id=NEW.id; END""")
+            con.execute("""CREATE TRIGGER IF NOT EXISTS page_sync_edit AFTER UPDATE OF title,type,url,content,source,favourite ON feed_items
+                WHEN OLD.title IS NOT NEW.title OR OLD.type IS NOT NEW.type OR OLD.url IS NOT NEW.url OR OLD.content IS NOT NEW.content
+                OR OLD.source IS NOT NEW.source OR OLD.favourite IS NOT NEW.favourite
+                BEGIN UPDATE feed_items SET sync_revision=sync_revision+1 WHERE id=NEW.id; END""")
+            con.execute("""CREATE TRIGGER IF NOT EXISTS page_sync_delete AFTER DELETE ON feed_items
+                BEGIN INSERT OR REPLACE INTO deleted_page_posts VALUES(OLD.client_post_id,OLD.id,OLD.sync_revision+1); END""")
+            for table in ("item_tags", "feed_attachments"):
+                for verb, row in (("INSERT","NEW"),("UPDATE","NEW"),("DELETE","OLD")):
+                    con.execute(f"""CREATE TRIGGER IF NOT EXISTS sync_{table}_{verb} AFTER {verb} ON {table}
+                        BEGIN UPDATE feed_items SET sync_revision=sync_revision+1 WHERE id={row}.item_id; END""")
+
 
             # Lightweight migration: if an older table exists with INTEGER id, migrate to TEXT UUID
             try:
@@ -363,7 +380,11 @@ class PageFeedDB:
         ids = [int(item["id"]) for item in items]
         marks = ",".join("?" for _ in ids)
         with self._connect() as con:
-            posts = dict(con.execute(f"SELECT id, client_post_id FROM feed_items WHERE id IN ({marks})", ids))
+            con.execute("BEGIN")
+            posts = {row[0]: row[1:] for row in con.execute(f"SELECT id,client_post_id,sync_revision,title,content,url,favourite FROM feed_items WHERE id IN ({marks})", ids)}
+            tags = {}
+            for identifier, tag in con.execute(f"SELECT item_id,tag FROM item_tags WHERE item_id IN ({marks}) ORDER BY tag", ids):
+                tags.setdefault(identifier, []).append(tag)
             rows = con.execute(f"""SELECT a.item_id, a.blob_id, a.client_media_id, b.filename, b.mimetype, b.size
                 FROM feed_attachments a JOIN blobs b ON b.id = a.blob_id
                 WHERE a.item_id IN ({marks}) ORDER BY a.item_id, a.position""", ids).fetchall()
@@ -373,18 +394,29 @@ class PageFeedDB:
                 "blob_id": blob_id, "client_media_id": media_id, "url": f"blob://{blob_id}",
                 "name": name, "mime": mime or "application/octet-stream", "size": size,
             })
-        return [{**item, "client_post_id": posts.get(int(item["id"])),
-                 "attachments": attachments.get(int(item["id"]), [])} for item in items]
+        results = []
+        for item in items:
+            identifier = int(item["id"])
+            if identifier in posts:
+                key, revision, title, content, url, favourite = posts[identifier]
+                results.append({**item, "client_post_id": key, "revision": revision, "title": title or "",
+                                "content": content or "", "url": url, "favourite": bool(favourite),
+                                "tags": tags.get(identifier, []), "attachments": attachments.get(identifier, [])})
+        return results
 
     def upsert_post(self, client_post_id: str, item_type: str, url: str, title: str,
-                    content: str, source: str, attachments: List[Dict[str, str]]) -> FeedItemFull:
+                    content: str, source: str, attachments: List[Dict[str, str]], *, base_revision=None, tags=None, favourite=None) -> FeedItemFull:
         """Publish an entire native draft atomically; retries keep the same item."""
         with self._connect() as con:
             con.execute("BEGIN IMMEDIATE")
             for attachment in attachments:
                 if not con.execute("SELECT 1 FROM blobs WHERE id = ?", (attachment["blob_id"],)).fetchone():
                     raise ValueError("An attachment is missing. Upload it before publishing.")
-            row = con.execute("SELECT id FROM feed_items WHERE client_post_id = ?", (client_post_id,)).fetchone()
+            row = con.execute("SELECT id,sync_revision FROM feed_items WHERE client_post_id = ?", (client_post_id,)).fetchone()
+            if con.execute("SELECT 1 FROM deleted_page_posts WHERE post_key=?", (client_post_id,)).fetchone():
+                raise FileExistsError("The post was deleted.")
+            if base_revision is not None and (row[1] if row else 0) != base_revision:
+                raise FileExistsError("This post changed on the computer.")
             if row:
                 item_id = int(row[0])
                 con.execute("UPDATE feed_items SET type=?, url=?, title=?, content=?, source=? WHERE id=?",
@@ -396,7 +428,18 @@ class PageFeedDB:
             con.execute("DELETE FROM feed_attachments WHERE item_id = ?", (item_id,))
             con.executemany("INSERT INTO feed_attachments (item_id,position,blob_id,client_media_id) VALUES (?,?,?,?)",
                             [(item_id, position, a["blob_id"], a["client_media_id"]) for position, a in enumerate(attachments)])
-        return self.post_details([self.get_item(item_id)])[0]
+            if tags is not None:
+                con.execute("DELETE FROM item_tags WHERE item_id=?", (item_id,))
+                con.executemany("INSERT INTO item_tags(item_id,tag,created_at) VALUES(?,?,?)",
+                                [(item_id, tag, datetime.now().isoformat()) for tag in tags])
+            if favourite is not None:
+                con.execute("UPDATE feed_items SET favourite=? WHERE id=?", (int(favourite), item_id))
+            saved_revision = con.execute("SELECT sync_revision FROM feed_items WHERE id=?", (item_id,)).fetchone()[0]
+        item = self.get_item(item_id)
+        result = self.post_details([item]) if item else []
+        if not result or result[0]["revision"] != saved_revision:
+            raise FileExistsError("The saved post changed again. Refresh to retrieve it.")
+        return result[0]
 
     def update_post(self, item_id: int, *, title: str, url: str, content: str, item_type: str, source: str) -> bool:
         with self._connect() as con:
@@ -453,14 +496,16 @@ class PageFeedDB:
             )
             return cur.rowcount > 0
 
-    def delete_item_and_cleanup(self, item_id: int, uploads_dir: Optional[str] = None) -> Dict[str, Any]:
+    def delete_item_and_cleanup(self, item_id: int, uploads_dir: Optional[str] = None, *, base_revision: Optional[int] = None) -> Dict[str, Any]:
         """Remove a post and blobs no other post or attachment references."""
         result = {"deleted": 0, "tags_deleted": 0, "blob_id": None, "blob_deleted": 0, "file_deleted": 0}
         with self._connect() as con:
             con.execute("BEGIN IMMEDIATE")
-            row = con.execute("SELECT url FROM feed_items WHERE id = ?", (item_id,)).fetchone()
+            row = con.execute("SELECT url,sync_revision FROM feed_items WHERE id = ?", (item_id,)).fetchone()
             if not row:
                 return result
+            if base_revision is not None and row[1] != base_revision:
+                raise FileExistsError("The post changed on the computer.")
             primary = self._extract_blob_id(row[0])
             result["blob_id"] = primary
             blobs = {r[0] for r in con.execute("SELECT blob_id FROM feed_attachments WHERE item_id = ?", (item_id,))}

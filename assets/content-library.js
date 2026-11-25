@@ -8,7 +8,7 @@ import {collectDroppedFiles, relativePath} from './content-drop.js';
     let syncRequestedAt = 0, syncBaseline = 0, lastSync = 0, renderedFilters = '';
     const sourceNames = {
         notes_agent: 'Notes', page_agent: 'Pages', media_generation_agent: 'Media Generation',
-        audio_agent: 'Audio', tv_agent: 'TV', files_agent: 'Files',
+        music_agent: 'Audio', media_agent: 'TV', files_agent: 'Files',
         voice_training_agent: 'Voice Training', location_agent: 'Locations',
     };
     const dateFormat = new Intl.DateTimeFormat(undefined, {dateStyle: 'medium'});

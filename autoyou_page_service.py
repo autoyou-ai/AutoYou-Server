@@ -950,7 +950,7 @@ class AutoYouPageService:
             "max_size": None,
             "subprotocols": requested_protocols or None,
         }
-        if agent_name == "game_agent":
+        if agent_name == "games_agent":
             origin = urlparse(str(websocket.headers.get("origin") or ""))
             if (
                 self._peer_is_this_computer(websocket.client.host if websocket.client else "")

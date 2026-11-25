@@ -13,7 +13,7 @@ directory is retained. A model saying "saved" is not evidence of a storage write
 
 | Data | Existing store | Use |
 | --- | --- | --- |
-| Personal facts and preferences the user asks to retain | `persona_agent/persona.md` under the server's mutable data directory | Canonical personal profile, shared by chat tools and the Persona website. |
+| Personal facts and preferences the user asks to retain | `profile_agent/persona.md` under the server's mutable data directory | Canonical personal profile, shared by chat tools and the Persona website. |
 | Conversation events and explicit conversation memories | SQLite session storage and its `memory_search` index | Searchable history, normally scoped to the current conversation. |
 | Optional richer retrieval | Cognee, with the SQLite fallback retained | Opt-in backend; unnecessary for basic personal recall. |
 | Sessions explicitly ingested through ADK's native memory API | ADK 2.11 SQLite memory service | Persistent application/user-scoped ADK retrieval; ephemeral when recording is disabled or secure storage is enabled. |
@@ -28,8 +28,8 @@ profile copy per client. Session persistence alone does not give new chats acces
 to a personal profile: the harness must retrieve it. Personal memory here is the
 existing server-owner journal, not a separate profile for every remote contact.
 
-`read_persona` and `append_persona` operate on the same file as the website.
-An explicit simple personal save uses `append_persona` through ADK; its actual
+`read_profile` and `append_profile` operate on the same file as the website.
+An explicit simple personal save uses `append_profile` through ADK; its actual
 storage result supplies the confirmation. "Save it" can use the preceding user
 fact, never an assistant's invented fact. Ambiguous requests stay with the
 full-context model. Clear personal reads reach Persona before the session-memory
@@ -41,7 +41,7 @@ error. This is ordinary restart/process-crash durability, not a backup policy or
 a guarantee against concurrent whole-profile edits. Back up the mutable data
 directory and preserve access to its encryption keys.
 
-Plaintext is the independent Persona store's default. `AUTOYOU_PERSONA_ENCRYPT=1`
+Plaintext is the independent Persona store's default. `AUTOYOU_PROFILE_ENCRYPT=1`
 enables its separate OS-keystore key; Secure Professional Maximus uses the shared
 protected-storage layer. Website authenticator access and disk encryption are
 different controls. The existing private authenticator is unchanged.
@@ -110,8 +110,8 @@ AutoYou's Persona journal. These semantics follow the
 
 ```sh
 AUTOYOU_TEST_INTENT_MODEL=1 .venv/bin/python -m pytest tests/server/runtime/test_intent_router.py -q
-.venv/bin/python -m pytest tests/agents/public/test_root_agent_memory_tool.py tests/agents/public/test_persona_agent.py tests/agents/public/test_persona_website.py -q
-AUTOYOU_TEST_PERSONA_MODELS=1 AUTOYOU_APPLE_MODEL_HELPER=/path/to/AutoYou.app/Contents/Helpers/AutoYouModel .venv/bin/python -m pytest tests/agents/public/test_persona_agent.py -k live_persona -q
+.venv/bin/python -m pytest tests/agents/public/test_root_agent_memory_tool.py tests/agents/public/test_profile_agent.py tests/agents/public/test_profile_website.py -q
+AUTOYOU_TEST_PERSONA_MODELS=1 AUTOYOU_APPLE_MODEL_HELPER=/path/to/AutoYou.app/Contents/Helpers/AutoYouModel .venv/bin/python -m pytest tests/agents/public/test_profile_agent.py -k live_persona -q
 ```
 
 The live model test requires the named local models to be installed already. Pytest redirects all profile writes and keystore access through `AUTOYOU_TEST_ROOT`.

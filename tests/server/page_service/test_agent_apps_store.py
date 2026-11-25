@@ -131,7 +131,7 @@ def test_api_payload_keeps_its_shape_and_adds_presentation(monkeypatch):
         monkeypatch,
         [
             _site("notes_agent", "Notes Library", "Read notes", route_mode="direct_forward", direct_forward_port=8094, open_url="http://127.0.0.1:8094/"),
-            _site("audio_agent", "Audio Player", "Play your library"),
+            _site("music_agent", "Audio Player", "Play your library"),
         ],
         browser_base_url="http://127.0.0.1:8067",
     )
@@ -152,7 +152,7 @@ def test_api_payload_keeps_its_shape_and_adds_presentation(monkeypatch):
 def test_query_matches_keywords_and_section_names(monkeypatch):
     service = _service(
         monkeypatch,
-        [_site("audio_agent", "Audio Player", "Plays files"), _site("notes_agent", "Notes Library", "Reads text")],
+        [_site("music_agent", "Audio Player", "Plays files"), _site("notes_agent", "Notes Library", "Reads text")],
     )
     client = TestClient(service.app)
 
@@ -161,8 +161,8 @@ def test_query_matches_keywords_and_section_names(monkeypatch):
         assert response.status_code == 200
         return [item["agent_name"] for item in response.json()["frontends"]]
 
-    assert names("songs") == ["audio_agent"]
-    assert names("media") == ["audio_agent"]
+    assert names("songs") == ["music_agent"]
+    assert names("media") == ["music_agent"]
     assert names("journal") == ["notes_agent"]
 
 

@@ -36,14 +36,14 @@ def test_client_browser_control_payload_allows_local_agent_paths():
     payload = build_client_browser_control_payload("open audio player")
 
     assert payload["action"] == "open_url"
-    assert payload["url"] == "/agent/audio_agent/"
+    assert payload["url"] == "/agent/music_agent/"
 
-    audio_agent_payload = build_client_browser_control_payload("go to audio agent")
-    assert audio_agent_payload["success"] is False
+    music_agent_payload = build_client_browser_control_payload("go to audio agent")
+    assert music_agent_payload["success"] is False
 
     audio_web_app_payload = build_client_browser_control_payload("go to audio agent web app")
     assert audio_web_app_payload["action"] == "open_url"
-    assert audio_web_app_payload["url"] == "/agent/audio_agent/"
+    assert audio_web_app_payload["url"] == "/agent/music_agent/"
 
     agent_home_payload = build_client_browser_control_payload("go to agent app")
     assert agent_home_payload["action"] == "open_home"

@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "autoyou_agents/game_agent/website/frontend/snake.html"
+SOURCE = ROOT / "autoyou_agents/games_agent/website/frontend/snake.html"
 ASSET = SOURCE.parent / "assets/snake.html"
 OFFLINE = ROOT / "assets/game/jungle-viper.html"
 

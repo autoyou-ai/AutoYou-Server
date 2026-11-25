@@ -153,6 +153,14 @@ class AgentSecurityProfileStore:
                 )
                 """
             )
+            conn.execute("CREATE TABLE IF NOT EXISTS schema_upgrades (name TEXT PRIMARY KEY)")
+            if conn.execute("INSERT OR IGNORE INTO schema_upgrades VALUES ('content-agents-81-8')").rowcount:
+                from shared.content_agent_upgrade import PREVIOUS_NAMES
+                for current, previous in PREVIOUS_NAMES.items():
+                    conn.execute("""INSERT OR IGNORE INTO agent_profile_assignments(agent_name,profile_id,assigned_at)
+                                    SELECT ?,profile_id,assigned_at FROM agent_profile_assignments WHERE agent_name=?""",
+                                 (current, previous))
+                conn.executemany("DELETE FROM agent_profile_assignments WHERE agent_name=?", [(name,) for name in set(PREVIOUS_NAMES.values())])
             conn.commit()
 
     def _salt_for(self, profile_id: str) -> Optional[bytes]:

@@ -75,13 +75,13 @@ def _voice(row):
 
 
 def _tv(row):
-    from autoyou_agents.tv_agent.website.backend.store import Store
+    from autoyou_agents.media_agent.website.backend.store import Store
     # The TV library marks a title deleted; it never deletes the media folder behind it.
     Store().update_item(str(row["source_id"]), {"status": "deleted"})
 
 
 ADAPTERS = {"notes_agent": _notes, "page_agent": _pages, "media_generation_agent": _media,
-            "voice_training_agent": _voice, "tv_agent": _tv}
+            "voice_training_agent": _voice, "media_agent": _tv}
 
 
 def plan(row) -> dict:

@@ -9,7 +9,7 @@ import time
 import aiohttp
 from aiohttp import web
 
-from autoyou_agents.tv_agent.website.backend.playback import RESOURCE
+from autoyou_agents.media_agent.website.backend.playback import RESOURCE
 
 TITLE = re.compile(r"(?:stream/([a-f0-9]{24})|playback/([a-f0-9]{24})/([a-f0-9]{24})/master\.m3u8)\Z")
 _PRIVATE = tuple(ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16"))

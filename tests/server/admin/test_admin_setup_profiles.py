@@ -94,7 +94,7 @@ def test_easy_private_recipe_has_useful_features_without_capture_or_coding():
     assert patch["tunnelmole"] == {"enabled": False, "auto_start_on_boot": False}
     assert patch["telegram"]["access_gate_enabled"] is True
     assert patch["ai_provider"]["provider"] == "ollama"
-    assert {"notes_agent", "tasks_agent", "tv_agent", "audio_agent", "education_agent", "backup_agent", "game_agent", "remote_desktop_agent"} <= enabled
+    assert {"notes_agent", "tasks_agent", "media_agent", "music_agent", "education_agent", "backup_agent", "games_agent", "remote_desktop_agent"} <= enabled
     assert not enabled & {"coding_agent", "cli_agent", "agent_builder_agent"}
     video = patch["video_call"]
     assert video["audio_sources"] == video["outbound_sources"] == []
@@ -108,8 +108,8 @@ def test_easy_private_recipe_has_useful_features_without_capture_or_coding():
 def test_submitted_intents_can_deselect_every_preset_feature():
     recipe = compile_setup_recipe({"profile_id": "easy_private", "intents": []})
     assert recipe["answers"]["intents"] == []
-    assert {"tv_agent", "audio_agent", "notes_agent", "education_agent"} <= set(recipe["agent_choices"]["disable"])
-    assert "tv_agent" not in recipe["agent_choices"]["enable"]
+    assert {"media_agent", "music_agent", "notes_agent", "education_agent"} <= set(recipe["agent_choices"]["disable"])
+    assert "media_agent" not in recipe["agent_choices"]["enable"]
 
 
 def test_guided_capture_permissions_survive_config_validation_and_runtime_normalization():
@@ -452,7 +452,7 @@ def test_assistant_games_and_coding_are_their_own_setup_choices():
 
     recipe = compile_setup_recipe({"profile_id": "custom_mix", "intents": ["assistant_mode", "games", "coding"], "permissions": {}})
     enabled = set(recipe["agent_choices"]["enable"])
-    assert {"assistant_agent", "game_agent", "coding_agent", "pi_agent", "cli_agent", "claude_cli_agent"} <= enabled
+    assert {"assistant_agent", "games_agent", "coding_agent", "pi_agent", "cli_agent", "claude_cli_agent"} <= enabled
     assert {"assistant_mode", "games"} <= {section["id"] for section in recipe["sections"]}
     # Easy & private still leaves coding agents out.
     assert not set(compile_setup_recipe({"profile_id": "easy_private"})["agent_choices"]["enable"]) & {"coding_agent", "pi_agent"}

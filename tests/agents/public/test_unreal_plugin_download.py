@@ -31,7 +31,7 @@ def test_unreal_plugin_download_is_authenticated_and_complete(monkeypatch):
     agents_root = (Path(__file__).resolve().parents[3] / "autoyou_agents")
     monkeypatch.syspath_prepend(str(agents_root.parent))
     spec = importlib.util.spec_from_file_location(
-        "game_agent_website_app_test", agents_root / "game_agent/website/backend/app.py"
+        "games_agent_website_app_test", agents_root / "games_agent/website/backend/app.py"
     )
     game_app = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(game_app)
@@ -68,10 +68,10 @@ def test_unreal_plugin_download_is_authenticated_and_complete(monkeypatch):
 
 def test_host_game_relay_uses_local_stream_without_exposing_credential(monkeypatch):
     agents_root = (Path(__file__).resolve().parents[3] / "autoyou_agents")
-    assert json.loads((agents_root / "game_agent/website/manifest.json").read_text())["websocket_enabled"] is True
+    assert json.loads((agents_root / "games_agent/website/manifest.json").read_text())["websocket_enabled"] is True
     monkeypatch.syspath_prepend(str(agents_root.parent))
     spec = importlib.util.spec_from_file_location(
-        "game_agent_native_relay_test", agents_root / "game_agent/website/backend/app.py"
+        "games_agent_native_relay_test", agents_root / "games_agent/website/backend/app.py"
     )
     game_app = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(game_app)
@@ -144,8 +144,8 @@ def test_host_game_input_reaches_page_proxy_and_core_stream(monkeypatch):
 
     monkeypatch.setattr(server, "_get_game_mode_available", lambda **_: True)
     monkeypatch.setattr(server, "WEBRTC", server.WebRTCManager())
-    game_app = server._load_managed_frontend_app(server._managed_frontend_runtime_specs()["game_agent"])
-    import autoyou_agents.game_agent.website.backend.app as game_module
+    game_app = server._load_managed_frontend_app(server._managed_frontend_runtime_specs()["games_agent"])
+    import autoyou_agents.games_agent.website.backend.app as game_module
     monkeypatch.setattr(game_module._smc, "_describe_chat_auth_state", lambda *_: {"authenticated": True})
 
     running = []
@@ -181,14 +181,14 @@ def test_host_game_input_reaches_page_proxy_and_core_stream(monkeypatch):
         monkeypatch.setattr(server, "ADMIN_WEB_SERVICE_PORT", admin_port)
         game_port, _ = serve(game_app)
         registry = build_frontend_registry(
-            agents_root=Path(server._AUTOYOU_AGENTS_ROOT), agent_names=["game_agent"],
-            proxy_ports={"game_agent": game_port},
+            agents_root=Path(server._AUTOYOU_AGENTS_ROOT), agent_names=["games_agent"],
+            proxy_ports={"games_agent": game_port},
         )
         assert registry["frontends"][0]["websocket_enabled"] is True
         monkeypatch.setattr(autoyou_page_service, "load_frontend_registry", lambda: registry)
         page = autoyou_page_service.AutoYouPageService()
         client = TestClient(page.app, base_url="http://127.0.0.1:8067", client=("127.0.0.1", 50000))
-        with client.websocket_connect("/agent/game_agent/api/game/native-input", headers={
+        with client.websocket_connect("/agent/games_agent/api/game/native-input", headers={
             "host": "127.0.0.1:8067", "origin": "http://127.0.0.1:8067"
         }) as stream:
             admin_loop.call_soon_threadsafe(server.WEBRTC.game_input_hub.publish, "synthetic-player", {

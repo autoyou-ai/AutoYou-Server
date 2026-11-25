@@ -58,7 +58,7 @@ KNOWN_AGENT_LABELS: Dict[str, str] = {
     "ads_watching_agent": "Ads Watching Agent",
     "agent_builder_agent": "Agent Builder Agent",
     "antigravity_agent": "Antigravity Agent",
-    "audio_agent": "Audio Agent",
+    "music_agent": "Music",
     "backup_agent": "Backup Agent",
     "assistant_agent": "Assistant Agent",
     "browser_agent": "Browser Agent",
@@ -75,7 +75,7 @@ KNOWN_AGENT_LABELS: Dict[str, str] = {
     "education_agent": "Education Agent",
     "earnings_agent": "Earnings Agent",
     "files_agent": "Files Agent",
-    "game_agent": "Game Studio",
+    "games_agent": "Games",
     "fine_tuning_agent": "Fine Tuning Agent",
     "hermes_agent": "Hermes Agent",
     "hosting_agent": "Hosting Agent",
@@ -86,17 +86,18 @@ KNOWN_AGENT_LABELS: Dict[str, str] = {
     "memory_agent": "Memory Agent",
     "model_picker_agent": "Model Picker Agent",
     "notes_agent": "Notes Agent",
-    "notify_agent": "Notify Agent",
+    "reminders_agent": "Reminders",
     "openclaw_agent": "OpenClaw Agent",
     "organizer_agent": "Organizer Agent",
     "page_agent": "Page Agent",
-    "persona_agent": "Persona Agent",
+    "diary_agent": "Diary",
+    "profile_agent": "Profile",
     "prompts_agent": "Prompts Agent",
     "proxy_agent": "Proxy Agent",
     "remote_desktop_agent": "Remote Desktop Agent",
     "skills_agent": "Skills Agent",
     "tasks_agent": "Tasks Agent",
-    "tv_agent": "Media Center",
+    "media_agent": "Media",
     "voice_training_agent": "Voice Training Agent",
     "website_agent": "Website Agent",
     "win_security_agent": "Windows Security Agent",
@@ -121,7 +122,7 @@ AGENT_ROLE_MAP: Dict[str, Sequence[str]] = {
     "earnings_agent": ("commerce_review",),
     "education_agent": ("learning", "video_calls"),
     "fine_tuning_agent": ("ai_runtime", "workbench"),
-    "game_agent": ("games", "creator"),
+    "games_agent": ("games", "creator"),
     "hosting_agent": ("agent_websites", "commerce_review"),
     "location_agent": ("background_connection",),
     "mac_security_agent": ("security",),
@@ -129,9 +130,9 @@ AGENT_ROLE_MAP: Dict[str, Sequence[str]] = {
     "prompts_agent": ("workbench", "productivity"),
     "proxy_agent": ("agent_websites", "api_integrations"),
     "remote_desktop_agent": ("desktop_automation", "video_calls"),
-    "tv_agent": ("media_center", "video_calls"),
+    "media_agent": ("media_center", "video_calls"),
     "agent_builder_agent": ("agents", "workbench"),
-    "audio_agent": ("audio_player", "speech", "video_calls"),
+    "music_agent": ("audio_player", "speech", "video_calls"),
     "backup_agent": ("api_integrations", "productivity"),
     "browser_agent": ("agent_websites", "api_integrations"),
     "cli_agent": ("workbench", "api_integrations"),
@@ -145,11 +146,12 @@ AGENT_ROLE_MAP: Dict[str, Sequence[str]] = {
     "memory_agent": ("core", "agents"),
     "model_picker_agent": ("ai_runtime", "model_picker"),
     "notes_agent": ("core", "productivity"),
-    "notify_agent": ("messaging", "productivity"),
+    "reminders_agent": ("messaging", "productivity"),
     "openclaw_agent": ("ai_gateway", "agents"),
     "organizer_agent": ("productivity", "agent_websites"),
     "page_agent": ("agent_websites", "page_service"),
-    "persona_agent": ("agents", "agent_websites"),
+    "diary_agent": ("productivity", "agent_websites"),
+    "profile_agent": ("agents", "agent_websites"),
     "skills_agent": ("agents", "workbench"),
     "tasks_agent": ("core", "productivity"),
     "voice_training_agent": ("speech", "creator"),
@@ -765,8 +767,8 @@ def _recommended_agent_names(answers: Mapping[str, Any]) -> List[str]:
     intents = set(_as_string_list(answers.get("intents")))
     ai_path = str(answers.get("ai_path") or "")
     names: List[str] = [
-        "admin_agent", "backup_agent", "game_agent", "remote_desktop_agent",
-        "page_agent", "persona_agent", "donation_agent", "ads_watching_agent",
+        "admin_agent", "backup_agent", "games_agent", "remote_desktop_agent",
+        "page_agent", "diary_agent", "profile_agent", "donation_agent", "ads_watching_agent",
         "prompts_agent", "client_browser_control_agent", "earnings_agent", "internet_agent",
     ]
     if _model_picker_available():
@@ -780,15 +782,15 @@ def _recommended_agent_names(answers: Mapping[str, Any]) -> List[str]:
                 names.append(item)
 
     if "productivity" in intents:
-        add("notes_agent", "tasks_agent", "notify_agent")
+        add("notes_agent", "tasks_agent", "reminders_agent")
     if "messaging" in intents:
-        add("notify_agent", "internet_agent")
+        add("reminders_agent", "internet_agent")
     if "speech" in intents:
-        add("audio_agent")
+        add("music_agent")
     if "audio_player" in intents:
-        add("audio_agent")
+        add("music_agent")
     if "media_center" in intents:
-        add("tv_agent")
+        add("media_agent")
     if "genai" in intents:
         add("media_generation_agent")
     if "learning" in intents:
@@ -796,7 +798,7 @@ def _recommended_agent_names(answers: Mapping[str, Any]) -> List[str]:
     if "assistant_mode" in intents:
         add("assistant_agent")
     if "games" in intents:
-        add("game_agent")
+        add("games_agent")
     if "coding" in intents:
         add("coding_agent", "pi_agent", "cli_agent", "claude_cli_agent", "skills_agent")
     if "file_library" in intents:
@@ -804,11 +806,11 @@ def _recommended_agent_names(answers: Mapping[str, Any]) -> List[str]:
     if "desktop_automation" in intents and answers.get("permissions", {}).get("desktop_control", False):
         add("remote_desktop_agent")
     if "video_calls" in intents:
-        add("audio_agent")
+        add("music_agent")
     if "creator" in intents:
         add("website_agent", "media_generation_agent", "voice_training_agent", "files_agent")
     if "agent_websites" in intents:
-        add("page_agent", "website_agent", "browser_agent", "persona_agent")
+        add("page_agent", "website_agent", "browser_agent", "profile_agent")
     if "api_integrations" in intents:
         add("internet_agent", "files_agent", "skills_agent", "cli_agent")
     if ai_path == "hermes":
@@ -1121,7 +1123,7 @@ def compile_setup_recipe(
     enabled_names = [agent["name"] for agent in recommended_agents]
     # Only the guided flow manages these everyday capabilities. Development,
     # commerce and unrelated installed agents remain outside its lifecycle.
-    guided_agents = {"notes_agent", "tasks_agent", "notify_agent", "audio_agent", "tv_agent", "education_agent", "media_generation_agent", "files_agent", "memory_agent", "remote_desktop_agent"}
+    guided_agents = {"notes_agent", "tasks_agent", "reminders_agent", "music_agent", "media_agent", "education_agent", "media_generation_agent", "files_agent", "memory_agent", "remote_desktop_agent"}
     disabled_names = sorted(guided_agents - set(enabled_names)) if isinstance(normalized.get("permissions"), Mapping) else []
 
     ai_label = {

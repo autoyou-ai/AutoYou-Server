@@ -14,13 +14,34 @@ class GamePackages:
         self.folders = (Path(app_root) / "assets/game", Path(data_root) / "mobile_games")
         self.cache = Path(data_root) / "game_package_cache"
 
+    def lock(self, identifier):
+        from filelock import FileLock
+        if not package.GAME_ID.fullmatch(identifier):
+            raise ValueError("Invalid game id")
+        root = self.cache / ".locks"
+        root.mkdir(parents=True, exist_ok=True)
+        return FileLock(root / (identifier + ".lock"), timeout=30)
+
+    def hidden(self, identifier):
+        return self.folders[-1] / ".hidden" / identifier
+
+    def check_revision(self, identifier, expected, replacement=None):
+        if expected is None:
+            return
+        try:
+            held = package.read_manifest(self.resolve(identifier))[0]["revision"]
+        except FileNotFoundError:
+            held = ""
+        if held != expected and (replacement is None or replacement != held):
+            raise FileExistsError("The game changed on the computer.")
+
     def candidates(self):
         result = {}
         for priority, folder in enumerate(self.folders):
             if not folder.is_dir(): continue
             for path in sorted(folder.iterdir())[:256]:
                 identifier = path.stem if path.is_file() else path.name
-                if not package.GAME_ID.fullmatch(identifier) or path.is_symlink(): continue
+                if not package.GAME_ID.fullmatch(identifier) or path.is_symlink() or self.hidden(identifier).is_file(): continue
                 rank = 3 if path.suffix == ".aygame" else 2 if path.is_dir() and (path / "game.json").is_file() else 1 if path.suffix == ".html" else 0
                 if rank and (identifier not in result or (priority, rank) > result[identifier][0]):
                     result[identifier] = ((priority, rank), path)

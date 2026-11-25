@@ -307,7 +307,7 @@ def register_routes(
             return {
                 "success": True,
                 "enabled": enabled,
-                "installed": server._is_audio_agent_installed(),
+                "installed": server._is_music_agent_installed(),
                 "music_library_dirs": music_library_dirs,
             }
         except Exception as e:
@@ -602,7 +602,7 @@ def register_routes(
             return {
                 "success": True,
                 "enabled": bool(enabled),
-                "installed": server._is_audio_agent_installed(),
+                "installed": server._is_music_agent_installed(),
                 "music_library_dirs": music_library_dirs,
             }
         except Exception as e:

@@ -3,7 +3,7 @@
   "minimum_margin": 0.15,
   "routes": [
     {
-      "id": "persona_agent",
+      "id": "profile_agent",
       "examples": [
         "What is my name?",
         "Read my personal profile.",
@@ -48,7 +48,7 @@
       ]
     },
     {
-      "id": "notify_agent",
+      "id": "reminders_agent",
       "examples": [
         "Remind me to water plants tomorrow.",
         "Set a reminder for my appointment.",
@@ -101,7 +101,7 @@
       ]
     },
     {
-      "id": "audio_agent",
+      "id": "music_agent",
       "examples": [
         "Play music from my library.",
         "Pause the song.",

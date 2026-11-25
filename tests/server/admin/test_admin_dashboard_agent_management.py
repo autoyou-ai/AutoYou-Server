@@ -87,7 +87,7 @@ def test_dashboard_agent_studio_uses_separate_uis_not_inline_workbench():
     assert "/agent/agent_builder_agent/" in html
     assert "/agent/website_agent/" in html
     assert "/agent/tasks_agent/" in html
-    assert "/agent/notify_agent/" in html
+    assert "/agent/reminders_agent/" in html
     assert "/agent/reminder_agent/" not in html
 
     # selectAgentStudioTab has been removed

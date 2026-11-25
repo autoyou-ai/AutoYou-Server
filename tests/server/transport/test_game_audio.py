@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parents[3]
 
 @pytest.mark.parametrize("relative_path", [
     "assets/game/neon-horizon.html",
-    "autoyou_agents/game_agent/website/frontend/play.html",
+    "autoyou_agents/games_agent/website/frontend/play.html",
 ])
 def test_generated_wav_sound_is_valid_and_non_silent(relative_path):
     node = shutil.which("node")

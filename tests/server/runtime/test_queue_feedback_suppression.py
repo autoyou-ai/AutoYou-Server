@@ -789,7 +789,7 @@ async def test_webrtc_voice_suppresses_spoken_reply_when_audio_playback_starts(m
         }
         return SimpleNamespace(
             response="Playing Aura.",
-            agent_name="autoyou_audio_agent",
+            agent_name="autoyou_music_agent",
             session_id=chat_request.session_id,
             message_id="msg-1",
             metadata={"processing_time_ms": 0},

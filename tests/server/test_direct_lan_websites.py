@@ -274,6 +274,6 @@ async def test_native_tv_cast_offer_uses_the_pair_and_the_active_page_proxy(monk
     assert await engine._tv_cast_offer("synthetic-session", native) == {"url": "synthetic-offer"}
     session, request_id, source, address, upstream, headers = grant.await_args.args
     assert (session, request_id, source, address) == ("synthetic-session", native["request_id"], native["source"], "192.168.50.21")
-    assert upstream == "http://127.0.0.1:48123/agent/tv_agent/api"
+    assert upstream == "http://127.0.0.1:48123/agent/media_agent/api"
     assert headers["X-AutoYou-WebRTC-Session-Id"] == "synthetic-session"
     assert tv_cast.cast_interface("0.0.0.0", None, lambda: ["127.0.0.1", address]) == address

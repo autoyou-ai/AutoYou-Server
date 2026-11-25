@@ -411,12 +411,12 @@ def test_any_specialist_gets_the_selected_turns_through_its_instruction(monkeypa
     context = _tool_context(_research_session("remind me about this tomorrow at 9"))
     args = {"request": "remind me about this tomorrow at 9"}
 
-    root_agent_module._root_before_tool_callback(SimpleNamespace(name="autoyou_notify_agent"), args, context)
+    root_agent_module._root_before_tool_callback(SimpleNamespace(name="autoyou_reminders_agent"), args, context)
 
     assert args == {"request": "remind me about this tomorrow at 9"}  # the request its fast paths read is untouched
-    ref = context.state[cc.context_ref_state_key("autoyou_notify_agent")]
+    ref = context.state[cc.context_ref_state_key("autoyou_reminders_agent")]
     llm_request = SimpleNamespace(config=SimpleNamespace(system_instruction="You are the Notify agent."))
-    callback = root_agent_module._make_specialist_conversation_context_callback("autoyou_notify_agent")
+    callback = root_agent_module._make_specialist_conversation_context_callback("autoyou_reminders_agent")
     child_context = SimpleNamespace(state=dict(context.state))  # AgentTool copies the parent's state
 
     assert asyncio.run(callback(child_context, llm_request)) is None

@@ -44,7 +44,9 @@ from fastapi.staticfiles import StaticFiles
 from autoyou_agents.tasks_agent.agent import _extract_send_message_action
 from shared.adk_state import derive_reply_target_from_owner_key, normalize_reply_target
 from shared.http_errors import internal_error_message
+from shared.reminder_repeat import reschedule
 from shared.scheduler_service import (
+    reminder_transaction,
     OUTBOUND_NOTIFICATION_QUEUE_FILE,
     REMINDERS_FILE,
     TASKS_FILE,
@@ -103,14 +105,14 @@ AGENT_META: Dict[str, Dict[str, str]] = {
         "composer_title": "New Task",
         "delete_all_label": "Stop All Tasks",
         "topbar_icon": "⏱",
-        "peer_agent": "notify_agent",
+        "peer_agent": "reminders_agent",
         "peer_label": "Notify",
         "role_title": "AI-Driven Scheduler",
         "role_copy": "Tasks run AutoYou work on a schedule, use the right tools, and deliver a fresh result to your chosen target.",
         "role_points": "Use for recurring research, automation, or any job that needs the LLM to think before sending.",
     },
     "notify": {
-        "agent_name": "notify_agent",
+        "agent_name": "reminders_agent",
         "title": "Notify",
         "eyebrow": "Timed Notifications",
         "subtitle": "Send a saved message to your device at a specific time.",
@@ -272,7 +274,8 @@ def _agent_manifest_auth_default_mode(manifest_auth_default: str) -> str:
 def _get_agent_security_settings(agent_name: str) -> Dict[str, Any]:
     cfg = _runtime_server().STATE.config or _runtime_server()._default_config()
     root = cfg.get(UI_SECURITY_CONFIG_KEY, {})
-    entry = root.get(agent_name, {}) if isinstance(root, dict) else {}
+    from shared.content_agent_upgrade import saved_value
+    entry = saved_value(root, agent_name, {}) if isinstance(root, dict) else {}
 
     manifest_settings = _resolve_manifest_auth_settings(agent_name)
     manifest_auth_default = manifest_settings.get("auth_default", "inherit")
@@ -1722,6 +1725,7 @@ def _delete_all_tasks() -> Dict[str, Any]:
     return {"removed_count": len(removed_ids), "cancelled_count": cancelled_count}
 
 
+@reminder_transaction
 def _create_reminder_from_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     message = str(payload.get("message") or "").strip()
     if not message:
@@ -1760,6 +1764,7 @@ def _create_reminder_from_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     return _normalize_reminder_record(reminder)
 
 
+@reminder_transaction
 def _update_reminder_from_payload(item_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     reminders = load_json(REMINDERS_FILE)
     updated_reminder: Optional[Dict[str, Any]] = None
@@ -1774,13 +1779,14 @@ def _update_reminder_from_payload(item_id: str, payload: Dict[str, Any]) -> Dict
             reminder["message"] = message
         if "target_time_iso" in payload:
             timestamp_s, iso_value = _normalize_iso_datetime(payload.get("target_time_iso"))
-            reminder["timestamp_s"] = timestamp_s
-            reminder["iso"] = iso_value
+            reschedule(reminder, timestamp_s, iso_value)
         if "delivery_target" in payload or "owner_key" in payload:
             owner_key, canonical_user_id, reply_target = _resolve_target_context(payload)
             reminder["creator_owner_key"] = owner_key
             reminder["creator_user_id"] = canonical_user_id
             reminder["delivery_target"] = reply_target
+            if reply_target:
+                reminder["collection_only"] = False
             reminder["lock_reply_target"] = True
         reminder["updated_at_s"] = now
         updated_reminder = reminder
@@ -1805,6 +1811,7 @@ def _update_reminder_from_payload(item_id: str, payload: Dict[str, Any]) -> Dict
     return _normalize_reminder_record(updated_reminder)
 
 
+@reminder_transaction
 def _delete_reminder(item_id: str) -> Dict[str, Any]:
     reminders = load_json(REMINDERS_FILE)
     retained = [reminder for reminder in reminders if str(reminder.get("id") or "") != item_id]
@@ -1821,6 +1828,7 @@ def _delete_reminder(item_id: str) -> Dict[str, Any]:
     return {"deleted": True, "item_id": item_id}
 
 
+@reminder_transaction
 def _delete_all_reminders() -> Dict[str, Any]:
     reminders = load_json(REMINDERS_FILE)
     removed_ids = [str(reminder.get("id") or "") for reminder in reminders if str(reminder.get("id") or "").strip()]

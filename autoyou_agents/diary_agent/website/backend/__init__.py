@@ -1,0 +1,1 @@
+"""AutoYou Diary."""

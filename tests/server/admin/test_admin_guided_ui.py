@@ -25,7 +25,7 @@ def test_guided_ui_choices_readiness_and_agent_lifecycle():
             "telegram": {"acl_sender_ids": ["111000111"]},
         },
         "admin": {"theme": "dark", "server_name": "Synthetic server"},
-        "agents": {"agent_overview": [{"agent_name": "tv_agent", "installed": False}, {"agent_name": "memory_agent", "installed": True}]},
+        "agents": {"agent_overview": [{"agent_name": "media_agent", "installed": False}, {"agent_name": "memory_agent", "installed": True}]},
         "status": {"ai_agent": {"status": "Running"}, "autoyou_page": {"status": "Running"}, "instance": {"bind_host": "127.0.0.1"}},
     }
     recipe = compile_setup_recipe({"profile_id": "easy_private", "permissions": {"local_memory": False}})
@@ -89,7 +89,7 @@ assert(!a.currentSetupAnswers().intents.includes("media_center"));
 assert.equal(a.state.setup.applied, false);
 a.updateSetupAnswer("intents", "media_center");
 a.state.agentCategory = "media";
-assert.equal(a.agentMatchesFilter({agent_name: "tv_agent", display_name: "Media Center"}), true);
+assert.equal(a.agentMatchesFilter({agent_name: "media_agent", display_name: "Media Center"}), true);
 assert.equal(a.agentMatchesFilter({agent_name: "coding_agent", display_name: "Coding Agent"}), false);
 a.state.agentQuery = '<script>alert("synthetic")</script>';
 assert(!a.renderAgentLibraryToolbar([]).includes('<script>alert('));
@@ -110,7 +110,7 @@ a.state.agentQuery = "";
     a.state.setup.payload.password_changed = true;
     await a.applyGuidedSetup();
     assert.equal(a.state.setup.applied, true);
-    assert(calls.some(c => c.url === "/api/agents/install" && c.body.agent_name === "tv_agent"));
+    assert(calls.some(c => c.url === "/api/agents/install" && c.body.agent_name === "media_agent"));
     assert(calls.some(c => c.url === "/api/agents/uninstall" && c.body.agent_name === "memory_agent"));
     assert(!calls.some(c => /agents\/(install|uninstall)/.test(c.url) && c.body.agent_name === "coding_agent"));
     assert(!calls.some(c => c.url === "/api/wizard/complete"));

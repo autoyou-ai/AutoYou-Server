@@ -448,17 +448,17 @@ def test_root_router_routes_watch_ad_after_returning_to_main_agent(monkeypatch):
     )
 
 
-def test_root_router_keeps_bare_audio_agent_steering_out_of_client_browser(monkeypatch):
+def test_root_router_keeps_bare_music_agent_steering_out_of_client_browser(monkeypatch):
     monkeypatch.setattr(root_agent_module, "_provider_requires_explicit_agent_tools", lambda: True)
     monkeypatch.setattr(
         root_agent_module,
         "is_agent_installed",
-        lambda agent_name, agents_root=None: agent_name in {"client_browser_control_agent", "audio_agent"},
+        lambda agent_name, agents_root=None: agent_name in {"client_browser_control_agent", "music_agent"},
     )
     monkeypatch.setattr(
         root_agent_module,
         "_AVAILABLE_RUNTIME_AGENT_NAMES",
-        {"autoyou_client_browser_control_agent", "autoyou_audio_agent"},
+        {"autoyou_client_browser_control_agent", "autoyou_music_agent"},
     )
 
     callback_context = SimpleNamespace(state={}, invocation_id="audio-agent-steering")
@@ -471,8 +471,8 @@ def test_root_router_keeps_bare_audio_agent_steering_out_of_client_browser(monke
 
     assert response is not None
     assert response.content.parts[0].function_call is None
-    assert "audio" in response.content.parts[0].text.lower()
-    assert callback_context.state[root_agent_module._ROOT_LAST_ROUTED_AGENT_STATE_KEY] == "autoyou_audio_agent"
+    assert "music" in response.content.parts[0].text.lower()
+    assert callback_context.state[root_agent_module._ROOT_LAST_ROUTED_AGENT_STATE_KEY] == "autoyou_music_agent"
 
 
 def test_root_router_routes_agent_web_app_requests_to_client_browser(monkeypatch):
@@ -879,7 +879,7 @@ def test_at_route_resolves_every_installed_agent_from_the_live_catalog(monkeypat
         "@calendar create an event tomorrow"
     )
     media = root_agent_module._extract_explicit_route_request(
-        "@media generate a square illustration"
+        "@media_generation generate a square illustration"
     )
     research = root_agent_module._extract_explicit_route_request(
         "@reseach summarize this report"
@@ -901,8 +901,8 @@ def test_at_route_resolves_every_installed_agent_from_the_live_catalog(monkeypat
 
 def test_at_media_prefers_the_agent_named_media_over_a_descriptive_alias(monkeypatch):
     """"media library" (TV agent) must not tie "@media" with media generation."""
-    installed = ["media_generation_agent", "tv_agent"]
-    available = {"autoyou_media_generation_agent", "autoyou_tv_agent"}
+    installed = ["media_generation_agent", "media_agent"]
+    available = {"autoyou_media_generation_agent", "autoyou_media_agent"}
     monkeypatch.setattr(root_agent_module, "get_installed_agent_names", lambda **_kwargs: installed)
     monkeypatch.setattr(root_agent_module, "_AVAILABLE_RUNTIME_AGENT_NAMES", available)
 
@@ -910,9 +910,11 @@ def test_at_media_prefers_the_agent_named_media_over_a_descriptive_alias(monkeyp
     library = root_agent_module._extract_explicit_route_request("@library play the next episode")
     tv = root_agent_module._extract_explicit_route_request("@tv play the next episode")
 
-    assert media and media["runtime_agent_name"] == "autoyou_media_generation_agent"
-    assert library and library["runtime_agent_name"].endswith("tv_agent")
-    assert tv and tv["runtime_agent_name"].endswith("tv_agent")
+    assert media and media["runtime_agent_name"] == "autoyou_media_agent"
+    generated = root_agent_module._extract_explicit_route_request("@media_generation make a poster")
+    assert generated and generated["runtime_agent_name"] == "autoyou_media_generation_agent"
+    assert library and library["runtime_agent_name"].endswith("media_agent")
+    assert tv and tv["runtime_agent_name"].endswith("media_agent")
 
 
 def test_at_main_route_returns_to_the_root_agent(monkeypatch):
@@ -1194,12 +1196,12 @@ def test_root_router_explicit_exact_codex_desktop_route_calls_agent(monkeypatch)
     assert payload["tool_result"] == {"status": "timeout", "received": {}}
 
 
-def test_root_router_routes_legacy_reminder_steering_to_notify_agent(monkeypatch):
+def test_root_router_routes_legacy_reminder_steering_to_reminders_agent(monkeypatch):
     monkeypatch.setattr(root_agent_module, "_provider_requires_explicit_agent_tools", lambda: True)
     monkeypatch.setattr(
         root_agent_module,
         "is_agent_installed",
-        lambda agent_name, agents_root=None: agent_name == "notify_agent",
+        lambda agent_name, agents_root=None: agent_name == "reminders_agent",
     )
 
     callback_context = SimpleNamespace(state={}, invocation_id="legacy-reminder-route")
@@ -1212,7 +1214,7 @@ def test_root_router_routes_legacy_reminder_steering_to_notify_agent(monkeypatch
 
     function_call = response.content.parts[0].function_call
     assert function_call is not None
-    assert _routed_agent(function_call) == (root_agent_module.resolve_runtime_agent_name("notify_agent") or "autoyou_notify_agent")
+    assert _routed_agent(function_call) == (root_agent_module.resolve_runtime_agent_name("reminders_agent") or "autoyou_reminders_agent")
 
 
 def test_root_router_explicit_route_without_residual_pins_agent(monkeypatch):
@@ -1353,7 +1355,7 @@ def test_root_router_short_circuits_audio_play_requests(monkeypatch):
     monkeypatch.setattr(
         root_agent_module,
         "is_agent_installed",
-        lambda agent_name, agents_root=None: agent_name == "audio_agent",
+        lambda agent_name, agents_root=None: agent_name == "music_agent",
     )
 
     callback_context = SimpleNamespace(state={}, invocation_id="test")
@@ -1376,7 +1378,7 @@ def test_root_router_short_circuits_play_request_with_audio_file_path(monkeypatc
     monkeypatch.setattr(
         root_agent_module,
         "is_agent_installed",
-        lambda agent_name, agents_root=None: agent_name == "audio_agent",
+        lambda agent_name, agents_root=None: agent_name == "music_agent",
     )
 
     request_text = r"Play C:\AutoYou\Test\aura.mp3"
@@ -1547,12 +1549,12 @@ def test_root_router_short_circuits_page_feed_query_requests(monkeypatch):
     assert callback_context.state[root_agent_module._ROOT_LAST_ROUTED_AGENT_STATE_KEY] == root_agent_module._PAGE_RUNTIME_AGENT_NAME
 
 
-def test_root_router_routes_raw_audio_path_when_audio_agent_is_preferred(monkeypatch):
+def test_root_router_routes_raw_audio_path_when_music_agent_is_preferred(monkeypatch):
     monkeypatch.setattr(root_agent_module, "_provider_requires_explicit_agent_tools", lambda: True)
     monkeypatch.setattr(
         root_agent_module,
         "is_agent_installed",
-        lambda agent_name, agents_root=None: agent_name == "audio_agent",
+        lambda agent_name, agents_root=None: agent_name == "music_agent",
     )
 
     request_text = r"C:\AutoYou\Test\aura.mp3"
@@ -1601,12 +1603,12 @@ def test_root_router_routes_admin_totp_reply_back_to_admin_agent(monkeypatch):
     assert _routed_args(function_call) == {"request": "211644"}
 
 
-def test_root_router_routes_bare_play_request_when_audio_agent_is_preferred(monkeypatch):
+def test_root_router_routes_bare_play_request_when_music_agent_is_preferred(monkeypatch):
     monkeypatch.setattr(root_agent_module, "_provider_requires_explicit_agent_tools", lambda: True)
     monkeypatch.setattr(
         root_agent_module,
         "is_agent_installed",
-        lambda agent_name, agents_root=None: agent_name == "audio_agent",
+        lambda agent_name, agents_root=None: agent_name == "music_agent",
     )
 
     callback_context = SimpleNamespace(
@@ -1632,7 +1634,7 @@ def test_root_router_does_not_route_descriptive_go_back_phrase_to_audio(monkeypa
     monkeypatch.setattr(
         root_agent_module,
         "is_agent_installed",
-        lambda agent_name, agents_root=None: agent_name == "audio_agent",
+        lambda agent_name, agents_root=None: agent_name == "music_agent",
     )
 
     callback_context = SimpleNamespace(state={}, invocation_id="non-audio-back-phrase")
@@ -1651,7 +1653,7 @@ def test_root_router_does_not_route_descriptive_go_back_phrase_when_audio_prefer
     monkeypatch.setattr(
         root_agent_module,
         "is_agent_installed",
-        lambda agent_name, agents_root=None: agent_name == "audio_agent",
+        lambda agent_name, agents_root=None: agent_name == "music_agent",
     )
 
     callback_context = SimpleNamespace(
@@ -1879,7 +1881,7 @@ def test_root_router_leaves_non_audio_play_requests_for_llm(monkeypatch):
     monkeypatch.setattr(
         root_agent_module,
         "is_agent_installed",
-        lambda agent_name, agents_root=None: agent_name == "audio_agent",
+        lambda agent_name, agents_root=None: agent_name == "music_agent",
     )
 
     callback_context = SimpleNamespace(state={}, invocation_id="test")

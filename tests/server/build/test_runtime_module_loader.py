@@ -163,7 +163,7 @@ def test_import_autoyou_shared_tools_module_prefers_runtime_modules_copy(monkeyp
 
 def test_managed_frontend_backends_import_from_source_tree() -> None:
     for module_name in (
-        "autoyou_agents.notify_agent.website.backend.app",
+        "autoyou_agents.reminders_agent.website.backend.app",
         "autoyou_agents.tasks_agent.website.backend.app",
         "autoyou_agents.website_agent.website.backend.app",
     ):

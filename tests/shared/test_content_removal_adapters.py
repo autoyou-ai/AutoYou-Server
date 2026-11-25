@@ -68,7 +68,7 @@ def test_a_generated_image_and_its_file_are_removed_by_media_generation(client, 
 
 
 def test_a_tv_title_is_marked_deleted_but_its_media_folder_is_untouched(client, sandbox):
-    from autoyou_agents.tv_agent.website.backend.store import Store
+    from autoyou_agents.media_agent.website.backend.store import Store
     folder = sandbox / "library-folder"
     folder.mkdir()
     movie = folder / "film.mp4"
@@ -77,11 +77,11 @@ def test_a_tv_title_is_marked_deleted_but_its_media_folder_is_untouched(client, 
     assert created
     # Opening the item publishes it, the way the TV app does when it is shown.
     Store().item(item["id"])
-    row, response = remove(client, "tv_agent")
+    row, response = remove(client, "media_agent")
     assert response.status_code == 200 and response.json()["mode"] == "agent"
     assert Store().item(item["id"])["status"] == "deleted"
     assert movie.read_bytes() == b"synthetic film", "the owner's own media file is never deleted"
-    assert ContentLibrary().list(source="tv_agent")["total"] == 0
+    assert ContentLibrary().list(source="media_agent")["total"] == 0
 
 
 def test_a_voice_recording_is_removed_with_its_audio(client, sandbox):

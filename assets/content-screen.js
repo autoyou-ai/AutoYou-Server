@@ -1069,7 +1069,10 @@
         var status = h("p", { class: "ayc-dialog-error", role: "status" });
         var auto = h("input", { type: "checkbox", id: "ayc-auto", checked: current.auto_organize });
         var labels = h("input", { type: "checkbox", id: "ayc-labels", checked: current.semantic_labels });
+        var reminders = h("input", { type: "checkbox", id: "ayc-reminders", checked: current.index_reminders });
+        var profile = h("input", { type: "checkbox", id: "ayc-profile", checked: current.index_profile });
         var priv = h("input", { type: "checkbox", id: "ayc-private", checked: current.index_private });
+        var syncContent = h("input", { type: "checkbox", id: "ayc-content-sync", checked: current.content_sync_enabled !== false });
         var syncNotes = h("input", { type: "checkbox", id: "ayc-notes-sync", checked: current.notes_sync_enabled !== false });
         var save = h("button", { type: "button", class: "ayu-btn ayu-btn-primary", "data-act": "save-storage" }, icon("check"), h("span", { text: "Use this folder" }));
         dlg.appendChild(h("div", { class: "ayc-dialog-body" },
@@ -1079,7 +1082,10 @@
             h("p", { class: "ayc-hint", text: current.encrypted_at_rest ? "Maximus is active. New managed outputs use encrypted storage. Linked external originals remain in their source folders." : "Maximus is not active. Turn it on in Security to encrypt new managed content at rest." }),
             h("label", { class: "ayu-checkbox" }, auto, h("span", null, "Organize new content automatically", h("small", { text: "Adds suggested labels and collections. You can always change them." }))),
             h("label", { class: "ayu-checkbox" }, labels, h("span", null, "Use the local AI for suggested labels", h("small", { text: "Runs on this computer. Without it, labels come from titles and agent names." }))),
+            h("label", { class: "ayu-checkbox" }, reminders, h("span", null, "Include Reminders", h("small", { text: "Shows reminder times and messages to people with access to My Content." }))),
+            h("label", { class: "ayu-checkbox" }, profile, h("span", null, "Include Profile facts", h("small", { text: "Lets people with access to My Content read your Profile preview." }))),
             h("label", { class: "ayu-checkbox" }, priv, h("span", null, "Include Diary entries", h("small", { text: "Lists each entry's title and first words here. The Diary keeps its own sign-in on other devices, which this does not replace. Turn off to remove them from My Content." }))),
+            h("label", { class: "ayc-check", for: "ayc-content-sync" }, syncContent, h("span", { text: "Allow paired devices to sync agent collections" })),
             h("label", { class: "ayc-check", for: "ayc-notes-sync" }, syncNotes, h("span", { text: "Allow Notes sync from paired devices" })),
             status, h("div", { class: "ayu-inline-actions ayc-dialog-actions" }, button("Done", { act: "cancel-dialog" }), save)));
         save.addEventListener("click", function () {
@@ -1088,11 +1094,11 @@
             api("/settings", json("PUT", { output_root: folder.value })).then(function (result) { status.textContent = result.body.message || "Saved."; return loadSummary(true); })
                 .catch(function (error) { status.textContent = error.message; }).then(function () { save.disabled = false; });
         });
-        [auto, labels, priv, syncNotes].forEach(function (box) {
+        [auto, labels, priv, profile, reminders, syncNotes, syncContent].forEach(function (box) {
             box.addEventListener("change", function () {
-                var controls = [auto, labels, priv, syncNotes];
+                var controls = [auto, labels, priv, profile, reminders, syncNotes, syncContent];
                 controls.forEach(function (control) { control.disabled = true; });
-                api("/organization", json("PUT", { auto_organize: auto.checked, semantic_labels: labels.checked, index_private: priv.checked, notes_sync_enabled: syncNotes.checked })).then(function () { status.textContent = "Saved."; if (box === priv) { runSync(); } return loadSummary(true); },
+                api("/organization", json("PUT", { auto_organize: auto.checked, semantic_labels: labels.checked, index_private: priv.checked, index_profile: profile.checked, index_reminders: reminders.checked, notes_sync_enabled: syncNotes.checked, content_sync_enabled: syncContent.checked })).then(function () { status.textContent = "Saved."; if (box === priv || box === profile || box === reminders) { runSync(); } return loadSummary(true); },
                     function (error) { box.checked = !box.checked; status.textContent = error.message; })
                     .finally(function () { controls.forEach(function (control) { control.disabled = false; }); });
             });

@@ -99,9 +99,9 @@ autoyou_agents/codex_desktop_agent/desktop_assets/*
 !autoyou_agents/codex_desktop_agent/desktop_assets/setup_prompt.md
 autoyou_agents/fine_tuning_agent/fine_tuning_agent/
 autoyou_agents/data_collector_agent/data_collector_agent/
-autoyou_agents/persona_agent/persona_agent/*.md
+autoyou_agents/profile_agent/profile_agent/*.md
 autoyou_agents/media_generation_agent/config/video.json
-autoyou_agents/audio_agent/library_settings.json
+autoyou_agents/music_agent/library_settings.json
 autoyou_agents/notes_agent/*.db
 autoyou_agents/notes_agent/*.sqlite
 autoyou_agents/notes_agent/*.sqlite3

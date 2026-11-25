@@ -11,7 +11,7 @@ import asyncio
 from types import SimpleNamespace
 
 from autoyou_agents.admin_agent import agent as admin_agent
-from autoyou_agents.audio_agent import agent as audio_agent
+from autoyou_agents.music_agent import agent as music_agent
 from autoyou_agents.notes_agent import agent as notes_agent
 from autoyou_agents.shared_tools.datetime_tool import (
     get_current_datetime,
@@ -80,7 +80,7 @@ def test_audio_before_model_callback_injects_datetime():
     llm_request = _fake_user_llm_request("hello there")
 
     response = asyncio.run(
-        audio_agent._audio_before_model_callback(
+        music_agent._audio_before_model_callback(
             SimpleNamespace(state={}, invocation_id="dt-audio"),
             llm_request,
         )

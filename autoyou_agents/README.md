@@ -38,9 +38,9 @@ The **Web** column marks agents that ship a browser page under `website/`. Defau
 | --- | --- | --- | --- | --- |
 | Notes | `notes_agent` | on | ✓ | Notes and to-dos with tags, categories, search, and attachments |
 | Tasks | `tasks_agent` | on | ✓ | Schedules recurring and one-time AI jobs that run on a timer |
-| Notify | `notify_agent` | on | ✓ | Timed notifications and reminders delivered straight to your devices |
+| Notify | `reminders_agent` | on | ✓ | Timed notifications and reminders delivered straight to your devices |
 | Memory | `memory_agent` | on | | Stores and recalls long-term memory from the local memory backend |
-| Persona | `persona_agent` | on | ✓ | Your private persona journal: preferences, background, and facts you choose to save |
+| Persona | `profile_agent` | on | ✓ | Your private persona journal: preferences, background, and facts you choose to save |
 | Page | `page_agent` | on | ✓ | Turns links into media cards and manages your personal page feed |
 | Prompts | `prompts_agent` | on | ✓ | Harvests prompts across Codex, Claude, Cursor, Antigravity, and VS Code into a mind map |
 | Location | `location_agent` | opt-in | ✓ | A private timeline of consented locations from your connected devices |
@@ -59,10 +59,10 @@ The **Web** column marks agents that ship a browser page under `website/`. Defau
 
 | Agent | Package | Default | Web | What it does |
 | --- | --- | --- | --- | --- |
-| Audio | `audio_agent` | on | ✓ | Searches your local music and plays, queues, shuffles, and repeats it on your call |
-| TV | `tv_agent` | on | ✓ | Your media library: indexing, streaming, playback, and FFmpeg transcoding. Media is published only when you select it |
+| Audio | `music_agent` | on | ✓ | Searches your local music and plays, queues, shuffles, and repeats it on your call |
+| TV | `media_agent` | on | ✓ | Your media library: indexing, streaming, playback, and FFmpeg transcoding. Media is published only when you select it |
 | Media Generation | `media_generation_agent` | opt-in | ✓ | Local image and video generation with Wan2GP, including Flux image models |
-| Game Studio | `game_agent` | on | ✓ | Builds offline `.aygame` games for phones and desktops, streams hosted games, and documents the `autoyou_game_v1` input protocol and Unreal plugin |
+| Game Studio | `games_agent` | on | ✓ | Builds offline `.aygame` games for phones and desktops, streams hosted games, and documents the `autoyou_game_v1` input protocol and Unreal plugin |
 
 ### Coding and building
 

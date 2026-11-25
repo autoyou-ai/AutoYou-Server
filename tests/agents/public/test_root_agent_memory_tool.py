@@ -59,7 +59,7 @@ def test_initialize_root_agent_wraps_memory_agent_as_tool(monkeypatch):
         "internet_agent",
         "page_agent",
         "admin_agent",
-        "audio_agent",
+        "music_agent",
         "cli_agent",
         "files_agent",
         "memory_agent",
@@ -72,7 +72,7 @@ def test_initialize_root_agent_wraps_memory_agent_as_tool(monkeypatch):
         "internet_agent": lambda model_config: _dummy_agent("autoyou_internet_agent"),
         "page_agent": lambda model_config: _dummy_agent("autoyou_page_agent"),
         "admin_agent": lambda model_config: _dummy_agent("autoyou_admin_agent"),
-        "audio_agent": lambda model_config: _dummy_agent("autoyou_audio_agent"),
+        "music_agent": lambda model_config: _dummy_agent("autoyou_music_agent"),
         "cli_agent": lambda model_config: _dummy_agent("autoyou_cli_agent"),
         "files_agent": lambda model_config: _dummy_agent("autoyou_files_agent"),
         "memory_agent": lambda model_config: _dummy_agent("autoyou_memory_agent"),
@@ -117,7 +117,7 @@ def test_initialize_root_agent_wraps_memory_agent_as_tool(monkeypatch):
     assert "autoyou_page_agent" in routable
     assert "autoyou_cli_agent" in routable
     assert "autoyou_files_agent" in routable
-    assert "autoyou_audio_agent" in routable
+    assert "autoyou_music_agent" in routable
 
     # Ten installed specialists must not become ten advertised tools - that
     # payload is what collapsed ministral-3:8b into echoing the tool schema.
@@ -206,20 +206,20 @@ def test_persona_fast_path_defers_ambiguous_or_unrequested_writes(text):
 
 @pytest.mark.asyncio
 async def test_persona_save_followup_uses_user_fact_and_replays_verified_result(tmp_path, monkeypatch):
-    from autoyou_agents.persona_agent.agent import append_persona, read_persona
+    from autoyou_agents.profile_agent.agent import append_profile, read_profile
     monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path))
-    monkeypatch.setattr(root_agent_module, "_is_runtime_agent_enabled", lambda name: name == "autoyou_persona_agent")
+    monkeypatch.setattr(root_agent_module, "_is_runtime_agent_enabled", lambda name: name == "autoyou_profile_agent")
     request = _persona_request(("user", "Example is my name"),
                                ("model", "I saved a different invented name."), ("user", "Save it"))
     context = SimpleNamespace(state={}, invocation_id="synthetic-persona-save")
     call = (await root_agent_module._root_before_model_callback(context, request)).content.parts[0].function_call
-    assert call.name == "append_persona" and call.args == {"text": "Example is my name"}
-    result = append_persona(**call.args)
-    root_agent_module._root_after_tool_callback(append_persona, call.args, context, result)
+    assert call.name == "append_profile" and call.args == {"text": "Example is my name"}
+    result = append_profile(**call.args)
+    root_agent_module._root_after_tool_callback(append_profile, call.args, context, result)
     reply = await root_agent_module._root_before_model_callback(context, request)
     assert reply.content.parts[0].text == "Appended to persona profile."
-    assert read_persona()["content"].count("Example is my name") == 1
-    assert "invented" not in read_persona()["content"]
+    assert read_profile()["content"].count("Example is my name") == 1
+    assert "invented" not in read_profile()["content"]
 
     # The next conversation uses the durable journal, never the session index.
     async def wrong_store(**kwargs):
@@ -228,8 +228,8 @@ async def test_persona_save_followup_uses_user_fact_and_replays_verified_result(
     read_context = SimpleNamespace(state={}, invocation_id="synthetic-new-conversation")
     request = _persona_request(("user", "What is my name?"))
     call = (await root_agent_module._root_before_model_callback(read_context, request)).content.parts[0].function_call
-    assert call.name == "read_persona"
-    root_agent_module._root_after_tool_callback(read_persona, {}, read_context, read_persona())
+    assert call.name == "read_profile"
+    root_agent_module._root_after_tool_callback(read_profile, {}, read_context, read_profile())
     assert await root_agent_module._root_before_model_callback(read_context, request) is None
 
 

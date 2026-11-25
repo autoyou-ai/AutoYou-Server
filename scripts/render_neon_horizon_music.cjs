@@ -13,8 +13,8 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const root = path.resolve(__dirname, '..');
-const page = path.join(root, 'autoyou_agents/game_agent/website/frontend/play.html');
-const output = path.join(root, 'autoyou_agents/game_agent/website/frontend/assets/audio/stream-loop.wav');
+const page = path.join(root, 'autoyou_agents/games_agent/website/frontend/play.html');
+const output = path.join(root, 'autoyou_agents/games_agent/website/frontend/assets/audio/stream-loop.wav');
 const html = fs.readFileSync(page, 'utf8');
 const begin = html.indexOf('/* music:begin'), end = html.indexOf('/* music:end */');
 if (begin < 0 || end < 0) throw new Error('play.html has no music:begin / music:end block');

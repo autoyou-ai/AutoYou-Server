@@ -546,7 +546,7 @@ def _build_agent_studio_panel_html() -> str:
             <a href='/agent/agent_builder_agent/' target='_blank' class='admin-feature-btn ghost' style='font-size:13px;padding:5px 12px;text-decoration:none;'>Agent Builder Website</a>
             <a href='/agent/website_agent/' target='_blank' class='admin-feature-btn ghost' style='font-size:13px;padding:5px 12px;text-decoration:none;'>Website Builder</a>
             <a href='/agent/tasks_agent/' target='_blank' class='admin-feature-btn ghost' style='font-size:13px;padding:5px 12px;text-decoration:none;'>Tasks Website</a>
-            <a href='/agent/notify_agent/' target='_blank' class='admin-feature-btn ghost' style='font-size:13px;padding:5px 12px;text-decoration:none;'>Notify Website</a>
+            <a href='/agent/reminders_agent/' target='_blank' class='admin-feature-btn ghost' style='font-size:13px;padding:5px 12px;text-decoration:none;'>Notify Website</a>
           </div>
 
           <div class='agent-studio-runtime-strip'>

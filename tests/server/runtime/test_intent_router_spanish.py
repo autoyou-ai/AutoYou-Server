@@ -29,7 +29,7 @@ def router():
 
 
 @pytest.mark.parametrize("text,route", [
-    ("pon un poco de jazz de mi música", "audio_agent"),
+    ("pon un poco de jazz de mi música", "music_agent"),
     ("publica mi foto de vacaciones en mi página", "page_agent"),
     ("programa un resumen de noticias cada mañana", "tasks_agent"),
 ])

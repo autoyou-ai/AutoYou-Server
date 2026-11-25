@@ -12,7 +12,7 @@ and ``notes_tool.py``).  This module keeps only the ADK-specific glue: the
 ``before_model``/``after_tool`` callbacks and ``create_admin_agent``.
 
 The tool implementations and session helpers are re-exported here unchanged so
-that sibling agents (``model_picker_agent``, ``files_agent``, ``audio_agent``,
+that sibling agents (``model_picker_agent``, ``files_agent``, ``music_agent``,
 continue to ``from autoyou_agents.admin_agent.agent import ...`` exactly as
 before.
 

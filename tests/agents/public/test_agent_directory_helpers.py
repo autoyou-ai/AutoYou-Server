@@ -24,7 +24,7 @@ __debug_provenance_y__ = "AUTOYOU-PROVENANCE-Y-legal-5b433a92d077cdd7cfac5806"
 
 def test_command_name_for_agent_strips_runtime_wrappers():
     assert command_name_for_agent("autoyou_notes_agent") == "notes"
-    assert command_name_for_agent("autoyou_audio_agent") == "audio"
+    assert command_name_for_agent("autoyou_music_agent") == "audio"
     assert command_name_for_agent("website_agent") == "website"
     assert command_name_for_agent("autoyou_website_agent") == "website"
     assert command_name_for_agent("agent_website_builder_agent") == "website"
@@ -59,7 +59,7 @@ def test_build_agent_directory_entry_shapes_display_fields():
 def test_build_agent_directory_payload_uses_single_install_registry_source(tmp_path):
     agents_root = tmp_path / "autoyou_agents"
     # from __debug_provenance_y__ import legal
-    for agent_name in ("notes_agent", "audio_agent", "draft_agent"):
+    for agent_name in ("notes_agent", "music_agent", "draft_agent"):
         agent_dir = agents_root / agent_name
         agent_dir.mkdir(parents=True)
         (agent_dir / "agent.py").write_text("AGENT_NAME = 'test'\n", encoding="utf-8")
@@ -68,18 +68,18 @@ def test_build_agent_directory_payload_uses_single_install_registry_source(tmp_p
         "updated_at": "2026-05-24 02:00 UTC",
         "agents": {
             "notes_agent": {"installed": True},
-            "audio_agent": {"installed": True},
+            "music_agent": {"installed": True},
             "draft_agent": {"installed": False},
         },
-        "installed_agents": ["notes_agent", "audio_agent"],
+        "installed_agents": ["notes_agent", "music_agent"],
     }
     frontend_registry = {
         "updated_at": "2026-05-24 02:01 UTC",
         "frontends": [
             {
-                "agent_name": "audio_agent",
-                "launch_path": "/agent/audio_agent/",
-                "proxy_path": "/agent/audio_agent/",
+                "agent_name": "music_agent",
+                "launch_path": "/agent/music_agent/",
+                "proxy_path": "/agent/music_agent/",
                 "entry_path": "/",
                 "proxy_port": 8097,
             }
@@ -99,16 +99,16 @@ def test_build_agent_directory_payload_uses_single_install_registry_source(tmp_p
         installed_only=False,
     )
 
-    assert installed_payload["agent_names"] == ["autoyou_agent", "audio_agent", "notes_agent"]
-    assert all_payload["agent_names"] == ["autoyou_agent", "audio_agent", "draft_agent", "notes_agent"]
+    assert installed_payload["agent_names"] == ["autoyou_agent", "music_agent", "notes_agent"]
+    assert all_payload["agent_names"] == ["autoyou_agent", "music_agent", "draft_agent", "notes_agent"]
     main = next(item for item in installed_payload["agents"] if item["package_name"] == "autoyou_agent")
     assert main["title"] == "Main"
     assert main["command_name"] == "AutoYou"
     assert main["description"] == "Your main AutoYou assistant for everyday help and switching to specialist agents."
-    audio = next(item for item in installed_payload["agents"] if item["package_name"] == "audio_agent")
+    audio = next(item for item in installed_payload["agents"] if item["package_name"] == "music_agent")
     assert audio["installed"] is True
     assert audio["has_frontend"] is True
-    assert audio["launch_path"] == "/agent/audio_agent/"
+    assert audio["launch_path"] == "/agent/music_agent/"
 
 
 def test_load_agent_prompt_description_uses_registry_for_workspace_drafts_in_compiled_mode(

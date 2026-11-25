@@ -39,19 +39,39 @@ def settings() -> dict:
     return {"output_root": str(root.resolve()), "encrypted_at_rest": secure_storage_enabled(),
             "auto_organize": values.get("auto_organize", True) is not False,
             "semantic_labels": values.get("semantic_labels", True) is not False,
+            "content_sync_enabled": values.get("content_sync_enabled", True) is not False,
             "notes_sync_enabled": values.get("notes_sync_enabled", True) is not False,
             # Self-data agents (the Diary) keep their own sign-in, so they are listed only when the owner opts in.
-            "index_private": values.get("index_private", False) is True}
+            "index_private": values.get("index_private", False) is True,
+            "index_profile": values.get("index_profile", False) is True,
+            "index_reminders": values.get("index_reminders", False) is True}
 
 
-def configure_organization(*, auto_organize: bool, semantic_labels: bool, index_private: bool | None = None, notes_sync_enabled: bool | None = None) -> dict:
+def configure_organization(*, auto_organize: bool, semantic_labels: bool, index_private: bool | None = None,
+                           index_profile: bool | None = None, index_reminders: bool | None = None,
+                           notes_sync_enabled: bool | None = None, content_sync_enabled: bool | None = None) -> dict:
     values = load_secure_json(state_root() / "settings.json", default={})
     values.update(auto_organize=auto_organize, semantic_labels=semantic_labels)
     if index_private is not None:
         values["index_private"] = bool(index_private)
+    if index_profile is not None:
+        values["index_profile"] = bool(index_profile)
+    if index_reminders is not None:
+        values["index_reminders"] = bool(index_reminders)
+    if content_sync_enabled is not None:
+        values["content_sync_enabled"] = content_sync_enabled
     if notes_sync_enabled is not None:
         values["notes_sync_enabled"] = notes_sync_enabled
     save_secure_json(state_root() / "settings.json", values)
+    if False in (index_private, index_profile, index_reminders):
+        library = ContentLibrary()
+        with library.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            for source, flag in (("diary_agent", index_private), ("profile_agent", index_profile), ("reminders_agent", index_reminders)):
+                if flag is False:
+                    for row in db.execute("SELECT id FROM content WHERE source=? AND deleted=0", (source,)).fetchall():
+                        db.execute("UPDATE content SET deleted=1,title='',source_text='',annotation='',revision=? WHERE id=?",
+                                   (library.tick(db), row["id"]))
     return settings()
 
 
@@ -79,7 +99,8 @@ def configure_output_root(value: str) -> dict:
 def output_dir(source: str) -> Path:
     if not SOURCE.fullmatch(source):
         raise ValueError("Invalid content source")
-    path = Path(settings()["output_root"]) / source
+    from shared.content_agent_upgrade import storage_path
+    path = storage_path(Path(settings()["output_root"]), source)
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -173,6 +194,19 @@ class ContentLibrary:
             db.execute("CREATE INDEX IF NOT EXISTS content_live_updated ON content(deleted,updated DESC,id)")
             db.execute("CREATE INDEX IF NOT EXISTS content_live_source ON content(deleted,source,updated DESC)")
             db.execute("CREATE INDEX IF NOT EXISTS content_live_kind ON content(deleted,kind,updated DESC)")
+            from shared.content_agent_upgrade import PREVIOUS_NAMES
+            for source, old in PREVIOUS_NAMES.items():
+                if source == "profile_agent":
+                    continue  # The old private catalog indexed only dated entries.
+                for row in db.execute("SELECT id,source_id,href FROM content WHERE source=? AND deleted=0", (old,)).fetchall():
+                    existing = db.execute("SELECT id FROM content WHERE source=? AND source_id=?", (source, row["source_id"])).fetchone()
+                    if existing:
+                        db.execute("UPDATE content SET parent_id=? WHERE parent_id=?", (existing["id"], row["id"]))
+                        db.execute("UPDATE content SET deleted=1,title='',source_text='',annotation='',revision=? WHERE id=? AND deleted=0",
+                                   (self.tick(db), row["id"]))
+                    else:
+                        href = row["href"].replace("/agent/" + old + "/", "/agent/" + source + "/")
+                        db.execute("UPDATE content SET source=?,href=?,revision=? WHERE id=?", (source, href, self.tick(db), row["id"]))
             # Identity of agents that have no code on this computer (agents created on a phone).
             db.execute("""CREATE TABLE IF NOT EXISTS content_agents(
                 source TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '', handle TEXT NOT NULL DEFAULT '',
@@ -206,6 +240,9 @@ class ContentLibrary:
         with (self.connect() if _db is None else nullcontext(_db)) as db:
             if _db is None:
                 db.execute("BEGIN IMMEDIATE")
+            privacy_option = {"diary_agent": "index_private", "profile_agent": "index_profile", "reminders_agent": "index_reminders"}.get(source)
+            if privacy_option and not settings()[privacy_option]:
+                return {"deleted": 1, "source": source}
             row = db.execute("SELECT * FROM content WHERE source=? AND source_id=?", (source, str(source_id))).fetchone()
             file_changed = False
             if row and path and row["file_stamp"]:

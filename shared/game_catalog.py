@@ -70,13 +70,15 @@ def title_for(game_id: str) -> str:
 def catalog(dirs: Iterable[Path]) -> dict[str, Path]:
     """Every playable game by id; a later folder (published games) replaces an earlier one (built-in)."""
     found: dict[str, Path] = {}
+    dirs = tuple(dirs)
+    hidden = dirs[-1] / ".hidden" if dirs else None
     for folder in dirs:
         try:
             files = sorted(folder.glob("*.html"))[:64]
         except OSError:
             continue
         for path in files:
-            if not GAME_ID.fullmatch(path.stem):
+            if not GAME_ID.fullmatch(path.stem) or hidden and (hidden / path.stem).is_file():
                 continue
             try:
                 read_game(path)

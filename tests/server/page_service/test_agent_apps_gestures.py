@@ -34,9 +34,9 @@ APPS = [
     ("page_agent", "AutoYou Page", "Saved links and media."),
     ("notes_agent", "Notes Library", "Read your notes."),
     ("tasks_agent", "Tasks Mission Control", "Recurring tasks."),
-    ("notify_agent", "Notify", "Timed notifications."),
+    ("reminders_agent", "Notify", "Timed notifications."),
     ("files_agent", "Files Agent", "Browse files."),
-    ("audio_agent", "Audio Player", "Stream your music library."),
+    ("music_agent", "Audio Player", "Stream your music library."),
     ("earnings_agent", "Earnings", "Pending credits."),
 ]
 STORE_KEY = "autoyou.agentApps.v2"
@@ -318,7 +318,7 @@ def test_search_uses_http_query_and_blocks_rearranging(phone):
     phone.page.on("request", lambda request: requests.append((request.method, request.url)))
     phone.page.fill("#q", "music")
     phone.page.wait_for_timeout(900)
-    assert "audio_agent" in phone.names() and len(phone.names()) < len(APPS)
+    assert "music_agent" in phone.names() and len(phone.names()) < len(APPS)
     assert any(method == "QUERY" and url.endswith("/api/websites") for method, url in requests)
 
     x, y = phone.center(phone.names()[0])

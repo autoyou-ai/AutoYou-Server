@@ -867,7 +867,7 @@ if [[ "$SKIP_VERIFY" != true ]]; then
             --verify-runtime-import auto_browser_client \
             --verify-runtime-import autoyou_agents.agent_builder_agent.website.backend.app \
             --verify-runtime-import autoyou_agents.education_agent.website.backend.app \
-            --verify-runtime-import autoyou_agents.notify_agent.website.backend.app \
+            --verify-runtime-import autoyou_agents.reminders_agent.website.backend.app \
             --verify-runtime-import autoyou_agents.skills_agent.website.backend.app \
             --verify-runtime-import autoyou_agents.tasks_agent.website.backend.app \
             --verify-runtime-import autoyou_agents.website_agent.website.backend.app \

@@ -214,11 +214,11 @@ def test_agent_websites_query_searches_descriptions_and_fuzzy_names(monkeypatch)
                     "launch_path": "/agent/tasks_agent/",
                 },
                 {
-                    "agent_name": "audio_agent",
+                    "agent_name": "music_agent",
                     "title": "Audio",
                     "description": "Play music",
                     "frontend_port_registered": True,
-                    "launch_path": "/agent/audio_agent/",
+                    "launch_path": "/agent/music_agent/",
                 },
             ]
         },
@@ -330,14 +330,14 @@ def test_page_service_proxies_registered_agent_frontend(monkeypatch):
     assert all(value != "evil.example" for value in captured["headers"].values())
 
 
-def test_page_service_streams_audio_agent_media_without_buffering(monkeypatch):
+def test_page_service_streams_music_agent_media_without_buffering(monkeypatch):
     monkeypatch.setattr(
         autoyou_page_service,
         "load_frontend_registry",
         lambda: {
             "frontends": [
                 {
-                    "agent_name": "audio_agent",
+                    "agent_name": "music_agent",
                     "proxy_port": 8095,
                     "frontend_port_registered": True,
                 }
@@ -370,7 +370,7 @@ def test_page_service_streams_audio_agent_media_without_buffering(monkeypatch):
 
     client = TestClient(autoyou_page_service.AutoYouPageService().app)
     response = client.get(
-        "/agent/audio_agent/api/stream/synthetic-track",
+        "/agent/music_agent/api/stream/synthetic-track",
         headers={"Accept": "*/*"},
     )
 
@@ -395,7 +395,7 @@ def test_page_service_agent_proxy_shim_rewrites_dom_url_properties():
 def test_page_service_agent_proxy_shim_adds_mobile_viewport_when_missing():
     html = autoyou_page_service.AutoYouPageService._inject_agent_proxy_shim(
         b"<html><head></head><body></body></html>",
-        "audio_agent",
+        "music_agent",
     ).decode("utf-8")
 
     assert '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">' in html
@@ -606,7 +606,7 @@ def test_page_service_proxies_agent_frontend_websocket(monkeypatch):
 def test_game_proxy_sets_local_origin_only_for_host_browser(monkeypatch):
     service = autoyou_page_service.AutoYouPageService()
     monkeypatch.setattr(service, "_frontend_registry_map", lambda: {
-        "game_agent": {"proxy_port": 8112, "websocket_enabled": True}
+        "games_agent": {"proxy_port": 8112, "websocket_enabled": True}
     })
     calls = []
 
@@ -625,7 +625,7 @@ def test_game_proxy_sets_local_origin_only_for_host_browser(monkeypatch):
 
     class Socket:
         client = SimpleNamespace(host="127.0.0.1")
-        url = SimpleNamespace(query="", path="/agent/game_agent/api/game/native-input", scheme="ws")
+        url = SimpleNamespace(query="", path="/agent/games_agent/api/game/native-input", scheme="ws")
 
         def __init__(self, headers):
             self.headers = headers
@@ -635,19 +635,19 @@ def test_game_proxy_sets_local_origin_only_for_host_browser(monkeypatch):
 
     headers = {"host": "127.0.0.1:8067", "origin": "http://127.0.0.1:8067"}
     asyncio.run(service._proxy_agent_frontend_websocket(
-        Socket(headers), agent_name="game_agent", proxy_path="api/game/native-input"))
+        Socket(headers), agent_name="games_agent", proxy_path="api/game/native-input"))
     assert calls[-1] == ("ws://127.0.0.1:8112/api/game/native-input", {
         "max_size": None, "subprotocols": None, "origin": "http://127.0.0.1:8112"
     })
 
     asyncio.run(service._proxy_agent_frontend_websocket(
         Socket({**headers, "x-autoyou-remote-browser": "webrtc"}),
-        agent_name="game_agent", proxy_path="api/game/native-input"))
+        agent_name="games_agent", proxy_path="api/game/native-input"))
     assert "origin" not in calls[-1][1]
 
     asyncio.run(service._proxy_agent_frontend_websocket(
         Socket({**headers, "origin": "http://127.0.0.1:9999"}),
-        agent_name="game_agent", proxy_path="api/game/native-input"))
+        agent_name="games_agent", proxy_path="api/game/native-input"))
     assert "origin" not in calls[-1][1]
 
 
@@ -1095,10 +1095,10 @@ def test_page_service_root_redirects_fallback_agent_websites(monkeypatch):
 @pytest.mark.parametrize(
     ("agent_name", "subpath"),
     [
-        ("tv_agent", "api/download/synthetic-item"),
+        ("media_agent", "api/download/synthetic-item"),
         ("page_agent", "api/blob/synthetic-blob"),
         ("notes_agent", "api/media/42"),
-        ("persona_agent", "api/persona/entries/11111111-1111-1111-1111-111111111111/media/m1"),
+        ("profile_agent", "api/diary/entries/11111111-1111-1111-1111-111111111111/media/m1"),
     ],
 )
 def test_page_service_streams_binary_download_endpoints(monkeypatch, agent_name, subpath):

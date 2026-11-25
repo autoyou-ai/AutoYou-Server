@@ -116,7 +116,7 @@ def test_evaluate_turn_fails_wrong_specialist_agent() -> None:
         {
             "response": "I can answer generally.",
             "session_id": "s1",
-            "agent_name": "autoyou_audio_agent",
+            "agent_name": "autoyou_music_agent",
             "metadata": {},
         },
     )

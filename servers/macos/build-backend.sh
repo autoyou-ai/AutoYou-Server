@@ -1611,7 +1611,7 @@ verify_packaged_backend_imports() {
         runtime_verify_args+=(
             --verify-runtime-import "autoyou_agents.agent_builder_agent.website.backend.app"
             --verify-runtime-import "autoyou_agents.education_agent.website.backend.app"
-            --verify-runtime-import "autoyou_agents.notify_agent.website.backend.app"
+            --verify-runtime-import "autoyou_agents.reminders_agent.website.backend.app"
             --verify-runtime-import "autoyou_agents.skills_agent.website.backend.app"
             --verify-runtime-import "autoyou_agents.tasks_agent.website.backend.app"
             --verify-runtime-import "autoyou_agents.voice_training_agent.website.backend.app"

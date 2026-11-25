@@ -81,7 +81,7 @@ High-risk operations require a **1-hour elevated admin session**. Account sign-i
 - AutoYou stores the current chat reply target so you can reuse it across sessions.
 - Use `get_saved_reply_target()` before attempting delivery if you need to confirm the target.
 - Use `send_saved_reply_target_message(message)` for scheduled or follow-up delivery when the user wants the message sent back to the originating Telegram, WhatsApp, or Signal conversation.
-- Audio playback controls now live in `autoyou_audio_agent`. Use the admin agent only to enable or disable the feature.
+- Audio playback controls now live in `autoyou_music_agent`. Use the admin agent only to enable or disable the feature.
 - `get_audio_playback_enabled()` is safe to read without a user TOTP step, but changing the setting via `set_audio_playback_enabled()` requires an active admin session.
 
 ## General behavior

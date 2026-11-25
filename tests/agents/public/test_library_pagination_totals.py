@@ -11,13 +11,13 @@ from tests.support.paths import ensure_repo_on_path
 
 ensure_repo_on_path()
 
-import autoyou_agents.audio_agent.website.backend.app as audio_backend
+import autoyou_agents.music_agent.website.backend.app as audio_backend
 import autoyou_agents.notes_agent.website.backend.app as notes_backend
-import autoyou_agents.persona_agent.website.backend.app as persona_backend
+import autoyou_agents.diary_agent.website.backend.app as diary_backend
 from autoyou_agents.notes_agent.notes_tool import NotesTool
 from autoyou_agents.page_agent.website.backend.app import PageFeedService
 from autoyou_agents.shared_tools import scheduler_mission_control as mission_control
-from autoyou_agents.tv_agent.website.backend.app import create_app as create_tv_app
+from autoyou_agents.media_agent.website.backend.app import create_app as create_tv_app
 from page_feed_db import PageFeedDB
 from shared import scheduler_service
 
@@ -134,11 +134,11 @@ def test_page_feed_catalog_reports_total_and_cursor_pages(monkeypatch, tmp_path)
     assert len({row["id"] for row in p1["items"] + p2["items"]}) == 120
 
 
-def test_persona_diary_supports_optional_offset_pagination_and_unpaginated_default(monkeypatch, tmp_path):
+def test_diary_supports_optional_offset_pagination_and_unpaginated_default(monkeypatch, tmp_path):
     monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path))
-    monkeypatch.setattr(persona_backend, "_check_auth", lambda request: True)
+    monkeypatch.setattr(diary_backend, "_check_auth", lambda request: True)
 
-    blocks = ["# Persona Document"]
+    blocks = []
     for idx in range(120):
         entry_id = str(uuid.UUID(int=idx + 1))
         blocks.append(
@@ -149,17 +149,17 @@ def test_persona_diary_supports_optional_offset_pagination_and_unpaginated_defau
             f"Body {idx:03d}\n"
             f"<!-- /autoyou-diary:{entry_id} -->"
         )
-    client = TestClient(persona_backend.app)
-    saved = client.post("/api/persona", json={"content": "\n\n".join(blocks)})
-    assert saved.status_code == 200
+    client = TestClient(diary_backend.app)
+    from autoyou_agents.diary_agent.agent import _store
+    _store().write("# Diary\n\n" + "\n\n".join(blocks))
 
-    unpaged = client.get("/api/persona/entries?order=desc").json()
+    unpaged = client.get("/api/diary/entries?order=desc").json()
     assert unpaged["total"] == 120
     assert unpaged["has_more"] is False
     assert len(unpaged["entries"]) == 120
 
-    p1 = client.get("/api/persona/entries?order=desc&offset=0&limit=100").json()
-    p2 = client.get(f"/api/persona/entries?order=desc&offset={p1['next_offset']}&limit=100").json()
+    p1 = client.get("/api/diary/entries?order=desc&offset=0&limit=100").json()
+    p2 = client.get(f"/api/diary/entries?order=desc&offset={p1['next_offset']}&limit=100").json()
     assert p1["total"] == 120
     assert p1["has_more"] is True
     assert p1["next_offset"] == 100

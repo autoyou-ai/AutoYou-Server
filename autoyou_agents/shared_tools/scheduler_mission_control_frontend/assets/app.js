@@ -269,7 +269,7 @@ function renderHeader() {
     if (titleEl) titleEl.textContent = meta.title || 'Mission Control';
     if (peerLink) {
         peerLink.textContent = meta.peer_label || (isTasksBoard() ? 'Notify' : 'Tasks');
-        peerLink.href = resolveAgentRoute(meta.peer_agent || (isTasksBoard() ? 'notify_agent' : 'tasks_agent'));
+        peerLink.href = resolveAgentRoute(meta.peer_agent || (isTasksBoard() ? 'reminders_agent' : 'tasks_agent'));
     }
 }
 

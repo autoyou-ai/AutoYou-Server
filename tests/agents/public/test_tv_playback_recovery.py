@@ -1,8 +1,8 @@
 """A title stays playable across the content-folder move and server restarts.
 
-These use the live layout: the catalog under ``<data>/tv_agent`` and new media in the shared
+These use the live layout: the catalog under ``<data>/media_agent`` and new media in the shared
 content folder, both inside a per-test ``AUTOYOU_TEST_ROOT``. Before agent content moved to the
-shared folder, browser versions were written to ``<data>/tv_agent/media``.
+shared folder, browser versions were written to ``<data>/media_agent/media``.
 """
 import asyncio
 import json
@@ -12,11 +12,11 @@ import time
 from fastapi.testclient import TestClient
 import pytest
 
-import autoyou_agents.tv_agent.website.backend.app as app_module
-from autoyou_agents.tv_agent.website.backend import playback
-from autoyou_agents.tv_agent.website.backend.app import create_app
-from autoyou_agents.tv_agent.website.backend.jobs import INTERRUPTED, Jobs, executable, probe
-from autoyou_agents.tv_agent.website.backend.store import Store
+import autoyou_agents.media_agent.website.backend.app as app_module
+from autoyou_agents.media_agent.website.backend import playback
+from autoyou_agents.media_agent.website.backend.app import create_app
+from autoyou_agents.media_agent.website.backend.jobs import INTERRUPTED, Jobs, executable, probe
+from autoyou_agents.media_agent.website.backend.store import Store
 
 
 @pytest.fixture

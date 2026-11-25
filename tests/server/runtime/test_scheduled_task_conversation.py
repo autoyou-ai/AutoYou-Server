@@ -36,7 +36,7 @@ from autoyou_agents.admin_agent import agent as admin_agent
 from autoyou_agents.claude_desktop_agent import agent as claude_desktop_agent
 from autoyou_agents.codex_desktop_agent import agent as codex_desktop_agent
 from autoyou_agents.media_generation_agent import agent as media_agent
-from autoyou_agents.notify_agent import agent as notify_agent
+from autoyou_agents.reminders_agent import agent as reminders_agent
 from autoyou_agents.tasks_agent import agent as tasks_agent
 from shared import scheduler_service
 from shared.session_execution import SESSION_CONTROL_STATE_KEY, prepare_session_control_for_turn
@@ -87,7 +87,7 @@ def sandbox(monkeypatch, tmp_path):
         return real_connect(database, *args, **kwargs)
 
     monkeypatch.setattr(sqlite3, "connect", connect)
-    for module in (scheduler_service, notify_agent, tasks_agent):
+    for module in (scheduler_service, reminders_agent, tasks_agent):
         monkeypatch.setattr(module, "append_scheduler_activity_log", lambda *args, **kwargs: None)
     files = SimpleNamespace(
         queue=tmp_path / "queue.json",
@@ -98,7 +98,7 @@ def sandbox(monkeypatch, tmp_path):
     monkeypatch.setattr(scheduler_service, "OUTBOUND_NOTIFICATION_QUEUE_FILE", str(files.queue))
     monkeypatch.setattr(scheduler_service, "TASKS_FILE", str(files.deferred_answers))
     monkeypatch.setattr(tasks_agent, "TASKS_FILE", str(files.tasks_made_by_a_turn))
-    monkeypatch.setattr(notify_agent, "REMINDERS_FILE", str(files.reminders))
+    monkeypatch.setattr(reminders_agent, "REMINDERS_FILE", str(files.reminders))
     return files
 
 
@@ -350,7 +350,7 @@ async def test_reminder_and_task_made_in_such_a_turn_save_no_conversation(monkey
     webrtc, channel, paired, made = _device_with_a_task(monkeypatch, tmp_path, case)
     _, turn = _its_ai_turn(made, paired)
 
-    notify_agent.create_reminder("synthetic reminder", relative_minutes_from_now=5, tool_context=turn)
+    reminders_agent.create_reminder("synthetic reminder", relative_minutes_from_now=5, tool_context=turn)
     created = tasks_agent.create_cron_task("synthetic follow-up", run_once=True, tool_context=turn)
 
     [reminder] = scheduler_service.load_json(str(sandbox.reminders))
@@ -385,7 +385,7 @@ async def test_ai_turn_of_a_task_with_a_saved_conversation_keeps_what_it_starts_
 
     [(_, _, payload)] = _ask_the_media_agent(monkeypatch, turn)
     assert await _as_the_webrtc_send_route_does(webrtc, payload)
-    notify_agent.create_reminder("synthetic reminder", relative_minutes_from_now=5, tool_context=turn)
+    reminders_agent.create_reminder("synthetic reminder", relative_minutes_from_now=5, tool_context=turn)
     created = tasks_agent.create_cron_task("synthetic follow-up", run_once=True, tool_context=turn)
     [reminder] = scheduler_service.load_json(str(sandbox.reminders))
     assert (await _when_the_reminder_is_due(reminder))["status"] == "success"

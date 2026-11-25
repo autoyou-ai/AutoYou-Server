@@ -432,25 +432,33 @@ def test_the_screen_assets_are_served_by_the_content_api(client, sandbox, monkey
 
 
 def test_diary_entries_are_listed_only_when_the_owner_opts_in_and_leave_when_it_is_turned_off(client, monkeypatch):
-    from autoyou_agents.persona_agent import agent as persona
+    from autoyou_agents.diary_agent import agent as diary
+    from autoyou_agents.profile_agent import agent as profile
     from shared.content_library_scan import refresh_existing
     entry = {"id": "00000000-0000-4000-8000-0000000000d1", "date": "2026-11-20", "time": "08:00", "title": "A good day",
              "preview": "Went for a long synthetic walk", "has_media": False}
-    monkeypatch.setattr(persona, "list_diary_entries", lambda order="desc": [entry])
+    monkeypatch.setattr(diary, "list_diary_entries", lambda order="desc": [entry])
     refresh_existing()
-    assert ContentLibrary().list(source="persona_agent")["total"] == 0, "private self-data is never listed by default"
+    assert ContentLibrary().list(source="diary_agent")["total"] == 0, "private self-data is never listed by default"
     assert client.get(f"{PREFIX}/summary").json()["settings"]["index_private"] is False
     on = {"auto_organize": True, "semantic_labels": True, "index_private": True}
     assert client.put(f"{PREFIX}/organization", json=on).status_code == 200
     refresh_existing()
-    listed = ContentLibrary().list(source="persona_agent")["items"]
+    listed = ContentLibrary().list(source="diary_agent")["items"]
     assert [row["title"] for row in listed] == ["A good day"] and listed[0]["kind"] == "note"
     assert client.get(f"{PREFIX}/items/{listed[0]['id']}/preview").json()["removal"]["mode"] == "open"
     # An older screen that does not know the option must not switch it off.
     assert client.put(f"{PREFIX}/organization", json={"auto_organize": True, "semantic_labels": True}).json()["index_private"] is True
     assert client.put(f"{PREFIX}/organization", json={**on, "index_private": False}).json()["index_private"] is False
+    assert ContentLibrary().list(source="diary_agent")["total"] == 0
+    assert client.get(f"{PREFIX}/items/{listed[0]['id']}/preview").status_code == 404
+    monkeypatch.setattr(profile, "read_profile", lambda: {"status":"success", "content":"A synthetic preference."})
     refresh_existing()
-    assert ContentLibrary().list(source="persona_agent")["total"] == 0
+    assert ContentLibrary().list(source="profile_agent")["total"] == 0
+    assert client.put(f"{PREFIX}/organization", json={**on, "index_profile": True}).status_code == 200
+    refresh_existing()
+    fact = ContentLibrary().list(source="profile_agent")["items"][0]
+    assert "synthetic preference" in client.get(f"{PREFIX}/items/{fact['id']}/preview").text
 
 
 def test_document_previews_are_inert_and_keep_attachment_downloads(client):

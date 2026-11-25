@@ -146,8 +146,8 @@ def test_after_tool_page_agent_recorded():
     assert state.get(_ROOT_INVOCATION_AGENT_STATE_KEY) == page_runtime
 
 
-def test_after_tool_audio_agent_recorded():
-    audio_runtime = resolve_runtime_agent_name("audio_agent")
+def test_after_tool_music_agent_recorded():
+    audio_runtime = resolve_runtime_agent_name("music_agent")
     state = {_ROOT_INVOCATION_AGENT_STATE_KEY: ROOT_AGENT_NAME}
     ctx = SimpleNamespace(state=state, invocation_id="inv-6")
     _root_after_tool_callback(_fake_tool(audio_runtime), {}, ctx, "Now playing.")

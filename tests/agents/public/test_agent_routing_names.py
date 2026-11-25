@@ -19,7 +19,7 @@ __debug_provenance_h__ = "AUTOYOU-PROVENANCE-H-revenue-2d4d9b0ad59edeb5e0d47129"
 ensure_repo_on_path()
 
 from autoyou_agents.admin_agent.prompt import AGENT_NAME as ADMIN_AGENT_NAME
-from autoyou_agents.audio_agent.prompt import AGENT_NAME as AUDIO_AGENT_NAME
+from autoyou_agents.music_agent.prompt import AGENT_NAME as MUSIC_AGENT_NAME
 from autoyou_agents.internet_agent.prompt import AGENT_NAME as INTERNET_AGENT_NAME
 from autoyou_agents.notes_agent.prompt import AGENT_NAME as NOTES_AGENT_NAME
 from autoyou_agents.page_agent.prompt import AGENT_NAME as PAGE_AGENT_NAME
@@ -35,12 +35,12 @@ def test_root_prompt_uses_only_active_root_subagent_names():
         INTERNET_AGENT_NAME,
         PAGE_AGENT_NAME,
         ADMIN_AGENT_NAME,
-        AUDIO_AGENT_NAME,
+        MUSIC_AGENT_NAME,
         "autoyou_files_agent",
         "autoyou_backup_agent",
         "autoyou_memory_agent",
         "autoyou_agent_builder_agent",
-        "autoyou_notify_agent",
+        "autoyou_reminders_agent",
         "autoyou_tasks_agent",
         "autoyou_website_agent",
         "autoyou_coding_agent",
@@ -59,7 +59,7 @@ def test_root_prompt_uses_only_active_root_subagent_names():
         "autoyou_hosting_agent",
         "autoyou_voice_training_agent",
         "autoyou_ads_watching_agent",
-        "autoyou_persona_agent",
+        "autoyou_profile_agent",
     ):
         assert f"`{agent_name}`" in ROOT_AGENT_INSTRUCTION
 
@@ -72,12 +72,12 @@ def test_root_prompt_uses_only_active_root_subagent_names():
         "`notes_agent`",
         "`internet_agent`",
         "`admin_agent`",
-        "`audio_agent`",
+        "`music_agent`",
         "`files_agent`",
         "`memory_agent`",
         "`agent_builder_agent`",
         "`coding_agent`",
-        "`notify_agent`",
+        "`reminders_agent`",
         "`openclaw_agent`",
         "`remote_desktop_agent`",
         "`education_agent`",
@@ -96,4 +96,4 @@ def test_root_attachment_policy_defaults_media_to_notes_and_search_to_internet()
     assert "`autoyou_notes_agent`" in ROOT_ATTACHMENTS_POLICY
     assert "`autoyou_internet_agent`" in ROOT_ATTACHMENTS_POLICY
     assert "`autoyou_page_agent`" in ROOT_ATTACHMENTS_POLICY
-    assert "`autoyou_audio_agent`" in ROOT_AGENT_INSTRUCTION
+    assert "`autoyou_music_agent`" in ROOT_AGENT_INSTRUCTION

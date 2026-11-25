@@ -68,7 +68,7 @@ def test_every_agent_frontend_declares_a_mobile_viewport():
 @pytest.mark.parametrize(
     ("module_name", "private_path"),
     (
-        ("autoyou_agents.audio_agent.website.backend.app", "/api/library"),
+        ("autoyou_agents.music_agent.website.backend.app", "/api/library"),
         ("autoyou_agents.prompts_agent.website.backend.app", "/api/prompts"),
     ),
 )
@@ -103,7 +103,7 @@ def test_public_default_agent_manifests_stay_open_under_global_otp(agent_name):
 
 
 def test_audio_default_stays_open_under_global_otp():
-    settings = scheduler_mission_control._resolve_manifest_auth_settings("audio_agent")
+    settings = scheduler_mission_control._resolve_manifest_auth_settings("music_agent")
 
     assert settings["auth_default"] == "open"
     assert settings["bypass_global_otp"] is True
@@ -137,5 +137,5 @@ def test_hidden_auth_overlays_do_not_remain_displayed() -> None:
     voice_html = (BACKENDS / "voice_training_agent" / "website" / "index.html").read_text(encoding="utf-8")
     assert ".auth-overlay.hidden {\n      display: none;" in voice_html
 
-    audio_html = (BACKENDS / "audio_agent" / "website" / "frontend" / "index.html").read_text(encoding="utf-8")
+    audio_html = (BACKENDS / "music_agent" / "website" / "frontend" / "index.html").read_text(encoding="utf-8")
     assert '<div id="otp-gate" class="otp-gate" hidden>' in audio_html

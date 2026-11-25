@@ -7,9 +7,9 @@ import json
 from fastapi.testclient import TestClient
 import pytest
 
-from autoyou_agents.tv_agent.website.backend.app import create_app
-from autoyou_agents.tv_agent.website.backend import playback
-from autoyou_agents.tv_agent.website.backend.jobs import executable, Jobs
+from autoyou_agents.media_agent.website.backend.app import create_app
+from autoyou_agents.media_agent.website.backend import playback
+from autoyou_agents.media_agent.website.backend.jobs import executable, Jobs
 
 
 def seed(client):
@@ -66,7 +66,7 @@ def test_optimize_requires_editor_and_profiles_never_upscale(tmp_path):
 @pytest.mark.skipif(not executable("ffmpeg") or not executable("ffprobe"), reason="Optional host FFmpeg tools are unavailable")
 @pytest.mark.asyncio
 async def test_real_hls_encoding_publishes_only_complete_versions(tmp_path):
-    from autoyou_agents.tv_agent.website.backend.store import Store
+    from autoyou_agents.media_agent.website.backend.store import Store
     store = Store(tmp_path); source = store.media_dir / "Synthetic.mp4"
     subprocess.run([executable("ffmpeg"), "-nostdin", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30",
         "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-t", "5", "-c:v", "libx264", "-c:a", "aac", str(source)], check=True, timeout=30)

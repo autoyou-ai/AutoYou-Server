@@ -24,20 +24,20 @@ A specialized agent that stores and retrieves long-term memory from AutoYou's lo
 | `scan_all_client_memory` | &nbsp; |
 | `get_current_datetime` | &nbsp; |
 
-## `persona_agent`
+## `profile_agent`
 
 Reads and appends the user's private persona journal, including facts they choose to save, such as preferences, background, current work, and details they want AutoYou to remember.
 
-- **Location:** `autoyou_agents/persona_agent/`
-- **Website:** `/agent/persona_agent/`
+- **Location:** `autoyou_agents/profile_agent/`
+- **Website:** `/agent/profile_agent/`
 
 | Declared tool | Summary |
 | :--- | :--- |
-| `get_persona_status` | Report whether a persona self-data profile exists and how it is stored. |
-| `read_persona` | Return the current persona self-data Markdown document (read-only). |
-| `save_persona` | Replace the ENTIRE persona document with new Markdown (destructive overwrite). |
-| `append_persona` | Append a dated entry to the persona document without disturbing prior content. |
-| `wipe_persona` | Permanently delete the persona profile (and its encryption key). Irreversible. |
+| `get_profile_status` | Report whether a persona self-data profile exists and how it is stored. |
+| `read_profile` | Return the current persona self-data Markdown document (read-only). |
+| `save_profile` | Replace the ENTIRE persona document with new Markdown (destructive overwrite). |
+| `append_profile` | Append a dated entry to the persona document without disturbing prior content. |
+| `wipe_profile` | Permanently delete the persona profile (and its encryption key). Irreversible. |
 | `get_current_datetime` | &nbsp; |
 
 ## `model_picker_agent`

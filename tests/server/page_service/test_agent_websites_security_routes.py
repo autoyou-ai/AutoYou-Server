@@ -468,9 +468,9 @@ def test_enabling_shared_sessions_promotes_an_existing_agent_login(monkeypatch, 
         monkeypatch.setattr(server, "_config_write_block_reason", lambda: None)
         monkeypatch.setattr(server, "_loaded_config_for_update", lambda: cfg)
         monkeypatch.setattr(server, "_persist_state_config", lambda _: None)
-        token = sessions._create_agent_session("persona_agent", 30)
+        token = sessions._create_agent_session("profile_agent", 30)
         request = _anon_request()
-        request.cookies = {sessions._agent_cookie_name("persona_agent"): token}
+        request.cookies = {sessions._agent_cookie_name("profile_agent"): token}
         request.headers = {}
         request.url.scheme = "http"
 
@@ -527,7 +527,7 @@ def test_webrtc_agent_proxy_shim_rewrites_dom_url_properties():
 def test_webrtc_agent_proxy_shim_adds_mobile_viewport_when_missing():
     html = server.WebRTCManager._inject_agent_proxy_shim(
         b"<html><head></head><body></body></html>",
-        "/agent/audio_agent",
+        "/agent/music_agent",
     ).decode("utf-8")
 
     assert '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">' in html

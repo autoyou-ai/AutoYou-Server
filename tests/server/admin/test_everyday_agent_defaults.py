@@ -6,9 +6,9 @@ from autoyou_agents.shared_tools import scheduler_mission_control as security
 
 
 EVERYDAY_WEBSITES = (
-    "ads_watching_agent", "audio_agent", "backup_agent", "donation_agent",
-    "earnings_agent", "game_agent", "notes_agent", "notify_agent", "page_agent",
-    "persona_agent", "remote_desktop_agent", "tasks_agent", "tv_agent",
+    "ads_watching_agent", "music_agent", "backup_agent", "donation_agent",
+    "earnings_agent", "games_agent", "notes_agent", "reminders_agent", "page_agent",
+    "profile_agent", "remote_desktop_agent", "tasks_agent", "media_agent",
 )
 
 
@@ -68,6 +68,6 @@ def test_new_servers_default_to_editor_and_preserve_saved_roles():
 
 
 def test_game_website_enabled_by_default_and_preserves_an_explicit_disable():
-    assert server._get_agent_frontend_enabled("game_agent", cfg={}) is True
-    assert server._get_agent_frontend_enabled("game_agent", cfg={"agent_frontends": {"game_agent": {"enabled": False}}}) is False
+    assert server._get_agent_frontend_enabled("games_agent", cfg={}) is True
+    assert server._get_agent_frontend_enabled("games_agent", cfg={"agent_frontends": {"games_agent": {"enabled": False}}}) is False
     assert server._get_agent_frontend_enabled("admin_agent", cfg={}) is False

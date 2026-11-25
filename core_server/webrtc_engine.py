@@ -96,7 +96,7 @@ _MOBILE_GAME_CSP = (b'<meta http-equiv="Content-Security-Policy" content="defaul
                     b'script-src \'unsafe-inline\'; style-src \'unsafe-inline\'; img-src data:; '
                     b'media-src data:; connect-src \'none\'; form-action \'none\'">')
 _MOBILE_GAME_MAX_BYTES = 512 * 1024
-_HOSTED_GAME_LOOP = Path(__file__).resolve().parents[1] / "autoyou_agents/game_agent/website/frontend/assets/audio/stream-loop.wav"
+_HOSTED_GAME_LOOP = Path(__file__).resolve().parents[1] / "autoyou_agents/games_agent/website/frontend/assets/audio/stream-loop.wav"
 
 
 def _speak_audio_manager(audio_manager: Any, message: str, *, context: str = "") -> None:
@@ -10192,7 +10192,7 @@ class WebRTCManager:
         leases = getattr(self, "_tv_cast_leases", None)
         if leases is None:
             leases = self._tv_cast_leases = TVCastLeases()
-        path = "/agent/tv_agent/api"
+        path = "/agent/media_agent/api"
         upstream = _runtime._get_autoyou_page_service_base_url() + path
         headers = self._sanitize_forward_headers({}, upstream)
         headers.update(self._agent_frontend_context_headers(path, upstream, session_id))
@@ -10239,6 +10239,14 @@ class WebRTCManager:
             upgrade_header = headers.get("Upgrade", headers.get("upgrade", "")).lower()
             websocket_upgrade = upgrade_header == "websocket"
             access_role = _runtime._get_remote_browser_access_role(_runtime.STATE.config or {})
+            sync_agent = next((v for k, v in headers.items() if str(k).lower() == "x-autoyou-content-sync"), None)
+            if sync_agent is not None:
+                from shared.content_library import settings as content_settings
+                valid_path = (request_path.startswith(f"/agent/{sync_agent}/") or request_path == "/api/v1/status"
+                              or sync_agent == "games_agent" and (request_path in {"/api/v1/games","/api/v1/game-packages"} or request_path.startswith(("/api/v1/games/", "/api/v1/game-packages/"))))
+                if not valid_path or not (await asyncio.to_thread(content_settings))["content_sync_enabled"]:
+                    await self._send_remote_access_denied(message, request_id, method, url, websocket=websocket_upgrade)
+                    return
             if not _runtime.remote_http_request_allowed(access_role, method, request_path, websocket=websocket_upgrade):
                 await self._send_remote_access_denied(
                     message,

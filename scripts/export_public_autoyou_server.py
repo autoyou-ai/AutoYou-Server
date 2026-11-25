@@ -438,7 +438,7 @@ REVIEWED_ASSET_PATHS = {
     "assets/logo.ico",
     "assets/logo.png",
     "autoyou_agents/assistant_agent/website/frontend/assets/robot-icon.png",
-    "autoyou_agents/game_agent/website/frontend/assets/audio/stream-loop.wav",
+    "autoyou_agents/games_agent/website/frontend/assets/audio/stream-loop.wav",
     "autoyou_agents/page_agent/website/frontend/assets/autoyou-mark.svg",
     "docs/images/favicon.ico",
     "docs/images/admin/live-view.png",

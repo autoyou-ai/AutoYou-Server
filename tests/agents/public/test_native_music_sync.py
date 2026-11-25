@@ -4,9 +4,9 @@ import hashlib
 from fastapi.testclient import TestClient
 import pytest
 
-from autoyou_agents.audio_agent.website.backend import app as audio
-from autoyou_agents.audio_agent.website.backend.uploads import CHUNK_BYTES, Uploads, import_root
-from autoyou_agents.tv_agent.website.backend.app import create_app
+from autoyou_agents.music_agent.website.backend import app as audio
+from autoyou_agents.music_agent.website.backend.uploads import CHUNK_BYTES, Uploads, import_root
+from autoyou_agents.media_agent.website.backend.app import create_app
 
 
 @pytest.fixture

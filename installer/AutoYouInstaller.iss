@@ -123,6 +123,6 @@ begin
       Params, ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, ResultCode) then
       Log('The FFmpeg setup helper could not be started.');
     if ResultCode <> 0 then
-      Log('FFmpeg setup could not complete automatically. tv_agent will fall back to local tools.');
+      Log('FFmpeg setup could not complete automatically. media_agent will fall back to local tools.');
   end;
 end;

@@ -7,11 +7,11 @@ import time
 from fastapi.testclient import TestClient
 import pytest
 
-from autoyou_agents.tv_agent.website.backend.app import create_app
-from autoyou_agents.tv_agent.website.backend.jobs import executable
-from autoyou_agents.tv_agent.website.backend import playback
-from autoyou_agents.tv_agent.website.backend.jobs import Jobs
-from autoyou_agents.tv_agent.website.backend.store import Store
+from autoyou_agents.media_agent.website.backend.app import create_app
+from autoyou_agents.media_agent.website.backend.jobs import executable
+from autoyou_agents.media_agent.website.backend import playback
+from autoyou_agents.media_agent.website.backend.jobs import Jobs
+from autoyou_agents.media_agent.website.backend.store import Store
 
 
 @pytest.mark.parametrize("suffix,mime,kind", [("pdf", "application/pdf", "document"), ("epub", "application/epub+zip", "document"), ("wav", "audio/wav", "audio")])
@@ -20,8 +20,8 @@ def test_documents_and_audio_round_trip_without_video_preparation(tmp_path, monk
     import io
     import wave
     import zipfile
-    import autoyou_agents.tv_agent.website.backend.app as app_module
-    import autoyou_agents.tv_agent.website.backend.jobs as jobs_module
+    import autoyou_agents.media_agent.website.backend.app as app_module
+    import autoyou_agents.media_agent.website.backend.jobs as jobs_module
 
     def no_video_probe(*_):
         raise AssertionError("Documents and audio must not be prepared as videos")
@@ -116,7 +116,7 @@ def test_real_incompatible_video_prepares_h264_aac_without_changing_original(tmp
         original = source.read_bytes()
         item, _ = store.add_item(source_key="synthetic", title="Synthetic video", file_path=str(source))
         # Codec metadata is normally filled during upload/scan preparation.
-        from autoyou_agents.tv_agent.website.backend.jobs import probe
+        from autoyou_agents.media_agent.website.backend.jobs import probe
         if suffix != "mp4":
             store.update_item(item["id"], {"technical": probe(source)})
         route = f"/api/items/{item['id']}/playback?compatible=true"
@@ -144,7 +144,7 @@ def test_real_incompatible_video_prepares_h264_aac_without_changing_original(tmp
 
 
 def test_missing_encoder_reports_actionable_failure_not_playable_mkv(tmp_path, monkeypatch):
-    import autoyou_agents.tv_agent.website.backend.app as module
+    import autoyou_agents.media_agent.website.backend.app as module
     monkeypatch.setattr(module, "executable", lambda _: None)
     with TestClient(create_app(tmp_path)) as client:
         store = client.app.state.store

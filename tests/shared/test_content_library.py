@@ -60,7 +60,7 @@ def test_agent_collection_is_filterable_until_the_owner_organizes_it(sandbox):
 def test_test_root_dominates_custom_destination(sandbox):
     with pytest.raises(ValueError):
         configure_output_root(str(sandbox.parent / "operator-content"))
-    assert output_dir("audio_agent").is_relative_to(sandbox)
+    assert output_dir("music_agent").is_relative_to(sandbox)
     with pytest.raises(ValueError):
         output_dir("../escape")
 
@@ -195,9 +195,9 @@ def test_owner_api_auth_ranges_and_untrusted_download(sandbox):
 
 
 def test_encrypted_audio_and_tv_uploads_publish_playable_content(sandbox):
-    from autoyou_agents.audio_agent.website.backend.uploads import Uploads as AudioUploads
-    from autoyou_agents.tv_agent.website.backend.uploads import Uploads as TVUploads
-    from autoyou_agents.tv_agent.website.backend.store import Store
+    from autoyou_agents.music_agent.website.backend.uploads import Uploads as AudioUploads
+    from autoyou_agents.media_agent.website.backend.uploads import Uploads as TVUploads
+    from autoyou_agents.media_agent.website.backend.store import Store
     secure_storage.enable_secure_storage(app_name="AutoYou-test", root=sandbox, password="synthetic-library-password")
     audio = AudioUploads()
     row = audio.begin("synthetic-owner", "sample.mp3", 10, "Synthetic music")
@@ -210,9 +210,9 @@ def test_encrypted_audio_and_tv_uploads_publish_playable_content(sandbox):
     tv._append(row["id"], "synthetic-owner", 0, b"0123456789")
     item = tv.complete(row["id"], "synthetic-owner")
     assert b"".join(content_files.read_range(item["file_path"])) == b"0123456789"
-    assert {row["source"] for row in ContentLibrary().list()["items"]} == {"audio_agent", "tv_agent"}
+    assert {row["source"] for row in ContentLibrary().list()["items"]} == {"music_agent", "media_agent"}
     tv.store.update_item(item["id"], {"status": "deleted"})
-    assert ContentLibrary().list(source="tv_agent")["total"] == 0
+    assert ContentLibrary().list(source="media_agent")["total"] == 0
 
 
 def test_custom_agent_transfer_and_record_sync(sandbox):
@@ -255,19 +255,20 @@ def test_existing_index_preserves_labels_and_external_sources(sandbox):
         db.execute("CREATE TABLE feed_items(id INTEGER,title TEXT)")
         db.execute("INSERT INTO feed_items VALUES(1,'Synthetic saved page')")
     first = refresh_existing()
-    assert first["indexed"] == 1 and not first["errors"]
+    assert first["indexed"] >= 1 and not first["errors"]
     library = ContentLibrary()
-    row = library.list()["items"][0]
+    assert library.list(source="page_agent")["total"] == 1
+    row = library.list(source="page_agent")["items"][0]
     library.annotate(row["id"], labels=["keep"], annotation="Personal annotation", collection="Project", expected_revision=row["revision"])
     refresh_existing()
-    assert library.list()["items"][0]["labels"] == ["keep"]
+    assert library.list(source="page_agent")["items"][0]["labels"] == ["keep"]
 
 
 def test_encrypted_tv_photo_preview_remains_viewable(sandbox):
     import io
     from PIL import Image
     from fastapi.testclient import TestClient
-    from autoyou_agents.tv_agent.website.backend.app import create_app
+    from autoyou_agents.media_agent.website.backend.app import create_app
     secure_storage.enable_secure_storage(app_name="AutoYou-test", root=sandbox, password="synthetic-library-password")
     data = io.BytesIO()
     Image.new("RGB", (8, 8), (80, 60, 100)).save(data, "PNG")

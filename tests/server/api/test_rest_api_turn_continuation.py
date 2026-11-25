@@ -259,7 +259,7 @@ async def test_an_action_during_a_continuation_stops_the_next_one(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_tool_calls_in_a_whole_response_body_count_too(monkeypatch):
-    saved = {"text": "Let me save that.", "calls": [("append_persona", {"text": "Example"})], "calls_in_body": True}
+    saved = {"text": "Let me save that.", "calls": [("append_profile", {"text": "Example"})], "calls_in_body": True}
     _, calls = _scripted_model(monkeypatch, [saved, ANSWER])
 
     response = await rest_api.process_chat_message(_request("My name is Example"), ai_agent_url="http://127.0.0.1:8081")

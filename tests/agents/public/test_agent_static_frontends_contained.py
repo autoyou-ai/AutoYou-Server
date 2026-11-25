@@ -20,7 +20,7 @@ BACKENDS = [
     "autoyou_agents.fine_tuning_agent.website.backend.app",
     "autoyou_agents.media_generation_agent.website.backend.app",
     "autoyou_agents.notes_agent.website.backend.app",
-    "autoyou_agents.persona_agent.website.backend.app",
+    "autoyou_agents.profile_agent.website.backend.app",
     "autoyou_agents.voice_training_agent.website.backend.app",
 ]
 

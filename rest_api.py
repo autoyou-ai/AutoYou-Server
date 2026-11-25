@@ -669,7 +669,7 @@ def _turn_continuation_metadata(metadata: Optional[Dict[str, Any]], attempt: int
 # saved a note, started an image or sent a prompt to Codex, and continuing could
 # do that again.
 _ROUTER_TOOL_NAME = "route_to_specialist"
-_LOOKUP_ONLY_TOOLS = frozenset({"get_current_datetime", "scan_entire_memory", "read_persona", "calculate"})
+_LOOKUP_ONLY_TOOLS = frozenset({"get_current_datetime", "scan_entire_memory", "read_profile", "calculate"})
 _LOOKUP_ONLY_SPECIALISTS = frozenset({"autoyou_internet_agent"})
 
 
@@ -2790,7 +2790,7 @@ async def _try_process_direct_reminder(
         ),
     )
     try:
-        from autoyou_agents.notify_agent.agent import create_reminder
+        from autoyou_agents.reminders_agent.agent import create_reminder
 
         result = await asyncio.to_thread(
             create_reminder,
@@ -2814,7 +2814,7 @@ async def _try_process_direct_reminder(
         "processing_time_ms": processing_time_ms,
         "agent_version": "1.0.0",
         "direct_action": "create_reminder",
-        "agent_name": "notify_agent",
+        "agent_name": "reminders_agent",
         "reminder": {
             "id": result.get("id"),
             "message": reminder_request["message"],
@@ -2822,7 +2822,7 @@ async def _try_process_direct_reminder(
         },
     }
     logger.info(
-        "Created reminder through direct notify_agent path id=%s session=%s",
+        "Created reminder through direct reminders_agent path id=%s session=%s",
         result.get("id"),
         request.session_id,
     )
@@ -2830,7 +2830,7 @@ async def _try_process_direct_reminder(
         response=f"Reminder set for {display_time}: {reminder_request['message']}",
         message_id=str(uuid.uuid4()),
         session_id=session_id,
-        agent_name=format_agent_display_name("notify_agent"),
+        agent_name=format_agent_display_name("reminders_agent"),
         timestamp=end_time,
         metadata=response_metadata,
     )

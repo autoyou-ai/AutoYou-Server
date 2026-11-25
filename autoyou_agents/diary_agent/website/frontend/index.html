@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark"><title>Diary · AutoYou</title><link rel="stylesheet" href="assets/diary.css"></head>
+<body><header><a href="./" aria-label="Diary home">Diary</a><button id="new" type="button">New entry</button></header>
+<main><aside aria-label="Journal entries"><label for="filter">Find an entry</label><input id="filter" type="search" placeholder="Search dates and entries">
+<label for="view">Show</label><select id="view"><option value="all">Timeline</option><option value="favorites">Favorites</option><option value="anniversary">On this day</option></select>
+<nav id="entries" aria-label="Timeline"></nav></aside>
+<article><form id="editor"><div class="dateline"><label>Date <input id="date" type="date" required></label><span id="time"></span></div>
+<label for="title">Title</label><input id="title" type="text" maxlength="200" placeholder="A moment to remember" required>
+<label for="body">Entry</label><textarea id="body" rows="12" placeholder="Write about your day. Markdown is welcome."></textarea>
+<div class="organize"><label>Journal<input id="journal" maxlength="256" placeholder="Journal name"></label><label>Tags<input id="tags" placeholder="Separate tags with commas"></label><label class="check"><input type="checkbox" id="favorite"> Favorite</label></div>
+<div id="media" hidden></div><div class="actions"><button type="submit">Save entry</button><button type="button" id="remove" hidden>Delete entry</button></div>
+<button type="button" id="copy" hidden>Download my draft</button>
+<p id="status" role="status" aria-live="polite"></p></form></article></main>
+<script type="module" src="assets/diary.js"></script></body></html>

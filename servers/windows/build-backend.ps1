@@ -1410,7 +1410,7 @@ function Assert-PackagedBackendServerImports {
         "--verify-runtime-import", "cryptg",
         "--verify-runtime-import", "autoyou_agents.agent_builder_agent.website.backend.app",
         "--verify-runtime-import", "autoyou_agents.backup_agent.website.backend.app",
-        "--verify-runtime-import", "autoyou_agents.notify_agent.website.backend.app",
+        "--verify-runtime-import", "autoyou_agents.reminders_agent.website.backend.app",
         "--verify-runtime-import", "autoyou_agents.remote_desktop_agent.website.backend.app",
         "--verify-runtime-import", "autoyou_agents.skills_agent.website.backend.app",
         "--verify-runtime-import", "autoyou_agents.education_agent.website.backend.app",

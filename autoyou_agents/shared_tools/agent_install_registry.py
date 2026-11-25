@@ -77,7 +77,7 @@ DEFAULT_AGENT_INSTALL_STATES: Dict[str, bool] = {
     "agent_builder_agent": False,    # Opt-in: advanced scaffolding tool
     "antigravity_agent": False,      # Opt-in: Antigravity desktop and CLI bridge
     "assistant_agent": True,         # Acts only on wake-word Assistant mode turns (off until enabled)
-    "audio_agent": True,
+    "music_agent": True,
     "backup_agent": True,
     "build_prompt_agent": False,     # Opt-in: Telegram/website prompt assembly
     "browser_agent": False,          # Opt-in: browser automation package
@@ -93,7 +93,7 @@ DEFAULT_AGENT_INSTALL_STATES: Dict[str, bool] = {
     "earnings_agent": True,
     "files_agent": False,            # Opt-in: authenticated local filesystem access
     "fine_tuning_agent": False,      # Opt-in: local model training
-    "game_agent": True,
+    "games_agent": True,
     "hermes_agent": False,           # Opt-in: install manually when Hermes Agent gateway is running locally
     "hosting_agent": False,          # Opt-in: public URL publishing
     "internet_agent": True,
@@ -103,17 +103,18 @@ DEFAULT_AGENT_INSTALL_STATES: Dict[str, bool] = {
     "model_picker_agent": False,     # Opt-in: hardware-fit model advice
     "notes_agent": True,
     "organizer_agent": False,        # Opt-in: private cross-agent content catalog
-    "notify_agent": True,
+    "reminders_agent": True,
     "openclaw_agent": False,         # Opt-in: install manually when OpenClaw Gateway is running locally
     "page_agent": True,
-    "persona_agent": True,
+    "diary_agent": True,
+    "profile_agent": True,
     "prompts_agent": True,
     "proxy_agent": False,           # Opt-in: authenticated internet relay
     "remote_desktop_agent": True,   # Capture and input permissions remain explicit
     "skills_agent": False,           # Opt-in: reusable skill scripts
     "education_agent": False,        # Opt-in: learning workspace
     "tasks_agent": True,
-    "tv_agent": True,                # Media is published only when the user selects it
+    "media_agent": True,                # Media is published only when the user selects it
     "voice_training_agent": False,   # Opt-in: local voice datasets and TTS training
     "website_agent": False,          # Opt-in: agent website scaffolding
     "win_security_agent": False,     # Opt-in: Windows-only local security telemetry
@@ -289,6 +290,13 @@ def _normalize_registry_payload(
     stored_agents = payload.get("agents")
     if not isinstance(stored_agents, dict):
         stored_agents = {}
+    from shared.content_agent_upgrade import PREVIOUS_NAMES
+    stored_agents = dict(stored_agents)
+    for current, prior in PREVIOUS_NAMES.items():
+        if current not in stored_agents and prior in stored_agents:
+            stored_agents[current] = stored_agents[prior]
+    for prior in set(PREVIOUS_NAMES.values()):
+        stored_agents.pop(prior, None)
     normalized_stored_agents: Dict[str, Dict[str, Any]] = {}
     for raw_agent_name, raw_entry in stored_agents.items():
         normalized_agent_name = normalize_agent_package_name(raw_agent_name)

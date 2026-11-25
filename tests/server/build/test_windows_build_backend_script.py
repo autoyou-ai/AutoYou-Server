@@ -16,7 +16,7 @@ def test_windows_build_backend_verifies_managed_frontend_runtime_imports():
     assert "Assert-PackagedBackendServerImports" in text
     assert "--verify-runtime-import" in text
     assert "autoyou_agents.agent_builder_agent.website.backend.app" in text
-    assert "autoyou_agents.notify_agent.website.backend.app" in text
+    assert "autoyou_agents.reminders_agent.website.backend.app" in text
     assert "autoyou_agents.remote_desktop_agent.website.backend.app" in text
     assert "autoyou_agents.skills_agent.website.backend.app" in text
     assert "autoyou_agents.tasks_agent.website.backend.app" in text

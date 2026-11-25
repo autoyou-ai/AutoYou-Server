@@ -91,18 +91,18 @@ _AGENT_FRONTEND_ALIASES = {
     "ads": "ads_watching_agent",
     "ad watching": "ads_watching_agent",
     "ads watching": "ads_watching_agent",
-    "audio": "audio_agent",
-    "music": "audio_agent",
-    "player": "audio_agent",
+    "audio": "music_agent",
+    "music": "music_agent",
+    "player": "music_agent",
     "data collector": "data_collector_agent",
     "fine tuning": "fine_tuning_agent",
     "finetuning": "fine_tuning_agent",
     "hosting": "hosting_agent",
     "note": "notes_agent",
     "notes": "notes_agent",
-    "notification": "notify_agent",
-    "notifications": "notify_agent",
-    "notify": "notify_agent",
+    "notification": "reminders_agent",
+    "notifications": "reminders_agent",
+    "notify": "reminders_agent",
     "page": "page_agent",
     "pages": "page_agent",
     "skill": "skills_agent",
@@ -113,13 +113,13 @@ _AGENT_FRONTEND_ALIASES = {
 }
 _KNOWN_AGENT_FRONTEND_NAMES = {
     "ads_watching_agent",
-    "audio_agent",
+    "music_agent",
     "data_collector_agent",
     "donation_agent",
     "fine_tuning_agent",
     "hosting_agent",
     "notes_agent",
-    "notify_agent",
+    "reminders_agent",
     "page_agent",
     "skills_agent",
     "tasks_agent",
@@ -239,7 +239,7 @@ def build_client_browser_control_payload(
             requested_action = "forward"
         elif _AUDIO_BROWSER_TARGET_PATTERN.search(lowered):
             requested_action = "open_url"
-            requested_url = "/agent/audio_agent/"
+            requested_url = "/agent/music_agent/"
         elif agent_frontend_path == "__home__":
             requested_action = "open_home"
         elif agent_frontend_path:
@@ -584,7 +584,7 @@ def get_client_browser_control_status() -> Dict[str, Any]:
         "transport": "voice_call_control",
         "commands": ["open_url", "open_home", "reload", "back", "forward"],
         "remote_url_policy": "https_required_except_loopback",
-        "local_paths": ["/websites", "/agent/audio_agent/", "/agent/notes_agent/", "/agent/page_agent/"],
+        "local_paths": ["/websites", "/agent/music_agent/", "/agent/notes_agent/", "/agent/page_agent/"],
     }
 
 

@@ -1,0 +1,10 @@
+{
+  "agent_name": "profile_agent",
+  "description": "Private profile editor for facts the user chooses to save.",
+  "entry_path": "/",
+  "recommended_port": 8093,
+  "requires_proxy_registration": true,
+  "title": "Profile",
+  "auth_default": "open",
+  "bypass_global_otp": true
+}

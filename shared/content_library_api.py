@@ -29,7 +29,10 @@ class Destination(BaseModel):
 class Organization(BaseModel):
     auto_organize: bool = True
     semantic_labels: bool = True
+    index_profile: bool | None = None
+    index_reminders: bool | None = None
     index_private: bool | None = None  # omitted by older screens, which must not switch it off
+    content_sync_enabled: bool | None = None
     notes_sync_enabled: bool | None = None
 
 
@@ -39,6 +42,15 @@ class TransferInput(BaseModel):
     title: str = Field(default="", max_length=300)
     source: str = Field(default="files_agent", max_length=80)
     source_id: str = Field(default="", max_length=256)
+
+
+async def bounded_body(request, limit):
+    body = bytearray()
+    async for chunk in request.stream():
+        if len(body) + len(chunk) > limit:
+            raise HTTPException(413, "Request exceeds the transfer limit")
+        body.extend(chunk)
+    return bytes(body)
 
 
 def register_content_routes(app, authorize, prefix="/api/admin/content", worker=None):
@@ -53,14 +65,6 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
         if not value:
             raise HTTPException(401, "A signed-in session is required for resumable transfers")
         return hashlib.sha256(value.encode()).hexdigest()
-
-    async def bounded_body(request, limit):
-        body = bytearray()
-        async for chunk in request.stream():
-            if len(body) + len(chunk) > limit:
-                raise HTTPException(413, "Request exceeds the transfer limit")
-            body.extend(chunk)
-        return bytes(body)
 
     from shared.content_library_routes import register as register_screen_routes
     register_screen_routes(app, authorize, prefix, worker)

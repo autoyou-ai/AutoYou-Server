@@ -3335,12 +3335,12 @@ MANAGED_FRONTEND_APPS: Dict[str, Dict[str, Any]] = {
         "app_import": "autoyou_agents.backup_agent.website.backend.app:app",
         "default_port": 8111,
     },
-    "audio_agent": {
-        "app_import": "autoyou_agents.audio_agent.website.backend.app:app",
+    "music_agent": {
+        "app_import": "autoyou_agents.music_agent.website.backend.app:app",
         "default_port": 8097,
     },
-    "tv_agent": {
-        "app_import": "autoyou_agents.tv_agent.website.backend.app:app",
+    "media_agent": {
+        "app_import": "autoyou_agents.media_agent.website.backend.app:app",
         "default_port": 8112,
     },
     "build_prompt_agent": {
@@ -3363,8 +3363,8 @@ MANAGED_FRONTEND_APPS: Dict[str, Dict[str, Any]] = {
         "app_import": "autoyou_agents.tasks_agent.website.backend.app:app",
         "default_port": 8095,
     },
-    "notify_agent": {
-        "app_import": "autoyou_agents.notify_agent.website.backend.app:app",
+    "reminders_agent": {
+        "app_import": "autoyou_agents.reminders_agent.website.backend.app:app",
         "default_port": 8096,
     },
     "website_agent": {
@@ -3379,8 +3379,8 @@ MANAGED_FRONTEND_APPS: Dict[str, Dict[str, Any]] = {
         "app_import": "autoyou_agents.hosting_agent.website.backend.app:app",
         "default_port": 8089,
     },
-    "game_agent": {
-        "app_import": "autoyou_agents.game_agent.website.backend.app:app",
+    "games_agent": {
+        "app_import": "autoyou_agents.games_agent.website.backend.app:app",
         "default_port": 8112,
     },
     "skills_agent": {
@@ -3427,8 +3427,12 @@ MANAGED_FRONTEND_APPS: Dict[str, Dict[str, Any]] = {
         "app_import": "autoyou_agents.page_agent.website.backend.app:app",
         "default_port": 8069,
     },
-    "persona_agent": {
-        "app_import": "autoyou_agents.persona_agent.website.backend.app:app",
+    "diary_agent": {
+        "app_import": "autoyou_agents.diary_agent.website.backend.app:app",
+        "default_port": 8127,
+    },
+    "profile_agent": {
+        "app_import": "autoyou_agents.profile_agent.website.backend.app:app",
         "default_port": 8093,
     },
     "donation_agent": {
@@ -3483,19 +3487,19 @@ FRONTEND_DEFAULT_ENABLEMENT: Dict[str, bool] = {
 FRONTEND_CONTROL_LABELS: Dict[str, str] = {
     "admin_agent": "Admin Website",
     "backup_agent": "Backup Agent",
-    "audio_agent": "Audio Player App",
-    "tv_agent": "AutoYou TV",
+    "music_agent": "Music",
+    "media_agent": "Media",
     "build_prompt_agent": "Prompt Builder",
     "antigravity_agent": "Antigravity Control",
     "prompts_agent": "My Prompt",
     "notes_agent": "Notes Manager App",
     "tasks_agent": "Tasks App",
-    "notify_agent": "Notify App",
+    "reminders_agent": "Reminders",
     "internet_agent": "Internet Search",
     "location_agent": "Location Timeline",
     "website_agent": "Website Builder",
     "agent_builder_agent": "Agent Builder",
-    "game_agent": "Game Studio",
+    "games_agent": "Games",
     "skills_agent": "Skills Manager",
     "remote_desktop_agent": "Remote Desktop",
     "media_generation_agent": "Media Generator App",
@@ -3506,7 +3510,8 @@ FRONTEND_CONTROL_LABELS: Dict[str, str] = {
     "data_collector_agent": "Data Collector",
     "fine_tuning_agent": "Fine Tuning App",
     "page_agent": "AutoYou Page",
-    "persona_agent": "Persona",
+    "diary_agent": "Diary",
+    "profile_agent": "Profile",
     "donation_agent": "Support & Donations",
     "earnings_agent": "Earnings",
     "win_security_agent": "Windows Security",
@@ -3538,7 +3543,7 @@ FRONTEND_CONTROL_HELP: Dict[str, str] = {
         "Expose the full admin website to paired AutoYou browser clients. Disabled "
         "by default because it grants remote admin access."
     ),
-    "audio_agent": (
+    "music_agent": (
         "Publish the web audio player for HTTP streaming playback from configured "
         "music-library folders. Enabled by default."
     ),
@@ -3550,7 +3555,7 @@ FRONTEND_CONTROL_HELP: Dict[str, str] = {
         "Publish the Tasks board for scheduling recurring and one-time AI jobs. "
         "Enabled by default."
     ),
-    "notify_agent": (
+    "reminders_agent": (
         "Publish the Notify board for scheduling timed notifications. Enabled by default."
     ),
     "internet_agent": (
@@ -3566,7 +3571,7 @@ FRONTEND_CONTROL_HELP: Dict[str, str] = {
         "Publish the Agent Builder chat website for scaffolding, developing, and "
         "publishing new agents. Enabled by default after this agent is installed."
     ),
-    "game_agent": (
+    "games_agent": (
         "Publish the Game Studio host launcher and engine bridge for native iOS and Android "
         "game sessions. Disabled by default."
     ),
@@ -11256,8 +11261,8 @@ def _is_internet_agent_installed() -> bool:
         load_agent_install_registry(agents_root=_AUTOYOU_AGENTS_ROOT).get("installed_agents", [])
     )
 
-def _is_audio_agent_installed() -> bool:
-    return "audio_agent" in set(
+def _is_music_agent_installed() -> bool:
+    return "music_agent" in set(
         load_agent_install_registry(agents_root=_AUTOYOU_AGENTS_ROOT).get("installed_agents", [])
     )
 
@@ -18276,7 +18281,7 @@ async def _reload_ai_agent_runtime_from_prompt_update() -> str:
 # Re-introduces MULTIPLE issued 2FA profiles (legacy single shared TOTP is kept for
 # pairing/admin elevation). Each profile is derive-from-password (no secret stored),
 # write-once / verify-only (no "Show secret"), and assignable to individual agent
-# websites such as persona_agent. Recovery is by wipe + re-enrol.
+# websites such as profile_agent. Recovery is by wipe + re-enrol.
 
 def _agent_security_db_path() -> str:
     from shared.platform_runtime import get_mutable_data_dir

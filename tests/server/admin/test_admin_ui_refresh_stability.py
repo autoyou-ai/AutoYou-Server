@@ -326,7 +326,7 @@ def test_every_built_in_agent_is_listed_in_one_category_and_boot_lists_startup_i
             assert len(listed) == len(set(listed)), "an agent is listed in two categories"
             assert sorted(set(DEFAULT_AGENT_INSTALL_STATES) - set(listed)) == []
             assert page.evaluate("window.__admin.agentCategoryOf({agent_name: 'assistant_agent'})") == "assistant"
-            assert page.evaluate("window.__admin.agentCategoryOf({agent_name: 'game_agent'})") == "media"
+            assert page.evaluate("window.__admin.agentCategoryOf({agent_name: 'games_agent'})") == "media"
             assert page.evaluate("window.__admin.agentCategoryOf({agent_name: 'client_browser_control_agent'})") == "assistant"
             # A new agent from outside the list is grouped by what it does.
             assert page.evaluate("window.__admin.agentCategoryOf({agent_name: 'my_flashcards_agent', description: 'Study lessons with flashcards'})") == "learning"

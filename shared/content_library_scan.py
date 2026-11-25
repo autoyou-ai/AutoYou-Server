@@ -11,16 +11,16 @@ from shared.platform_runtime import get_mutable_data_dir, get_service_data_dir
 
 def refresh_existing(cancelled=lambda: False):
     from autoyou_agents.notes_agent.notes_tool import NotesTool
-    from autoyou_agents.tv_agent.website.backend.store import data_root
+    from autoyou_agents.media_agent.website.backend.store import data_root
     from autoyou_agents.location_agent.store import _database_path
-    from autoyou_agents.audio_agent.website.backend.uploads import import_root, legacy_import_root
+    from autoyou_agents.music_agent.website.backend.uploads import import_root, legacy_import_root
 
     root = get_mutable_data_dir("AutoYou", anchor=__file__)
     catalog = ContentLibrary()
     specs = [
         ("notes_agent", NotesTool._resolve_default_storage_dir() / "autoyou_notes.db", "SELECT id,title,'note' AS kind,'' AS path FROM notes"),
         ("page_agent", root / "page_feed.db", "SELECT id,title,'page' AS kind,'' AS path FROM feed_items"),
-        ("tv_agent", data_root() / "library.sqlite3", "SELECT id,title,CASE kind WHEN 'movie' THEN 'video' WHEN 'episode' THEN 'video' WHEN 'photo' THEN 'image' WHEN 'document' THEN 'file' ELSE kind END AS kind,COALESCE(file_path,'') AS path FROM items WHERE status!='deleted'"),
+        ("media_agent", data_root() / "library.sqlite3", "SELECT id,title,CASE kind WHEN 'movie' THEN 'video' WHEN 'episode' THEN 'video' WHEN 'photo' THEN 'image' WHEN 'document' THEN 'file' ELSE kind END AS kind,COALESCE(file_path,'') AS path FROM items WHERE status!='deleted'"),
         ("media_generation_agent", get_service_data_dir("media_generation_agent", anchor=__file__) / "media_history.db", "SELECT id,COALESCE(file_name,original_prompt) AS title,media_type AS kind,file_path AS path FROM media_history WHERE status='completed'"),
         ("location_agent", _database_path(), "SELECT substr(timestamp,1,10) AS id,'Locations on ' || substr(timestamp,1,10) AS title,'location' AS kind,'' AS path FROM locations GROUP BY substr(timestamp,1,10)"),
     ]
@@ -37,7 +37,7 @@ def refresh_existing(cancelled=lambda: False):
                 db.row_factory = sqlite3.Row
                 for row in db.execute(query):
                     href = f"/agent/{source}/"
-                    if source == "tv_agent":
+                    if source == "media_agent":
                         href += "#/item/" + str(row["id"])
                     catalog.publish(source, str(row["id"]), row["title"] or "Untitled", row["kind"], path=row["path"] or "", href=href)
                     result["indexed"] += 1
@@ -45,7 +45,8 @@ def refresh_existing(cancelled=lambda: False):
         except Exception:
             # Do not return file paths or database exception details to clients.
             result["errors"].append(source + ": unable to read its catalog")
-    for source, scan in (("attachments", scan_attachments), ("voice_training_agent", scan_voice), ("audio_folders", scan_audio_folders), ("persona_agent", scan_private)):
+    for source, scan in (("attachments", scan_attachments), ("voice_training_agent", scan_voice), ("audio_folders", scan_audio_folders),
+                         ("diary_agent", scan_private), ("games_agent", scan_games), ("reminders_agent", scan_reminders)):
         if cancelled():
             break
         try:
@@ -53,7 +54,7 @@ def refresh_existing(cancelled=lambda: False):
             result["sources"].append(source)
         except Exception:
             result["errors"].append(source + ": unable to read its content")
-    for folder in {import_root(), legacy_import_root(), *(root / "audio_agent" for root in managed_roots())}:
+    for folder in {import_root(), legacy_import_root(), *(root / "music_agent" for root in managed_roots())}:
         path = folder / ".pending" / "uploads.sqlite"
         if not path.is_file():
             continue
@@ -62,10 +63,10 @@ def refresh_existing(cancelled=lambda: False):
                 for identifier, filename, title in db.execute("SELECT id,filename,title FROM uploads WHERE complete=1"):
                     target = folder / (identifier + Path(filename).suffix.lower())
                     if target.is_file():
-                        catalog.publish("audio_agent", identifier, title or filename, "audio", path=str(target), href="/agent/audio_agent/")
+                        catalog.publish("music_agent", identifier, title or filename, "audio", path=str(target), href="/agent/music_agent/")
                         result["indexed"] += 1
         except Exception:
-            result["errors"].append("audio_agent: unable to read its import catalog")
+            result["errors"].append("music_agent: unable to read its import catalog")
     return result
 
 
@@ -201,22 +202,68 @@ def scan_private(catalog=None, cancelled=lambda: False):
     catalog = catalog or ContentLibrary()
     seen, count = set(), 0
     if settings()["index_private"]:
-        from autoyou_agents.persona_agent.agent import list_diary_entries
+        from autoyou_agents.diary_agent.agent import list_diary_entries
         for entry in list_diary_entries():
             if cancelled():
                 return count
-            catalog.publish("persona_agent", entry["id"], entry["title"] or entry["date"], "note", href="/agent/persona_agent/",
-                            source_collection="Diary", source_labels=["diary"], source_text=(entry["date"] + " " + entry["preview"]).strip())
+            catalog.publish("diary_agent", entry["id"], entry["title"] or entry["date"], "note", href="/agent/diary_agent/",
+                            source_collection=entry.get("journal") or "Diary", source_labels=["diary", *entry.get("tags", [])], source_text=(entry["date"] + " " + entry["preview"]).strip())
             seen.add(entry["id"])
             count += 1
-    _reconcile(catalog, "persona_agent", "", seen)
+    _reconcile(catalog, "diary_agent", "", seen)
+    profile_ids = set()
+    if settings()["index_profile"]:
+        from autoyou_agents.profile_agent.agent import read_profile
+        result = read_profile()
+        if result.get("status") != "success":
+            raise ValueError("Profile is unavailable")
+        if result.get("content"):
+            catalog.publish("profile_agent", "profile", "Profile", "note", href="/agent/profile_agent/",
+                            source_collection="Profile", source_text=result["content"])
+            profile_ids.add("profile")
+            count += 1
+    _reconcile(catalog, "profile_agent", "", profile_ids)
     return count
 
 
+def scan_reminders(catalog, cancelled=lambda: False):
+    from shared.content_library import settings
+    from shared import scheduler_service as scheduler
+    seen = set()
+    if settings()["index_reminders"]:
+        for row in scheduler.load_json(scheduler.REMINDERS_FILE):
+            if cancelled():
+                return len(seen)
+            title, _, body = str(row.get("message") or "").partition("\n")
+            identifier = str(row["id"])
+            catalog.publish("reminders_agent", identifier, title or "Reminder", "note", href="/agent/reminders_agent/",
+                            source_collection="Reminders", source_labels=["reminder"],
+                            source_text="\n".join(filter(None, (row.get("iso"), body))))
+            seen.add(identifier)
+    _reconcile(catalog, "reminders_agent", "", seen)
+    return len(seen)
+
+
+def scan_games(catalog, cancelled=lambda: False):
+    from shared.game_package_catalog import GamePackages
+    root = Path(__file__).resolve().parents[1]
+    packages = GamePackages(root, get_mutable_data_dir("AutoYou", anchor=__file__))
+    seen = set()
+    for game in packages.listing()["games"]:
+        if cancelled():
+            return len(seen)
+        catalog.publish("games_agent", game["id"], game["title"], "agent", href="/agent/games_agent/",
+                        source_collection="Games", source_labels=["game"],
+                        source_text=game["title"] + (" · " + str(game["version"]) if game.get("version") else ""))
+        seen.add(game["id"])
+    _reconcile(catalog, "games_agent", "", seen)
+    return len(seen)
+
+
 def scan_audio_folders(catalog=None, cancelled=lambda: False):
-    from shared.audio_agent_library import load_audio_agent_library_settings, resolve_audio_library_path_details
+    from shared.music_agent_library import load_music_agent_library_settings, resolve_audio_library_path_details
     catalog = catalog or ContentLibrary()
-    details = resolve_audio_library_path_details(load_audio_agent_library_settings(), anchor=__file__)
+    details = resolve_audio_library_path_details(load_music_agent_library_settings(), anchor=__file__)
     count = 0
     for entry in details:
         # Pages, Notes, and Voice have their own provenance adapters above.
@@ -233,7 +280,7 @@ def scan_audio_folders(catalog=None, cancelled=lambda: False):
                     continue
                 relative = path.relative_to(root)
                 sid = "folder:" + hashlib.sha256(os.path.normcase(str(path.resolve())).encode()).hexdigest()
-                catalog.publish("audio_agent", sid, path.stem, "audio", path=str(path),
+                catalog.publish("music_agent", sid, path.stem, "audio", path=str(path),
                     source_collection=(root.name + (" / " + str(relative.parent) if relative.parent != Path('.') else ""))[:100])
                 count += 1
     return count

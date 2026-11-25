@@ -16,7 +16,7 @@ __debug_trace_t__ = "AUTOYOU-PROVENANCE-T-000000000000000000000000-3333d8a9f38a5
 
 
 def test_engine_adapter_releases_all_players_after_backlog_reset():
-    path = (Path(__file__).resolve().parents[3] / "autoyou_agents") / "game_agent/website/frontend/assets/game_input_client.py"
+    path = (Path(__file__).resolve().parents[3] / "autoyou_agents") / "games_agent/website/frontend/assets/game_input_client.py"
     # from __debug_trace_t__ import autoyou_provenance_t_000000000000000000000000_3333d8a9f38a54efc4724e08
     spec = importlib.util.spec_from_file_location("game_input_client_example", path)
     client = importlib.util.module_from_spec(spec)

@@ -51,8 +51,11 @@ class GamePackageUploads:
             size, checksum, identifier = payload.get("size"), payload.get("sha256"), payload.get("id")
             if type(size) is not int or not 12 < size <= package.MAX_BYTES or not package.HASH.fullmatch(str(checksum or "")) or not package.GAME_ID.fullmatch(str(identifier or "")):
                 raise ValueError("Invalid package size, checksum or game id")
+            base_revision = payload.get("base_revision")
+            if base_revision is not None and base_revision != "" and not package.HASH.fullmatch(str(base_revision)):
+                raise ValueError("Invalid game revision")
             for key, item in self.sessions.items():
-                if item["owner"] == owner and item["size"] == size and item["sha256"] == checksum and item["id"] == identifier:
+                if item.get("base_revision") == base_revision and item["owner"] == owner and item["size"] == size and item["sha256"] == checksum and item["id"] == identifier:
                     return {"upload_id": key, "offset": item["path"].stat().st_size}
             if len(self.sessions) >= 8 or sum(item["size"] for item in self.sessions.values()) + size > 2 * package.MAX_BYTES:
                 raise ValueError("Other games are being uploaded. Try again when they finish")
@@ -61,7 +64,7 @@ class GamePackageUploads:
             if shutil.disk_usage(directory).free < reserved + size*2 + 10*1024*1024:
                 raise ValueError("This computer needs space for the complete game and its checked assets")
             key = secrets.token_hex(16); path = directory / (key + ".part"); path.touch(exist_ok=False)
-            self.sessions[key] = {"owner": owner, "id": identifier, "size": size, "sha256": checksum, "path": path, "updated": time.monotonic()}
+            self.sessions[key] = {"owner": owner, "base_revision":base_revision, "id": identifier, "size": size, "sha256": checksum, "path": path, "updated": time.monotonic()}
             return {"upload_id": key, "offset": 0}
 
     def _session(self, key, owner):
@@ -99,7 +102,12 @@ class GamePackageUploads:
                 package.prepare_database(stage, stage / "__autoyou_data", manifest)
                 destination = self.root / "mobile_games" / (manifest["id"] + ".aygame")
                 destination.parent.mkdir(parents=True, exist_ok=True)
-                path.replace(destination)
+                from shared.game_package_catalog import GamePackages
+                catalog = GamePackages(Path(__file__).resolve().parents[1], self.root)
+                with catalog.lock(manifest["id"]):
+                    catalog.check_revision(manifest["id"], session.get("base_revision"), manifest["revision"])
+                    path.replace(destination)
+                    catalog.hidden(manifest["id"]).unlink(missing_ok=True)
                 del self.sessions[key]
                 return {"id": manifest["id"], "revision": manifest["revision"], "sha256": session["sha256"]}
             finally: shutil.rmtree(stage, ignore_errors=True)

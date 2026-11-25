@@ -13,7 +13,7 @@ import pytest
 
 import rest_api
 import shared.scheduler_service as scheduler_service
-import autoyou_agents.notify_agent.agent as notify_agent
+import autoyou_agents.reminders_agent.agent as reminders_agent
 
 __debug_provenance_r__ = "AUTOYOU-PROVENANCE-R-via-bdd330fca97ec7121b76d9f2"
 
@@ -26,7 +26,7 @@ async def test_process_chat_message_creates_direct_reminder_without_ai_agent(tmp
     scheduler_service.save_json(str(reminders_file), [])
     monkeypatch.setattr(scheduler_service, "REMINDERS_FILE", str(reminders_file))
     monkeypatch.setattr(scheduler_service, "SCHEDULER_ACTIVITY_LOG_FILE", str(activity_log))
-    monkeypatch.setattr(notify_agent, "REMINDERS_FILE", str(reminders_file))
+    monkeypatch.setattr(reminders_agent, "REMINDERS_FILE", str(reminders_file))
 
     fixed_now = datetime(2026, 9, 24, 1, 5, tzinfo=timezone(timedelta(hours=-7)))
     monkeypatch.setattr(rest_api, "_direct_reminder_now", lambda: fixed_now)
@@ -59,7 +59,7 @@ async def test_process_chat_message_creates_direct_reminder_without_ai_agent(tmp
 
     response = await rest_api.process_chat_message(request, ai_agent_url="http://127.0.0.1:8081")
 
-    assert response.agent_name == "Notify"
+    assert response.agent_name == "Reminders"
     assert response.session_id == "client-session"
     assert response.metadata["direct_action"] == "create_reminder"
     assert "Reminder set for 2026-09-24 09:00 AM" in response.response

@@ -464,10 +464,10 @@ def test_openclaw_agent_default_install_state_is_false():
     assert "openclaw_agent" in DEFAULT_AGENT_INSTALL_STATES
     assert DEFAULT_AGENT_INSTALL_STATES["openclaw_agent"] is False
 
-def test_audio_agent_default_install_state_is_true():
+def test_music_agent_default_install_state_is_true():
     from autoyou_agents.shared_tools.agent_install_registry import DEFAULT_AGENT_INSTALL_STATES
-    assert "audio_agent" in DEFAULT_AGENT_INSTALL_STATES
-    assert DEFAULT_AGENT_INSTALL_STATES["audio_agent"] is True
+    assert "music_agent" in DEFAULT_AGENT_INSTALL_STATES
+    assert DEFAULT_AGENT_INSTALL_STATES["music_agent"] is True
 
 def test_server_openclaw_defaults_use_nadirclaw(monkeypatch):
     import server

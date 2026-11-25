@@ -27,6 +27,7 @@ from typing import Dict, Any, List, Optional
 from shared.adk_state import derive_reply_target_from_owner_key, normalize_reply_target
 from shared.log_redaction import redact_identifier
 from shared.platform_runtime import get_mutable_data_dir
+from shared.reminder_repeat import after_delivery, next_alert
 from shared.secure_storage import (
     FILE_HEADER,
     SecureStorageError,
@@ -199,6 +200,22 @@ def _format_task_result_message(result_text: Any, *, completed_at_s: Any) -> str
         return ""
     completed_at_text = _format_local_timestamp(completed_at_s)
     return f"✅ Task Result (completed at {completed_at_text}):\n{normalized_result}"
+
+def reminder_lock(filepath):
+    from filelock import FileLock
+    path = Path(_scheduler_store_path(str(filepath)))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return FileLock(str(path) + ".transaction.lock", timeout=15)
+
+
+def reminder_transaction(function):
+    from functools import wraps
+    @wraps(function)
+    def write(*args, **kwargs):
+        with reminder_lock(function.__globals__["REMINDERS_FILE"]):
+            return function(*args, **kwargs)
+    return write
+
 
 def load_json(filepath: str) -> Any:
     filepath = _scheduler_store_path(filepath)
@@ -2162,6 +2179,9 @@ async def evaluate_tasks_and_reminders():
             active_reminders = []
             reminders_dirty = False
             for r in reminders:
+                if r.get("collection_only") or (r.get("native_reminder") and next_alert(r["native_reminder"]) is None):
+                    active_reminders.append(r)
+                    continue
                 reminder_at = _normalize_timestamp(r.get("timestamp_s"), 0.0)
                 if reminder_at <= now:
                     # Trigger - queue targeted delivery first, broadcast only as final fallback.
@@ -2201,7 +2221,19 @@ async def evaluate_tasks_and_reminders():
                     active_reminders.append(r)
                     next_due_at = min(next_due_at, reminder_at)
             if reminders_dirty:
-                save_json(REMINDERS_FILE, active_reminders)
+                # Dispatch awaits other processes. Retain every new or concurrently edited record.
+                fired = {row["id"]: row for row in reminders if row not in active_reminders}
+                with reminder_lock(REMINDERS_FILE):
+                    current = load_json(REMINDERS_FILE)
+                    kept = []
+                    for row in current:
+                        if row != fired.get(row.get("id")):
+                            kept.append(row)
+                        elif row.get("native_reminder"):
+                            kept.append(after_delivery(row, now))
+                            if next_alert(kept[-1]["native_reminder"]) is not None:
+                                next_due_at = min(next_due_at, kept[-1]["timestamp_s"])
+                    save_json(REMINDERS_FILE, kept)
 
             # 2. Cron tasks / Intervals
             tasks = load_json(TASKS_FILE)

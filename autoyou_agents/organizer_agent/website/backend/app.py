@@ -14,9 +14,15 @@ def authorize(request):
 
 def routes(app, agent_name):
     register_content_routes(app, authorize, prefix="/api/content")
+    from shared.content_native import register_collection
+    register_collection(app,authorize)
 
 
 app = create_agent_website_app(agent_name="organizer_agent", title="Your content",
     description="A private home for your content across AutoYou agents.",
     index_path=Path(__file__).resolve().parents[1] / "frontend" / "index.html",
     extra_routes_fn=routes)
+
+
+from shared.paired_content import install_collection_sync
+install_collection_sync(app, "organizer_agent")

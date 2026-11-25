@@ -263,7 +263,7 @@ async def test_binary_audio_stream_uses_incremental_datachannel_frames(monkeypat
         payload={
             "request_id": "audio-request",
             "method": "GET",
-            "url": "/agent/audio_agent/api/stream/synthetic-track",
+            "url": "/agent/music_agent/api/stream/synthetic-track",
             "headers": {"Accept": "*/*", "Range": "bytes=0-"},
             "body": "",
         },
@@ -288,9 +288,9 @@ async def test_binary_audio_stream_uses_incremental_datachannel_frames(monkeypat
 
 @pytest.mark.parametrize(("path", "content_type"), [
     ("/agent/page_agent/api/blob/synthetic-photo", "image/jpeg"),
-    ("/agent/audio_agent/api/stream/synthetic-track", "audio/mpeg"),
-    ("/agent/tv_agent/api/playback/synthetic-video/v1/original.mp4", "video/mp4"),
-    ("/agent/persona_agent/api/persona/entries/synthetic-entry/media/synthetic-photo", "image/jpeg"),
+    ("/agent/music_agent/api/stream/synthetic-track", "audio/mpeg"),
+    ("/agent/media_agent/api/playback/synthetic-video/v1/original.mp4", "video/mp4"),
+    ("/agent/diary_agent/api/diary/entries/synthetic-entry/media/synthetic-photo", "image/jpeg"),
     ("/agent/notes_agent/api/media/synthetic-photo", "image/jpeg"),
 ])
 @pytest.mark.asyncio

@@ -9,8 +9,7 @@ from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from autoyou_agents.notes_agent import sync
 from shared import content_access
-from shared.content_library import settings
-from shared.remote_access_policy import REMOTE_BROWSER_HEADER, REMOTE_BROWSER_VIA_WEBRTC
+from shared.paired_content import require_pair
 
 
 class Media(BaseModel):
@@ -52,16 +51,7 @@ async def bounded(request, limit):
 
 def router(get_tool):
     def paired(request: Request):
-        # All supported gateways strip client-supplied identity. Only the loopback
-        # WebRTC forwarder stamps a paired session, role and agent together.
-        if (not request.client or request.client.host not in {"127.0.0.1", "::1", "::ffff:127.0.0.1"}
-                or request.headers.get(REMOTE_BROWSER_HEADER) != REMOTE_BROWSER_VIA_WEBRTC
-                or request.headers.get("x-autoyou-agent-frontend") != "notes_agent"
-                or not request.headers.get("x-autoyou-webrtc-session-id")
-                or request.headers.get(content_access.ROLE_HEADER) not in {"viewer", "editor", "admin"}):
-            raise HTTPException(403, "Sync requires a paired computer connection")
-        if not settings()["notes_sync_enabled"]:
-            raise HTTPException(403, "Notes sync is disabled in My Content on this computer")
+        require_pair(request, "notes_agent")
 
     api = APIRouter(prefix="/api/sync", dependencies=[Depends(paired)])
 

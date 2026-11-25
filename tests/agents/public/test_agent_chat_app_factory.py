@@ -310,9 +310,9 @@ def test_shared_otp_login_does_not_share_another_agent_session(tmp_path, monkeyp
     monkeypatch.setattr(server_stub, "_verify_totp_secret", lambda *_args: True)
     monkeypatch.setattr(server_stub.STATE, "config", {
         **server_stub.STATE.config,
-        "agent_ui_security": {"notify_agent": {"auth_mode": "totp"}, "tasks_agent": {"auth_mode": "totp"}},
+        "agent_ui_security": {"reminders_agent": {"auth_mode": "totp"}, "tasks_agent": {"auth_mode": "totp"}},
     })
-    first = TestClient(_make_app(tmp_path / "first", agent_name="notify_agent"))
+    first = TestClient(_make_app(tmp_path / "first", agent_name="reminders_agent"))
     second = TestClient(_make_app(tmp_path / "second", agent_name="tasks_agent"))
 
     assert first.post("/api/auth/login", json={"code": "654321"}).status_code == 200
@@ -391,9 +391,9 @@ def test_audio_open_default_and_explicit_otp_override(monkeypatch):
     )
     monkeypatch.setattr(server_stub, "agent_has_assigned_2fa_profile", lambda _agent: False, raising=False)
 
-    assert _get_agent_security_settings("audio_agent")["auth_mode"] == "open"
-    server_stub.STATE.config["agent_ui_security"]["audio_agent"] = {"auth_mode": "totp"}
-    assert _get_agent_security_settings("audio_agent")["auth_mode"] == "totp"
+    assert _get_agent_security_settings("music_agent")["auth_mode"] == "open"
+    server_stub.STATE.config["agent_ui_security"]["music_agent"] = {"auth_mode": "totp"}
+    assert _get_agent_security_settings("music_agent")["auth_mode"] == "totp"
 
     monkeypatch.setattr(
         server_stub.STATE,
@@ -404,7 +404,7 @@ def test_audio_open_default_and_explicit_otp_override(monkeypatch):
             "agent_websites": {"require_otp": False},
         },
     )
-    assert _get_agent_security_settings("audio_agent")["auth_mode"] == "open"
+    assert _get_agent_security_settings("music_agent")["auth_mode"] == "open"
 
 
 def test_manifest_bypass_global_otp_exempts_an_agent_from_the_global_toggle(monkeypatch):

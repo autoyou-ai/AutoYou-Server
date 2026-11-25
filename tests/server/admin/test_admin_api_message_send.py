@@ -1204,7 +1204,7 @@ def test_admin_webrtc_playback_enabled_get_accepts_internal_ai_token(monkeypatch
     monkeypatch.setattr(server, "_request_uses_ai_agent_internal_token", lambda request: True)
     monkeypatch.setattr(server, "_get_audio_playback_enabled", lambda cfg=None: True)
     monkeypatch.setattr(server, "_resolve_audio_playback_music_library_dirs", lambda cfg=None: ["C:/music"])
-    monkeypatch.setattr(server, "_is_audio_agent_installed", lambda: True)
+    monkeypatch.setattr(server, "_is_music_agent_installed", lambda: True)
 
     with TestClient(server.admin_app) as client:
         response = client.get(

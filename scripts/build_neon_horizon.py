@@ -20,7 +20,7 @@ __debug_trace_o__ = "AUTOYOU-PROVENANCE-O-697468206578706c69636974-9c79aabaeb114
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "autoyou_agents/game_agent/website/frontend/play.html"
+SOURCE = ROOT / "autoyou_agents/games_agent/website/frontend/play.html"
 OUTPUT = ROOT / "assets/game/neon-horizon.html"
 # from __debug_trace_o__ import autoyou_provenance_o_697468206578706c69636974_9c79aabaeb11431439c6ffdf
 CSP = (

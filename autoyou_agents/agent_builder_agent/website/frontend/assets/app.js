@@ -244,9 +244,9 @@ function loadAgents() {
 }
 
 var BUILTIN_AGENTS = [
-  'admin_agent','notes_agent','internet_agent','audio_agent','page_agent',
+  'admin_agent','notes_agent','internet_agent','music_agent','page_agent',
   'memory_agent','agent_builder_agent','website_agent','coding_agent',
-  'tasks_agent','notify_agent',
+  'tasks_agent','reminders_agent',
 ];
 
 function renderAgentList(data) {

@@ -129,7 +129,7 @@ def register(app, authorize, prefix: str, worker=None):
                        "removal": content_removal.plan({"source": row["source"], "source_id": ""})["mode"]} for row in sources]
             current = settings()
             return {**data, "agents": agents, "abilities": content_access.abilities(request),
-                    "settings": {key: current[key] for key in ("output_root", "encrypted_at_rest", "auto_organize", "semantic_labels", "index_private")}}
+                    "settings": {key: current[key] for key in ("output_root", "encrypted_at_rest", "auto_organize", "semantic_labels", "index_private", "index_profile", "index_reminders", "notes_sync_enabled", "content_sync_enabled")}}
         payload = await asyncio.to_thread(build)
         tag = content_index.etag("summary", payload["revision"], payload["worker"], payload["settings"], payload["abilities"]["role"])
         return answer(request, payload, tag)

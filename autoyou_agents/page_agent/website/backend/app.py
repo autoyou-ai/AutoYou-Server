@@ -2153,13 +2153,29 @@ class PageFeedService:
                 family = str(first.get("mimetype") or "").split("/", 1)[0]
                 item_type = family if family in {"image", "audio", "video"} else "file"
                 url = "blob://" + attachments[0]["blob_id"]
+            base_revision = data.get("base_revision")
+            tags = data.get("tags")
+            favourite = data.get("favourite")
+            if base_revision is not None and (type(base_revision) is not int or base_revision < 0):
+                raise HTTPException(400, "Invalid Page revision")
+            if tags is not None:
+                if not isinstance(tags, list) or len(tags) > 128 or any(not isinstance(t, str) or len(t) > 128 for t in tags):
+                    raise HTTPException(400, "Invalid Page tags")
+                tags = list(dict.fromkeys(t.strip() for t in tags if t.strip()))
+            if favourite is not None and not isinstance(favourite, bool):
+                raise HTTPException(400, "Invalid favourite")
             try:
                 item = self.db.upsert_post(post_id, item_type, url, str(data.get("title") or "")[:300],
-                                           content, self._default_source(url), attachments)
+                                           content, self._default_source(url), attachments, base_revision=base_revision, tags=tags, favourite=favourite)
+            except FileExistsError as exc:
+                raise HTTPException(409, str(exc)) from exc
             except ValueError as exc:
                 raise HTTPException(400, str(exc)) from exc
             self.feed_items = [i for i in self.feed_items if i.get("id") != item["id"]] + [item]
-            return JSONResponse({"item": self._present_items([item])[0]})
+            result = self._present_items([item])
+            if not result or result[0].get("revision") != item["revision"]:
+                raise HTTPException(409, "The saved post changed. Refresh to retrieve it.")
+            return JSONResponse({"item": result[0]})
 
         @app.post("/api/item/{item_id}/update")
         async def api_item_update(item_id: int, request: Request) -> JSONResponse:
@@ -2328,6 +2344,24 @@ class PageFeedService:
             except Exception as e:
                 raise HTTPException(status_code=500, detail=str(e))
 
+        @app.delete("/api/sync/posts/{item_id}")
+        def sync_delete_post(item_id: int, base_revision: int, request: Request):
+            from shared.paired_content import require_pair
+            from shared.content_access import deny
+            require_pair(request, "page_agent")
+            denied = deny(request, "delete")
+            if denied is not None:
+                return denied
+            try:
+                result = self.db.delete_item_and_cleanup(item_id, base_revision=base_revision)
+            except FileExistsError as exc:
+                raise HTTPException(409, str(exc)) from exc
+            if result["deleted"]:
+                self.feed_items = [i for i in self.feed_items if i["id"] != item_id]
+                from shared.content_library import forget_content
+                forget_content("page_agent", str(item_id))
+            return {"deleted": True}
+
         @app.get("/api/feed/catalog")
         async def api_feed_catalog(request: Request) -> JSONResponse:
             """Lightweight catalog of feed items without full content for mobile sync."""
@@ -2375,8 +2409,11 @@ class PageFeedService:
                     if has_more and last_row
                     else None
                 )
+                if page_rows and getattr(self, "db", None) is not None:
+                    page_rows = self.db.post_details(page_rows)
                 catalog = [
                     {
+                        "revision": i.get("revision"), "client_post_id": i.get("client_post_id"),
                         "id": str(i.get("id")),
                         "type": str(i.get("type") or "text"),
                         "title": str(i.get("title") or ""),
@@ -3057,3 +3094,7 @@ install_agent_website_auth(
     is_authenticated=_is_internal_page_tool_request,
 )
 service.register_routes(app)
+
+
+from shared.paired_content import install_collection_sync
+install_collection_sync(app, "page_agent")
