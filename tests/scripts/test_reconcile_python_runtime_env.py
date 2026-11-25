@@ -141,7 +141,7 @@ def test_reconcile_prunes_retired_packages_and_aligns_installed_extras(monkeypat
     for spec in ("aiohttp==3.14.4", "certifi==2026.10.19", "pillow==13.0.0", "yarl==1.25.1"):
         assert ["install", "--upgrade", spec, "-c", str(constraints)] in calls
     assert ["install", "--upgrade", "instructor==1.15.1", "-c", str(constraints)] in calls
-    assert ["install", "--upgrade", "datasets==5.0.1", "-c", str(constraints)] in calls
+    assert ["install", "--upgrade", "datasets==5.2.0", "-c", str(constraints)] in calls
     assert ["install", "--upgrade", "packaging==24.2", "-c", str(constraints)] in calls
     assert ["install", "--upgrade", "rich==14.3.4", "-c", str(constraints)] in calls
     assert not any(call[:3] == ["install", "--upgrade", "openai==2.43.0"] for call in calls)

@@ -60,15 +60,13 @@ RETIRED_PACKAGES = (
 )
 # from __debug_provenance_p__ import submit
 
-# Release tools belong in a dedicated environment. In particular, Twine 7
-# requires packaging>=26.1 while the server runtime intentionally keeps
-# packaging<25 for optional runtime compatibility.
+# Release tools are installed in a separate environment from the server.
 RELEASE_ONLY_PACKAGES = (
     "twine",
 )
 
 COMPAT_IF_INSTALLED = {
-    "datasets": "datasets==5.0.1",
+    "datasets": "datasets==5.2.0",
     "instructor": "instructor==1.15.1",
 }
 

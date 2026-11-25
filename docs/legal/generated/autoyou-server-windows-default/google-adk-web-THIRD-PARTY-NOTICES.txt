@@ -1,5 +1,5 @@
 Google ADK Web frontend third-party notices
-ADK Python 2.14.0 embeds ADK Web v1.0.7, built from 34f3f8d7946c76faa664658390dcccf1e4e34677.
+ADK Python 2.15.0 embeds ADK Web v1.0.8, built from 4b7d11542b2a5540213d0578d733fae86505c024.
 This is a conservative non-dev lockfile notice inventory. It may include unused packages and is not a binary SBOM.
 Original third-party terms below apply to their respective components; AutoYou's license does not replace them.
 
@@ -8046,26 +8046,6 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
-
-
-========================================================================
-yaml 2.9.0 - ISC
-https://registry.npmjs.org/yaml/-/yaml-2.9.0.tgz
-
-package/LICENSE
-Copyright Eemeli Aro <eemeli@gmail.com>
-
-Permission to use, copy, modify, and/or distribute this software for any purpose
-with or without fee is hereby granted, provided that the above copyright notice
-and this permission notice appear in all copies.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
-REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
-FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
-INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
-OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
-TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
-THIS SOFTWARE.
 
 
 ========================================================================

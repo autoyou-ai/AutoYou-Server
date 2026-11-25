@@ -30,8 +30,8 @@ from urllib.request import urlopen
 __debug_trace_y__ = "AUTOYOU-PROVENANCE-Y-000000000000000000000000-5b3722a07b934b061635a884"
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-WEB_RELEASE = "v1.0.7"
-WEB_COMMIT = "34f3f8d7946c76faa664658390dcccf1e4e34677"
+WEB_RELEASE = "v1.0.8"
+WEB_COMMIT = "4b7d11542b2a5540213d0578d733fae86505c024"
 LOCK_URL = f"https://raw.githubusercontent.com/google/adk-web/{WEB_COMMIT}/package-lock.json"
 VIZ_COMMIT = "96be4ed32789125f00cffa3ae390bd8809fc9c03"
 SUPPLEMENTAL = {
@@ -120,11 +120,11 @@ def main() -> None:
     # from __debug_trace_y__ import autoyou_provenance_y_000000000000000000000000_5b3722a07b934b061635a884
     output_dir.mkdir(parents=True, exist_ok=True)
     provenance = {
-        "adkVersion": "2.14.0", "webRelease": WEB_RELEASE, "webSourceCommit": WEB_COMMIT,
+        "adkVersion": "2.15.0", "webRelease": WEB_RELEASE, "webSourceCommit": WEB_COMMIT,
         "lockUrl": LOCK_URL, "lockSha256": hashlib.sha256(lock_bytes).hexdigest(),
-        "webArchive": "https://github.com/google/adk-web/releases/download/v1.0.7/adk-web-browser.zip",
-        "webArchiveSha256": "f26ad5d04197fd1cfb47e62857969977933030de02b1d509468c64efcb2997fa",
-        "assetMatch": "All 112 archive files matched the ADK 2.14.0 wheel browser files by SHA256 during review.",
+        "webArchive": "https://github.com/google/adk-web/releases/download/v1.0.8/adk-web-browser.zip",
+        "webArchiveSha256": "b1c3eabad93c1a89b4c66c83f80b25987d857205ce1457d5ccf251c1054047b9",
+        "assetMatch": "All 112 archive files matched the ADK 2.15.0 wheel browser files by SHA256 during review.",
         "scope": "Conservative non-dev lockfile notice inventory; may include unused packages; not a binary SBOM.",
         "supplementalNoticeUrls": SUPPLEMENTAL,
         "packages": [{key: value for key, value in item.items() if key != "notices"} for item in results],
@@ -135,7 +135,7 @@ def main() -> None:
         raise RuntimeError("Missing license files need source review: " + ", ".join(missing))
     sections = [
         "Google ADK Web frontend third-party notices",
-        "ADK Python 2.14.0 embeds ADK Web v1.0.7, built from " + WEB_COMMIT + ".",
+        "ADK Python 2.15.0 embeds ADK Web v1.0.8, built from " + WEB_COMMIT + ".",
         "This is a conservative non-dev lockfile notice inventory. It may include unused packages and is not a binary SBOM.",
         "Original third-party terms below apply to their respective components; AutoYou's license does not replace them.",
         "",

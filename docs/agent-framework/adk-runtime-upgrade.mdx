@@ -1,15 +1,15 @@
 ---
 title: "Google ADK runtime and MCP compatibility"
-description: "Pinned ADK 2.14, native SQLite memory, MCP SDK 2.x, execution cancellation, and the customized development UI."
+description: "Pinned ADK 2.15, native SQLite memory, MCP SDK 2.x, execution cancellation, and the customized development UI."
 ---
 
 # Google ADK runtime and MCP compatibility
 
-The full server pins `google-adk==2.14.0`, `litellm==1.100.4`, `mcp==2.3.0`,
-`mcp-types==2.3.0`, `httpx2==2.13.1`, and `httpcore2==2.13.1`.
+The full server pins `google-adk==2.15.0`, `litellm==1.110.1`, `mcp==2.3.0`,
+`mcp-types==2.3.0`, `httpx2==2.16.2`, and `httpcore2==2.16.2`.
 The dedicated AutoYou MCP adapter uses the same MCP stack. These versions are
 recorded in the source requirements, hashed lock file, and release inventories.
-See the [ADK 2.14 release](https://github.com/google/adk-python/releases/tag/v2.14.0)
+See the [ADK 2.15 release](https://github.com/google/adk-python/releases/tag/v2.15.0)
 and the [MCP Python SDK migration guide](https://py.sdk.modelcontextprotocol.io/migration/).
 
 ## Native SQLite memory
@@ -114,7 +114,7 @@ terms; see [THIRD-PARTY-NOTICES](https://github.com/autoyou-ai/AutoYou-Server/bl
 Product names describe compatibility and do not imply endorsement.
 
 The release bundles also include `google-adk-web-THIRD-PARTY-NOTICES.txt`.
-It collects the matched ADK Web v1.0.7 lockfile's runtime dependency notices,
+It collects the matched ADK Web v1.0.8 lockfile's runtime dependency notices,
 including Angular, plus embedded Graphviz, Expat, Emscripten, and musl notices.
 Graphviz EPL-2.0 source availability links are retained. The conservative
 lockfile notice inventory may include unused packages and is separate from

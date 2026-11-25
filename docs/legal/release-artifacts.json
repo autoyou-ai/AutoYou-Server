@@ -466,7 +466,7 @@
       "specialObligations": [
         "Telegram Bot, Telegram User, Signal, and WhatsApp partners must remain user-authorized and owner-paired only.",
         "Signal GPL components must remain separate services unless GPLv3 source distribution is approved.",
-        "Server voice builds install RealtimeSTT 1.0.2 without Porcupine/openWakeWord extras; wake-word mode remains unsupported in commercial server builds.",
+        "Server voice builds install RealtimeSTT 1.0.4 without Porcupine/openWakeWord extras; wake-word mode remains unsupported in commercial server builds.",
         "Build scripts must prune openWakeWord pretrained model assets if they ever appear in site-packages or packaged outputs.",
         "WhatsApp integration is unofficial and may trigger service-provider ToS enforcement; keep warning and disable path ready."
       ],

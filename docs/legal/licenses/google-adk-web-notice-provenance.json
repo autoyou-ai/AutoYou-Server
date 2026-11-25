@@ -1,12 +1,12 @@
 {
-  "adkVersion": "2.14.0",
-  "webRelease": "v1.0.7",
-  "webSourceCommit": "34f3f8d7946c76faa664658390dcccf1e4e34677",
-  "lockUrl": "https://raw.githubusercontent.com/google/adk-web/34f3f8d7946c76faa664658390dcccf1e4e34677/package-lock.json",
-  "lockSha256": "34d7db5f5901658c32858b903daa700b4179e414199883730a9cc9f94020a9b7",
-  "webArchive": "https://github.com/google/adk-web/releases/download/v1.0.7/adk-web-browser.zip",
-  "webArchiveSha256": "f26ad5d04197fd1cfb47e62857969977933030de02b1d509468c64efcb2997fa",
-  "assetMatch": "All 112 archive files matched the ADK 2.14.0 wheel browser files by SHA256 during review.",
+  "adkVersion": "2.15.0",
+  "webRelease": "v1.0.8",
+  "webSourceCommit": "4b7d11542b2a5540213d0578d733fae86505c024",
+  "lockUrl": "https://raw.githubusercontent.com/google/adk-web/4b7d11542b2a5540213d0578d733fae86505c024/package-lock.json",
+  "lockSha256": "64163de3cd457b9b434b8ed1af9d07129f0e7e0693bebb9716e37885a29fd9e8",
+  "webArchive": "https://github.com/google/adk-web/releases/download/v1.0.8/adk-web-browser.zip",
+  "webArchiveSha256": "b1c3eabad93c1a89b4c66c83f80b25987d857205ce1457d5ccf251c1054047b9",
+  "assetMatch": "All 112 archive files matched the ADK 2.15.0 wheel browser files by SHA256 during review.",
   "scope": "Conservative non-dev lockfile notice inventory; may include unused packages; not a binary SBOM.",
   "supplementalNoticeUrls": {
     "Viz.js MIT license": "https://raw.githubusercontent.com/mdaines/viz-js/96be4ed32789125f00cffa3ae390bd8809fc9c03/LICENSE",
@@ -1655,14 +1655,6 @@
       "tarball": "https://registry.npmjs.org/w3c-keyname/-/w3c-keyname-2.2.8.tgz",
       "integrity": "sha512-dpojBhNsCNN7T82Tm7k26A6G9ML3NkhDsnw9n/eoxSRlVBB4CEtIQ/KTCLI2Fwf3ataSXRhYFkQi3SlnFwPvPQ==",
       "sha256": "05d21484026d1f2dd842c843181e391e66d60f1d5dff292d562c3f40302dab36"
-    },
-    {
-      "name": "yaml",
-      "version": "2.9.0",
-      "licenseExpression": "ISC",
-      "tarball": "https://registry.npmjs.org/yaml/-/yaml-2.9.0.tgz",
-      "integrity": "sha512-2AvhNX3mb8zd6Zy7INTtSpl1F15HW6Wnqj0srWlkKLcpYl/gMIMJiyuGq2KeI2YFxUPjdlB+3Lc10seMLtL4cA==",
-      "sha256": "008fa204cb1ba700e0272ba045abbf09a6ffe63456e8146ba97cac6c2ad1ef91"
     },
     {
       "name": "zimmerframe",

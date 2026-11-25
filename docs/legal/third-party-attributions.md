@@ -31,8 +31,8 @@ Desktop packages place these files under the app or package `Legal` directory. M
 
 The repository-wide notice index is available in `THIRD-PARTY-NOTICES.md`.
 
-The server manifests pin [LiteLLM 1.100.4](https://pypi.org/project/litellm/1.100.4/)
-and require [filelock 4.2.4](https://pypi.org/project/filelock/4.2.4/) or later 4.x,
+The server manifests pin [LiteLLM 1.110.1](https://pypi.org/project/litellm/1.110.1/)
+and require [filelock 4.2.12](https://pypi.org/project/filelock/4.2.12/) or later 4.x,
 [setuptools 84.2.1](https://pypi.org/project/setuptools/84.2.1/) or later 84.x,
 `joserfc` 1.7.6 (BSD-3-Clause), `pyasn1` 0.6.5 (BSD-2-Clause), `follow-redirects` 1.16.2 (MIT),
 and `datasets` >=5.1.0,<6 (Apache-2.0). Bundled first-party `.ayskin` assistant skins

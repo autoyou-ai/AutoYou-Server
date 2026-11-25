@@ -38,7 +38,7 @@ def probe(tmp_path: Path, code: str) -> None:
 def test_multidict_view_union_and_subtraction_release_operand_values(tmp_path):
     probe(tmp_path, '''
 import gc, weakref, multidict
-assert multidict.__version__ == "6.9.1"
+assert multidict.__version__ == "7.2.1"
 class SyntheticValue: pass
 for subtract in (False, True):
     value = SyntheticValue()
@@ -55,7 +55,7 @@ for subtract in (False, True):
 def test_certifi_excludes_the_compromised_emsign_g3_root(tmp_path):
     probe(tmp_path, '''
 import certifi, ssl
-assert certifi.__version__ == "2026.10.19"
+assert certifi.__version__ == "2026.10.23"
 context = ssl.create_default_context(cafile=certifi.where())
 roots = context.get_ca_certs()
 assert roots
@@ -100,7 +100,7 @@ import os
 from pathlib import Path
 import fsspec
 from jinja2.exceptions import SecurityError
-assert fsspec.__version__ == "2026.6.0"
+assert fsspec.__version__ == "2026.9.0"
 root = Path(os.environ["AUTOYOU_TEST_ROOT"])
 source = root / "synthetic.txt"
 source.write_bytes(b"synthetic payload")

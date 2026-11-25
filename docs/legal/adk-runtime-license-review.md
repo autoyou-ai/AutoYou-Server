@@ -14,6 +14,13 @@ inventory remain unchanged. The generator and provenance now identify 2.14.0.
 This comparison covers the embedded frontend, not patent clearance or a final
 packaged inventory.
 
+On 2026-11-25, all 112 browser assets in the ADK 2.15.0 wheel matched the
+[ADK Web v1.0.8 release archive](https://github.com/google/adk-web/releases/tag/v1.0.8)
+by SHA-256. Its runtime lockfile removed `yaml` 2.9.0 and retained the other
+210 package and version pairs. The wheel retained the previous Apache license
+text, and the AutoYou browser customization passed its patch and verification
+checks on the new assets.
+
 ## Optional ADK Web controls
 
 [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) permits modified

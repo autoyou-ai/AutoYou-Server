@@ -4,7 +4,7 @@ AutoYou Artifact Notice Bundle
 Artifact: AutoYou Server Windows connector-full build (autoyou-server-windows-connector-full)
 Release profile: connector-full
 Dependency profile: full
-Generated: 2026-11-25T15:16:25+00:00
+Generated: 2026-11-25T15:25:42+00:00
 Inventory scope: Repository manifests and manual component declarations.
 This inventory does not establish actual installed or bundled versions.
 
@@ -42,16 +42,16 @@ Third-Party Components
 - PyAudio 0.2.14 [pypi] - MIT - requirements/voice.txt
 - PyAudioWPatch 0.2.12.8 [pypi] - Apache-2.0 - requirements/voice.txt
 - PyAutoGUI [pypi] - BSD-3-Clause - requirements/desktop-automation.txt
-- RealtimeSTT 1.0.2 [pypi] - MIT - requirements/realtimestt-runtime.txt
-- Telethon 1.44.0 [pypi] - MIT - requirements/messaging.txt
+- RealtimeSTT 1.0.4 [pypi] - MIT - requirements/realtimestt-runtime.txt
+- Telethon 1.46.0 [pypi] - MIT - requirements/messaging.txt
 - aiohttp [pypi] - Apache-2.0 - requirements/base.txt
 - aiortc [pypi] - BSD-3-Clause - requirements/base.txt
 - aiosqlite [pypi] - MIT - requirements/base.txt
 - anyio [pypi] - MIT - requirements/base.txt
 - authlib [pypi] - BSD-3-Clause - requirements/base.txt
-- auto-browser-client 1.4.2 [pypi] - MIT - requirements/internet.txt
-- auto-browser-langchain 1.4.2 [pypi] - MIT - requirements/internet.txt
-- auto-browser-mcp 1.4.2 [pypi] - MIT - requirements/internet.txt
+- auto-browser-client 1.18.1 [pypi] - MIT - requirements/internet.txt
+- auto-browser-langchain 1.18.1 [pypi] - MIT - requirements/internet.txt
+- auto-browser-mcp 1.18.1 [pypi] - MIT - requirements/internet.txt
 - av [pypi] - BSD-3-Clause - requirements/base.txt
 - azure-cognitiveservices-speech [pypi] - Microsoft Product Terms - requirements/voice.txt
 - beautifulsoup4 [pypi] - MIT - requirements/base.txt
@@ -61,26 +61,26 @@ Third-Party Components
 - cn2an [pypi] - MIT - requirements/voice.txt
 - colorama [pypi] - BSD-3-Clause - requirements/voice.txt
 - coloredlogs [pypi] - MIT - requirements/voice.txt
-- cryptg 0.6.0 [pypi] - CC0-1.0 - requirements/messaging.txt
+- cryptg 0.6.1 [pypi] - CC0-1.0 - requirements/messaging.txt
 - cryptography [pypi] - Apache-2.0 OR BSD-3-Clause - requirements/base.txt
 - ctranslate2 [pypi] - MIT - requirements/voice.txt
 - dnspython [pypi] - ISC - requirements/base.txt
 - docker [pypi] - Apache-2.0 - requirements/base.txt
 - elevenlabs [pypi] - MIT - requirements/voice.txt
-- fastapi 0.136.3 [pypi] - MIT - requirements/base.txt
+- fastapi 0.165.0 [pypi] - MIT - requirements/base.txt
 - faster-whisper 1.2.1 [pypi] - MIT - requirements/voice.txt
 - filelock [pypi] - MIT - requirements/base.txt
 - flatbuffers [pypi] - Apache-2.0 - requirements/voice.txt
-- fsspec 2026.6.0 [pypi] - BSD-3-Clause - requirements/local-llm.txt
+- fsspec 2026.9.0 [pypi] - BSD-3-Clause - requirements/local-llm.txt
 - g2p-en [pypi] - Apache-2.0 - requirements/voice.txt
-- google-adk 2.14.0 [pypi] - Apache-2.0 - requirements/base.txt
+- google-adk 2.15.0 [pypi] - Apache-2.0 - requirements/base.txt
 - google-cloud-aiplatform 1.156.0 [pypi] - Apache-2.0 - requirements/base.txt
-- google-genai 2.30.0 [pypi] - Apache-2.0 - requirements/base.txt
+- google-genai 2.34.0 [pypi] - Apache-2.0 - requirements/base.txt
 - h2 [pypi] - MIT - requirements/base.txt
 - halo 0.0.31 [pypi] - MIT - requirements/voice.txt
-- httpcore2 2.13.1 [pypi] - BSD-3-Clause - requirements/base.txt
+- httpcore2 2.16.2 [pypi] - BSD-3-Clause - requirements/base.txt
 - httpx [pypi] - BSD-3-Clause - requirements/base.txt
-- httpx2 2.13.1 [pypi] - BSD-3-Clause - requirements/base.txt
+- httpx2 2.16.2 [pypi] - BSD-3-Clause - requirements/base.txt
 - huggingface_hub [pypi] - Apache-2.0 - requirements/local-llm.txt
 - idna [pypi] - BSD-3-Clause - requirements/base.txt
 - jieba [pypi] - MIT - requirements/voice.txt
@@ -88,7 +88,7 @@ Third-Party Components
 - keyring [pypi] - MIT - requirements/base.txt
 - lingua-language-detector 2.1.1 [pypi] - Apache-2.0 - requirements/base.txt
 - lingua-language-detector 2.2.0 [pypi] - Apache-2.0 - requirements/base.txt
-- litellm 1.100.4 [pypi] - MIT - requirements/base.txt
+- litellm 1.110.1 [pypi] - MIT - requirements/base.txt
 - log_symbols [pypi] - MIT - requirements/voice.txt
 - lxml [pypi] - BSD-3-Clause - requirements/base.txt
 - mcp 2.3.0 [pypi] - MIT - requirements/base.txt
@@ -99,7 +99,7 @@ Third-Party Components
 - nltk [pypi] - Apache-2.0 - requirements/voice.txt
 - numba [pypi] - BSD-3-Clause - requirements/voice.txt
 - numpy [pypi] - BSD-3-Clause - requirements/base.txt
-- ollama 0.6.0 [pypi] - MIT - requirements/local-llm.txt
+- ollama 0.6.3 [pypi] - MIT - requirements/local-llm.txt
 - onnxruntime [pypi] - MIT - requirements/local-llm.txt
 - opencv-python [pypi] - Apache-2.0 - requirements/voice.txt
 - opentelemetry-api 1.45.2 [pypi] - Apache-2.0 - requirements/base.txt
@@ -134,11 +134,11 @@ Third-Party Components
 - scipy 1.17.1 [pypi] - BSD-3-Clause - requirements/voice.txt
 - sentence-stream [pypi] - Apache-2.0 - requirements/voice.txt
 - setuptools [pypi] - MIT - requirements/base.txt
-- silero-vad 6.2.1 [pypi] - MIT - requirements/voice.txt
+- silero-vad 6.2.3 [pypi] - MIT - requirements/voice.txt
 - soundfile 0.13.1 [pypi] - BSD-3-Clause - requirements/voice.txt
 - soupsieve [pypi] - MIT - requirements/base.txt
 - spinners [pypi] - MIT - requirements/voice.txt
-- sqlalchemy 2.0.50 [pypi] - MIT - requirements/base.txt
+- sqlalchemy 2.1.9 [pypi] - MIT - requirements/base.txt
 - starlette [pypi] - BSD-3-Clause - requirements/base.txt
 - supertonic 1.3.1 [pypi] - MIT - requirements/base.txt
 - termcolor [pypi] - MIT - requirements/voice.txt
@@ -160,7 +160,7 @@ Third-Party Components
 - winrt-Windows.Storage.Streams [pypi] - MIT - requirements/bluetooth.txt
 - yacs 0.1.8 [pypi] - Apache-2.0 - requirements/voice.txt
 - yt-dlp [pypi] - Unlicense - requirements/base.txt
-- zeroconf 0.151.3 [pypi] - LGPL-2.1-or-later - requirements/base.txt
+- zeroconf 0.154.0 [pypi] - LGPL-2.1-or-later - requirements/base.txt
 - zstandard 0.25.0 [pypi] - BSD-3-Clause - requirements/base.txt
 
 Copyleft Review Notes
@@ -187,7 +187,7 @@ Special Release Obligations
 ---------------------------
 - Telegram Bot, Telegram User, Signal, and WhatsApp partners must remain user-authorized and owner-paired only.
 - Signal GPL components must remain separate services unless GPLv3 source distribution is approved.
-- Server voice builds install RealtimeSTT 1.0.2 without Porcupine/openWakeWord extras; wake-word mode remains unsupported in commercial server builds.
+- Server voice builds install RealtimeSTT 1.0.4 without Porcupine/openWakeWord extras; wake-word mode remains unsupported in commercial server builds.
 - Build scripts must prune openWakeWord pretrained model assets if they ever appear in site-packages or packaged outputs.
 - WhatsApp integration is unofficial and may trigger service-provider ToS enforcement; keep warning and disable path ready.
 - Do not distribute this connector/full binary until provider, voice, and messaging partner terms are approved for binary redistribution.

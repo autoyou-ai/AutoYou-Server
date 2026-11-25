@@ -64,8 +64,8 @@ ADK release.
 
 ## MCP SDK 2.x runtime dependencies
 
-The current source pins Google ADK 2.11.0, MCP SDK and mcp-types 2.3.0,
-and httpx2/httpcore2 2.13.1. MCP and mcp-types retain the MIT license and
+The current source pins Google ADK 2.15.0, MCP SDK and mcp-types 2.3.0,
+and httpx2/httpcore2 2.16.2. MCP and mcp-types retain the MIT license and
 Anthropic copyright notices. httpx2 and httpcore2 retain BSD-3-Clause license
 texts and upstream copyright notices for Pydantic Services, Encode, and
 contributors. These licenses apply to their respective third-party code;
@@ -83,7 +83,7 @@ whose source inventory includes these components:
 | httpcore2 | `httpcore2-BSD-3-Clause.txt` |
 | ADK Web runtime and embedded dependencies | `google-adk-web-THIRD-PARTY-NOTICES.txt` |
 
-The ADK 2.11 frontend matches ADK Web v1.0.7. Its conservative lockfile notice
+The ADK 2.15 frontend matches ADK Web v1.0.8. Its conservative lockfile notice
 collection includes Angular and other frontend dependencies, plus embedded
 Graphviz 15.1.1 under EPL-2.0 with source availability links, Expat, Emscripten,
 and musl. Original notices and available author attributions are retained;
@@ -103,7 +103,7 @@ SBOMs retain the versions recorded from those packages until a new release is bu
 - `wwebjs-api` (`avoylenko/wwebjs-api`, Apache-2.0 / MIT) is an optional Docker container REST API service alternative to the Node.js WhatsApp subprocess (`whatsapp_docker_service.py`). It is used in standalone and compiled server builds (Nuitka binary packages on Windows, macOS, and Linux) to avoid Node native module bundling issues. WhatsApp integration remains owner-only and user-opted.
 - `auto-browser` suite (`auto-browser-client`, `auto-browser-langchain`, `auto-browser-mcp` from `https://github.com/LvcidPsyche/auto-browser`, MIT-licensed) is used by `autoyou_agents/browser_agent` (and, through it, `autoyou_agents/assistant_agent`) to provide controller-backed, real-browser automation and MCP stdio tool execution. Its controller and browser-node Docker images (`ghcr.io/lvcidpsyche/auto-browser-controller` and `-browser-node`, MIT) run as a separate optional service from `servers/browser-desktop/docker-compose.yml`; the Chromium and Debian packages inside them keep their own licences and are not redistributed by AutoYou.
 - Personal wake word detection is AutoYou-authored MFCC/DTW code using the owner's recordings. Python numerical operations use NumPy (BSD-3-Clause); this feature bundles no third-party pretrained wake word model.
-- Server manifests pin LiteLLM 1.100.4 and require filelock >=4.2.4,<5 and setuptools >=84.2.1,<85. Each retains its MIT notices; the server hash-pinned lockfile and per-artifact SBOMs record declared versions.
+- Server manifests pin LiteLLM 1.110.1 and require filelock >=4.2.12,<5 and setuptools >=84.2.1,<85. Each retains its MIT notices; the server hash-pinned lockfile and per-artifact SBOMs record declared versions.
 - `cognee` (`https://github.com/topoteretes/cognee`, Apache-2.0) and `instructor` (MIT) provide optional graph and vector memory capabilities in high-resource agent profiles (`requirements/cognee.txt`).
 - `tunnelmole` npm client is MIT-licensed, but the self-hosted Tunnelmole Service used by VM2 is AGPL-3.0 unless AutoYou has a separate commercial license. Do not treat the npm client notice as covering the self-hosted service. VM2 release/deploy artifacts need the service license text, corresponding-source/commercial-license evidence, and SBOM/SCA before enterprise production use.
 - `undetected-chromedriver` is GPLv3 in research-only requirements and must not be included in official commercial bundles unless approved by counsel.

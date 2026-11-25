@@ -1360,7 +1360,7 @@ def _install_component_requirements(
     if component == "voice":
         # Replace a reused legacy RealtimeSTT 0.x install before pip sees
         # voice.txt's newer scipy/faster-whisper/websocket pins. The
-        # server-safe 1.0.2 shim is intentionally installed separately.
+        # server-safe RealtimeSTT wheel is installed separately.
         install_realtimestt_runtime(venv_python)
     verified_pip_install(
         venv_python,

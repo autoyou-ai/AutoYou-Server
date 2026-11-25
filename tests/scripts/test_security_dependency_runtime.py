@@ -59,7 +59,7 @@ from pathlib import Path
 import os
 from importlib.metadata import version
 from filelock import FileLock, Timeout
-assert version("filelock") == "4.2.4"
+assert version("filelock") == "4.2.12"
 path = Path(os.environ["AUTOYOU_TEST_ROOT"]) / "synthetic.lock"
 with FileLock(path, timeout=1):
     try:
@@ -85,8 +85,8 @@ import litellm
 from google.adk.models.lite_llm import LiteLlm
 from google.adk.models.llm_request import LlmRequest
 from google.genai import types
-assert version("litellm") == "1.100.4"
-assert version("google-adk") == "2.14.0"
+assert version("litellm") == "1.110.1"
+assert version("google-adk") == "2.15.0"
 seen = []
 
 class Provider(BaseHTTPRequestHandler):

@@ -9,14 +9,16 @@
 #
 # chatterbox-tts 0.1.7 asks for transformers==5.2.0 and diffusers==0.29.0,
 # which have published advisories (remote-code and path-traversal issues). The
-# patched releases below were checked on 2026-10-25 with a full GPU build and
-# speech run: same clip choice, watermark, intelligibility and speed.
-# transformers matches the server's audited lock.
+# October 25 GPU speech comparison used transformers 5.12.1 and diffusers
+# 0.38.0. Python 3.10 retains that pair. Python 3.11 and later use the
+# transformers release in the server lock.
 #
 # Only what the English model imports is listed; the multilingual tokenizers,
 # Gradio demo and loudness tools are left out.
-transformers==5.12.1
-diffusers==0.38.0
+transformers==5.12.1; python_version < "3.11"
+transformers==5.23.0; python_version >= "3.11"
+diffusers==0.38.0; python_version < "3.11"
+diffusers==0.43.0; python_version >= "3.11"
 safetensors==0.8.0
 conformer==0.3.2
 resemble-perth==1.0.1
@@ -24,8 +26,9 @@ s3tokenizer==0.3.0
 librosa==0.11.0
 omegaconf==2.4.0
 einops==0.8.2
-soundfile>=0.13.1
-scipy>=1.13
+soundfile>=0.14.0
+scipy>=1.13; python_version < "3.12"
+scipy>=1.18.1; python_version >= "3.12"
 # The installer replaces Perth's pkg_resources path lookup with pathlib.
 # Its model and watermark code stay unchanged; use patched build metadata tools.
 setuptools==84.2.1

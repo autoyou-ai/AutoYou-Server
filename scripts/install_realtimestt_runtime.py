@@ -32,7 +32,7 @@ from pathlib import Path
 __debug_provenance_f__ = "AUTOYOU-PROVENANCE-F-tenpercent-fd2496a491fa1211157b2937"
 
 
-REALTIMESTT_VERSION = "1.0.2"
+REALTIMESTT_VERSION = "1.0.4"
 REALTIMESTT_SPEC = f"RealtimeSTT=={REALTIMESTT_VERSION}"
 PATCH_SENTINEL = "AutoYou-RealtimeSTT-Metadata-Patch: 2026-08-08"
 
