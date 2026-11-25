@@ -1084,6 +1084,12 @@ async def _initialize_services_on_startup() -> None:
                 runtime.LOGGER.info("Pairing router configured.")
             except Exception as e:
                 runtime.LOGGER.warning(f"Failed to configure pairing router: {e}")
+            if runtime.os.getenv("AUTOYOU_NATIVE_OWNED_SERVER") == "1":
+                runtime.refresh_agent_install_registry(agents_root=runtime._AUTOYOU_AGENTS_ROOT)
+                runtime._register_admin_frontend_proxy()
+                if _start_ai_when_startup_services_are_skipped() and runtime.should_start_ai_agent_server():
+                    runtime.schedule_ai_agent_server_autostart()
+                await runtime.sync_managed_frontend_backends()
             runtime.STATE.initialized_services_on_startup = True
             runtime._update_startup_status(
                 status="complete",
@@ -2507,8 +2513,10 @@ async def _whatsapp_status() -> tuple[str, str]:
 
 
 def _autostart_allowed_on_default_password() -> bool:
-    """Opt-in escape hatch for unattended startup on the default password."""
+    """Opt-in escape hatch for unattended or native desktop owned-server startup on the default password."""
     runtime = _runtime()
+    if str(runtime.os.getenv("AUTOYOU_NATIVE_OWNED_SERVER", "")).strip() == "1":
+        return True
     return str(runtime.os.getenv("AUTOYOU_AUTOSTART_ON_DEFAULT_PASSWORD", "")).strip().lower() in {"1", "true", "yes", "on"}
 
 
@@ -4114,6 +4122,9 @@ async def main():
         if runtime.os.getenv("AUTOYOU_NATIVE_OWNED_SERVER") == "1":
             # Websites and the command directory are part of the native app,
             # including after a server restart with messaging services deferred.
+            runtime.refresh_agent_install_registry(agents_root=runtime._AUTOYOU_AGENTS_ROOT)
+            runtime._register_admin_frontend_proxy()
+            await runtime.sync_managed_frontend_backends()
             await _start_autoyou_page_service_if_enabled()
     else:
         if runtime.should_start_ai_agent_server():
