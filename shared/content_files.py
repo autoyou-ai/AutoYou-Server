@@ -12,12 +12,19 @@ import os
 from pathlib import Path
 import shutil
 import tempfile
+import secrets
 
 from shared.secure_storage import FILE_HEADER, SecureStorageError, read_secure_file, write_secure_file, secure_storage_enabled
 
 CHUNK_SIZE = 1024 * 1024
 FORMAT = "autoyou-media-chunks-1"
 REFERENCE = b"AUTOYOU-CONTENT-REFERENCE-1\n"
+
+
+def _reference_identity(path, roots):
+    resolved = Path(path).resolve()
+    relative = [resolved.relative_to(root.resolve()) for root in roots if resolved.is_relative_to(root.resolve())]
+    return min(relative, key=lambda value: len(value.parts)).as_posix() if relative else None
 
 
 def reference_target(path):
@@ -28,22 +35,50 @@ def reference_target(path):
     raw = read_secure_file(path, migrate_plaintext=False)
     if not raw.startswith(REFERENCE):
         return None
-    value = json.loads(raw[len(REFERENCE):])
+    try:
+        value = json.loads(raw[len(REFERENCE):])
+    except (ValueError, UnicodeError):
+        return None
+    if not isinstance(value, dict):
+        return None
     digest = value.get("digest", "")
     import re
-    if not re.fullmatch(r"[a-f0-9]{64}", digest):
-        raise ValueError("Invalid content object reference")
-    from shared.content_library import managed_roots
+    if not isinstance(digest, str) or not re.fullmatch(r"[a-f0-9]{64}", digest):
+        return None
+    from shared.content_library import ContentLibrary, managed_roots
+    roots = managed_roots()
+    identity = _reference_identity(path, roots)
+    if not identity:
+        return None
+    library = ContentLibrary()
+    with library.connect() as db:
+        proof = db.execute("SELECT 1 FROM content_references WHERE identity=? AND nonce=? AND digest=?",
+                           (identity, str(value.get("nonce", "")), digest)).fetchone()
+        if not proof and "nonce" not in value:
+            # Upgrade only references already recorded by the producer in the
+            # trusted catalog, never magic bytes supplied by a new upload.
+            originals = db.execute("SELECT path FROM content WHERE digest=? AND managed_path!='' AND deleted=0", (digest,)).fetchall()
+            proof = any(_reference_identity(row[0], roots) == identity for row in originals)
+    if not proof:
+        return None
     target = Path(value["target"])
-    allowed = [root / ".objects" / digest[:2] / digest for root in managed_roots()]
-    if target.is_symlink() or not any(target.resolve() == item.resolve() and target.resolve().is_relative_to(root.resolve())
-                                     for root, item in zip(managed_roots(), allowed)):
+    allowed = [root / ".objects" / digest[:2] / digest for root in roots]
+    if target.is_symlink() or target.parts[-3:] != (".objects", digest[:2], digest):
         raise ValueError("Content object is outside managed storage")
-    if any(path.resolve().is_relative_to(root / ".objects") for root in managed_roots()):
+    if any(path.resolve().is_relative_to(root / ".objects") for root in roots):
         raise ValueError("Content objects cannot reference other objects")
-    if not target.is_file():
-        raise FileNotFoundError("Restore the library's .objects folder to read this item")
-    return target
+    in_managed = any(
+        target.resolve() == item.resolve() and target.resolve().is_relative_to(root.resolve())
+        for root, item in zip(roots, allowed)
+    )
+    if in_managed and target.is_file():
+        return target
+    for root, candidate in zip(roots, allowed):
+        if not candidate.is_symlink() and candidate.is_file() and candidate.resolve().is_relative_to(root.resolve()):
+            return candidate
+    if not in_managed:
+        raise ValueError("Content object is outside managed storage")
+    raise FileNotFoundError("Restore the library's .objects folder to read this item")
 
 
 def make_reference(path, target, digest):
@@ -51,9 +86,17 @@ def make_reference(path, target, digest):
     path, target = Path(path), Path(target)
     if path.resolve() == target.resolve():
         return
+    from shared.content_library import ContentLibrary, managed_roots
+    roots = managed_roots()
+    identity = _reference_identity(path, roots)
+    if not identity or not any(target.resolve() == (root / ".objects" / digest[:2] / digest).resolve()
+                               and target.resolve().is_relative_to(root.resolve()) for root in roots) or target.is_symlink():
+        raise ValueError("Reference must point to an owned content object")
+    nonce = secrets.token_hex(32)
+    with ContentLibrary().connect() as db:
+        db.execute("INSERT INTO content_references VALUES(?,?,?)", (identity, nonce, digest))
     staged = path.with_name(path.name + ".reference")
-    write_secure_file(staged, REFERENCE + json.dumps({"target": str(target), "digest": digest}).encode())
-    reference_target(staged)  # Validate before replacing any bytes.
+    write_secure_file(staged, REFERENCE + json.dumps({"target": str(target), "digest": digest, "nonce": nonce}).encode())
     # The object has already been read back and verified. Publish its reference
     # before cleaning the obsolete sidecar, so interruption never loses data.
     os.replace(staged, path)

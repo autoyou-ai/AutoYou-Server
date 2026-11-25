@@ -18,11 +18,21 @@ import time
 import uuid
 
 from shared.platform_runtime import get_mutable_data_dir
-from shared.secure_storage import load_secure_json, save_secure_json, secure_storage_enabled
+from shared.secure_storage import SecureStorageError, load_secure_json, save_secure_json, secure_storage_enabled
 
 KINDS = {"page", "note", "audio", "voice", "video", "image", "location", "file", "agent"}
 SOURCE = re.compile(r"[a-z][a-z0-9_-]{0,79}\Z")
 COLLECTION = "COALESCE(NULLIF(collection,''),source_collection)"
+PRIVACY_OPTIONS = {
+    "diary_agent": "index_private",
+    "profile_agent": "index_profile",
+    "reminders_agent": "index_reminders",
+}
+PRIVACY_BASE_KINDS = {
+    "diary": "index_private",
+    "profile": "index_profile",
+    "reminders": "index_reminders",
+}
 
 
 def state_root() -> Path:
@@ -63,15 +73,68 @@ def configure_organization(*, auto_organize: bool, semantic_labels: bool, index_
     if notes_sync_enabled is not None:
         values["notes_sync_enabled"] = notes_sync_enabled
     save_secure_json(state_root() / "settings.json", values)
-    if False in (index_private, index_profile, index_reminders):
+    if False in (index_private, index_profile, index_reminders) or True in (index_private, index_profile, index_reminders):
         library = ContentLibrary()
         with library.connect() as db:
             db.execute("BEGIN IMMEDIATE")
-            for source, flag in (("diary_agent", index_private), ("profile_agent", index_profile), ("reminders_agent", index_reminders)):
-                if flag is False:
-                    for row in db.execute("SELECT id FROM content WHERE source=? AND deleted=0", (source,)).fetchall():
-                        db.execute("UPDATE content SET deleted=1,title='',source_text='',annotation='',revision=? WHERE id=?",
-                                   (library.tick(db), row["id"]))
+            disabled_bases = {
+                base for base, flag in (("diary", index_private), ("profile", index_profile), ("reminders", index_reminders))
+                if flag is False
+            }
+            disabled_sources = {
+                source for source, flag in (("diary_agent", index_private), ("profile_agent", index_profile), ("reminders_agent", index_reminders))
+                if flag is False
+            }
+            if disabled_bases:
+                for row in db.execute("SELECT source,base_kind FROM content_agents").fetchall():
+                    if row["base_kind"] in disabled_bases:
+                        disabled_sources.add(row["source"])
+                if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='native_content'").fetchone():
+                    for row in db.execute("SELECT DISTINCT source, json_extract(payload,'$.base_kind') AS base_kind FROM native_content").fetchall():
+                        if row["base_kind"] in disabled_bases:
+                            disabled_sources.add(row["source"])
+            for source in sorted(disabled_sources):
+                live_rows = db.execute("SELECT id FROM content WHERE source=? AND deleted=0", (source,)).fetchall()
+                for row in live_rows:
+                    library._tombstone(db, row["id"], library.tick(db), preserve_native_file=True)
+                    for child in db.execute("SELECT id FROM content WHERE parent_id=? AND deleted=0", (row["id"],)).fetchall():
+                        library._tombstone(db, child["id"], library.tick(db), preserve_native_file=True)
+                stale_deleted = db.execute(
+                    """SELECT id,revision FROM content WHERE source=? AND deleted=1 AND (
+                       title!='' OR source_text!='' OR annotation!='' OR suggested_annotation!=''
+                       OR labels!='[]' OR suggested_labels!='[]' OR source_labels!='[]'
+                       OR collection!='' OR source_collection!='' OR suggested_collection!=''
+                       OR href!='' OR path!='' OR managed_path!='')""",
+                    (source,),
+                ).fetchall()
+                for row in stale_deleted:
+                    library._tombstone(db, row["id"], row["revision"])
+            enabled_bases = {
+                base for base, flag in (("diary", index_private), ("profile", index_profile), ("reminders", index_reminders))
+                if flag is True
+            }
+            if enabled_bases and db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='native_content'").fetchone():
+                for row in db.execute("SELECT source,source_id,payload FROM native_content").fetchall():
+                    try:
+                        record = json.loads(row["payload"])
+                    except Exception:
+                        continue
+                    base = record.get("base_kind", "")
+                    if base in enabled_bases:
+                        kind = {"notes": "note", "diary": "note", "page": "page", "music": "audio"}.get(base, "agent")
+                        item = library.publish(
+                            row["source"],
+                            row["source_id"],
+                            record.get("title", "Untitled"),
+                            kind,
+                            _db=db,
+                            force_revision=True,
+                            source_labels=record.get("tags"),
+                            source_collection=record.get("category"),
+                            source_text=record.get("body", ""),
+                            href="/agent/organizer_agent/api/content/native/" + row["source"] + "/" + row["source_id"],
+                        )
+                        library.restore_native_files(db, row["source"], record=record, parent_id=item["id"])
     return settings()
 
 
@@ -106,9 +169,16 @@ def output_dir(source: str) -> Path:
 
 
 def managed_roots():
-    """Include prior destinations during Maximus key rotation and unsealing."""
-    values = load_secure_json(state_root() / "settings.json", default={})
-    roots = [settings()["output_root"], *values.get("managed_roots", [])]
+    """Include the catalog state root and prior destinations during Maximus key rotation and unsealing."""
+    base = state_root()
+    default_content = base / "content"
+    try:
+        values = load_secure_json(base / "settings.json", default={})
+        current_output = settings()["output_root"]
+    except SecureStorageError:
+        values = {}
+        current_output = str(default_content)
+    roots = list(dict.fromkeys([str(base), str(default_content), current_output, *values.get("managed_roots", [])]))
     test = os.getenv("AUTOYOU_TEST_ROOT")
     return [Path(root).resolve() for root in roots if not test or Path(root).resolve().is_relative_to(Path(test).resolve())]
 
@@ -212,6 +282,13 @@ class ContentLibrary:
                 source TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '', handle TEXT NOT NULL DEFAULT '',
                 icon TEXT NOT NULL DEFAULT '', accent TEXT NOT NULL DEFAULT '', base_kind TEXT NOT NULL DEFAULT '',
                 updated REAL NOT NULL DEFAULT 0)""")
+            # Original native attachment records are retained while their index
+            # is hidden. This source store is never returned by library feeds.
+            db.execute("""CREATE TABLE IF NOT EXISTS native_content_files(
+                id TEXT PRIMARY KEY, source TEXT NOT NULL, metadata TEXT NOT NULL)""")
+            db.execute("""CREATE TABLE IF NOT EXISTS content_references(
+                identity TEXT NOT NULL, nonce TEXT NOT NULL, digest TEXT NOT NULL,
+                PRIMARY KEY(identity,nonce))""")
 
     @contextmanager
     def connect(self):
@@ -228,8 +305,97 @@ class ContentLibrary:
         db.execute("UPDATE clock SET revision=revision+1 WHERE id=1")
         return db.execute("SELECT revision FROM clock WHERE id=1").fetchone()[0]
 
+    @staticmethod
+    def _tombstone(db, row_id: str, revision: int, *, preserve_native_file=False) -> None:
+        if preserve_native_file:
+            row = db.execute("SELECT * FROM content WHERE id=?", (row_id,)).fetchone()
+            if row and row["source"].startswith("custom_") and row["path"]:
+                db.execute("INSERT OR REPLACE INTO native_content_files VALUES(?,?,?)",
+                           (row_id, row["source"], json.dumps(dict(row))))
+        else:
+            db.execute("DELETE FROM native_content_files WHERE id=?", (row_id,))
+        db.execute(
+            """UPDATE content SET deleted=1,title='',path='',href='',labels='[]',annotation='',
+               collection='',suggested_labels='[]',parent_id='',source_labels='[]',
+               source_collection='',source_text='',user_edited=0,suggested_annotation='',
+               suggested_collection='',organization_state='pending',organization_basis='',
+               digest='',byte_size=0,file_stamp='',managed_path='',revision=?,updated=?
+               WHERE id=?""",
+            (revision, time.time(), row_id),
+        )
+
+    def restore_native_files(self, db, source, *, record=None, parent_id=""):
+        if not self.source_enabled(source, db=db):
+            return
+        columns = {row[1] for row in db.execute("PRAGMA table_info(content)")} - {"id", "source", "source_id"}
+        for saved in db.execute("SELECT id,metadata FROM native_content_files WHERE source=?", (source,)).fetchall():
+            original = json.loads(saved["metadata"])
+            values = {key: value for key, value in original.items() if key in columns}
+            values.update(deleted=0, revision=self.tick(db), updated=time.time(), organization_state="pending",
+                          source_version=original["source_version"] + 1, retry_at=0)
+            db.execute("UPDATE content SET " + ','.join(key + '=?' for key in values) + " WHERE id=? AND source=? AND deleted=1",
+                       (*values.values(), saved["id"], source))
+            db.execute("DELETE FROM native_content_files WHERE id=?", (saved["id"],))
+        if record is not None:
+            media_by_item = {value["item_id"]: value for value in record.get("media", []) if "item_id" in value}
+            for attachment in record.get("attachments", []):
+                media = media_by_item.get(attachment, {})
+                db.execute("UPDATE content SET parent_id=?,source_text=? WHERE id=? AND source=? AND deleted=0",
+                           (parent_id, str(media.get("transcription", ""))[:32768], attachment, source))
+
+    @classmethod
+    def privacy_option_for(cls, source: str, db=None, *, base_kind: str = "") -> str | None:
+        if source in PRIVACY_OPTIONS:
+            return PRIVACY_OPTIONS[source]
+        if base_kind in PRIVACY_BASE_KINDS:
+            return PRIVACY_BASE_KINDS[base_kind]
+        if not str(source).startswith("custom_"):
+            return None
+
+        def _lookup(conn) -> str:
+            if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='content_agents'").fetchone():
+                agent = conn.execute("SELECT base_kind FROM content_agents WHERE source=?", (source,)).fetchone()
+                if agent and agent[0]:
+                    return str(agent[0])
+            if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='native_content'").fetchone():
+                native = conn.execute(
+                    "SELECT json_extract(payload,'$.base_kind') FROM native_content WHERE source=? LIMIT 1",
+                    (source,),
+                ).fetchone()
+                if native and native[0]:
+                    return str(native[0])
+            return ""
+
+        resolved = ""
+        if db is not None:
+            resolved = _lookup(db)
+        elif (state_root() / "catalog.sqlite3").exists():
+            with cls().connect() as conn:
+                resolved = _lookup(conn)
+        return PRIVACY_BASE_KINDS.get(resolved)
+
+    @classmethod
+    def source_enabled(cls, source: str, db=None, *, base_kind: str = "", current_settings: dict | None = None) -> bool:
+        option = cls.privacy_option_for(source, db, base_kind=base_kind)
+        if not option:
+            return True
+        prefs = current_settings or settings()
+        return bool(prefs.get(option))
+
+    @classmethod
+    def disabled_sources(cls, db=None) -> list[str]:
+        if db is None:
+            with cls().connect() as connection:
+                return cls.disabled_sources(connection)
+        prefs = settings()
+        hidden = {source for source, option in PRIVACY_OPTIONS.items() if not prefs[option]}
+        for row in db.execute("SELECT source,base_kind FROM content_agents"):
+            if row["base_kind"] in PRIVACY_BASE_KINDS and not prefs[PRIVACY_BASE_KINDS[row["base_kind"]]]:
+                hidden.add(row["source"])
+        return sorted(hidden)
+
     def publish(self, source: str, source_id: str, title: str, kind: str = "file", *, path: str = "", href: str = "", force_revision=False, _db=None,
-                parent_id=None, source_labels=None, source_collection=None, source_text=None) -> dict:
+                parent_id=None, source_labels=None, source_collection=None, source_text=None, base_kind: str = "") -> dict:
         if not SOURCE.fullmatch(source) or not str(source_id) or len(str(source_id)) > 256:
             raise ValueError("Invalid content source or identifier")
         if kind not in KINDS:
@@ -238,27 +404,50 @@ class ContentLibrary:
             raise ValueError("Content links must point to an AutoYou agent")
         title = str(title).strip()[:300] or "Untitled"
         with (self.connect() if _db is None else nullcontext(_db)) as db:
-            if _db is None:
-                db.execute("BEGIN IMMEDIATE")
-            privacy_option = {"diary_agent": "index_private", "profile_agent": "index_profile", "reminders_agent": "index_reminders"}.get(source)
+            privacy_option = self.privacy_option_for(source, db=db, base_kind=base_kind)
             if privacy_option and not settings()[privacy_option]:
-                return {"deleted": 1, "source": source}
+                existing_row = db.execute("SELECT id,deleted,revision FROM content WHERE source=? AND source_id=?", (source, str(source_id))).fetchone()
+                if existing_row and not existing_row["deleted"]:
+                    if _db is None:
+                        db.execute("BEGIN IMMEDIATE")
+                    rev = self.tick(db)
+                    self._tombstone(db, existing_row["id"], rev, preserve_native_file=True)
+                    for child in db.execute("SELECT id FROM content WHERE parent_id=? AND deleted=0", (existing_row["id"],)).fetchall():
+                        self._tombstone(db, child["id"], self.tick(db), preserve_native_file=True)
+                    return {"id": existing_row["id"], "deleted": 1, "source": source, "revision": rev}
+                return {
+                    "id": existing_row["id"] if existing_row else uuid.uuid4().hex,
+                    "deleted": 1,
+                    "source": source,
+                    "revision": existing_row["revision"] if existing_row else 0,
+                }
             row = db.execute("SELECT * FROM content WHERE source=? AND source_id=?", (source, str(source_id))).fetchone()
-            file_changed = False
-            if row and path and row["file_stamp"]:
-                try:
-                    stat = Path(path).stat()
-                    file_changed = row["file_stamp"] != f"{stat.st_size}:{stat.st_mtime_ns}"
-                except OSError:
-                    file_changed = row["organization_state"] != "missing"
-            extras = {
-                "parent_id": str(parent_id if parent_id is not None else row["parent_id"] if row else "")[:64],
-                "source_labels": json.dumps(list(dict.fromkeys(str(x).strip()[:64] for x in source_labels if str(x).strip()))[:24]) if source_labels is not None else row["source_labels"] if row else "[]",
-                "source_collection": str(source_collection if source_collection is not None else row["source_collection"] if row else "")[:100],
-                "source_text": str(source_text if source_text is not None else row["source_text"] if row else "")[:32768],
-            }
+
+            def _extras_and_changed(current):
+                changed = False
+                if current and path and current["file_stamp"]:
+                    try:
+                        stat = Path(path).stat()
+                        changed = current["file_stamp"] != f"{stat.st_size}:{stat.st_mtime_ns}"
+                    except OSError:
+                        changed = current["organization_state"] != "missing"
+                ext = {
+                    "parent_id": str(parent_id if parent_id is not None else current["parent_id"] if current else "")[:64],
+                    "source_labels": json.dumps(list(dict.fromkeys(str(x).strip()[:64] for x in source_labels if str(x).strip()))[:24]) if source_labels is not None else current["source_labels"] if current else "[]",
+                    "source_collection": str(source_collection if source_collection is not None else current["source_collection"] if current else "")[:100],
+                    "source_text": str(source_text if source_text is not None else current["source_text"] if current else "")[:32768],
+                }
+                return ext, changed
+
+            extras, file_changed = _extras_and_changed(row)
             if row and not force_revision and not file_changed and not row["deleted"] and all(row[key] == value for key, value in {"title": title, "kind": kind, "path": str(path), "href": href, **extras}.items()):
                 return self.public(row)
+            if _db is None:
+                db.execute("BEGIN IMMEDIATE")
+                row = db.execute("SELECT * FROM content WHERE source=? AND source_id=?", (source, str(source_id))).fetchone()
+                extras, file_changed = _extras_and_changed(row)
+                if row and not force_revision and not file_changed and not row["deleted"] and all(row[key] == value for key, value in {"title": title, "kind": kind, "path": str(path), "href": href, **extras}.items()):
+                    return self.public(row)
             identifier = row["id"] if row else uuid.uuid4().hex
             revision = self.tick(db)
             db.execute("""INSERT INTO content(id,source,source_id,title,kind,path,href,suggested_labels,labels,revision,updated)
@@ -276,6 +465,8 @@ class ContentLibrary:
 
     @staticmethod
     def public(row, *, include_path=False):
+        if row["deleted"]:
+            return {"id": row["id"], "source": row["source"], "deleted": 1, "revision": row["revision"]}
         data = dict(row)
         for key in ("labels", "suggested_labels", "source_labels"):
             data[key] = json.loads(data[key])
@@ -302,13 +493,21 @@ class ContentLibrary:
         out["deleted"] = 0
         return out
 
-    def list(self, *, q="", kind="", source="", collection="", after=None, offset=0, limit=100, sort="updated") -> dict:
+    def list(self, *, q="", kind="", source="", collection="", after=None, offset=0, limit=100, sort="updated", allowed_sources=None) -> dict:
         where, args = [], []
         if after is None:
             where.append("deleted=0")
         else:
             where.append("revision>?")
             args.append(max(0, int(after)))
+        if allowed_sources is not None:
+            allowed_list = sorted(set(allowed_sources))
+            if not allowed_list:
+                with self.connect() as db:
+                    revision = db.execute("SELECT revision FROM clock WHERE id=1").fetchone()[0]
+                return {"items": [], "total": 0, "offset": max(0, int(offset)), "has_more": False, "cursor": revision, "revision": revision}
+            where.append("source IN (" + ",".join("?" for _ in allowed_list) + ")")
+            args.extend(allowed_list)
         for key, value in (("kind", kind), ("source", source), ("collection", collection)):
             if value:
                 column = COLLECTION if key == "collection" else key
@@ -317,10 +516,14 @@ class ContentLibrary:
         if q:
             where.append("(instr(lower(title),lower(?)) OR instr(lower(labels),lower(?)) OR instr(lower(source_labels),lower(?)) OR instr(lower(annotation),lower(?)) OR instr(lower(source_text),lower(?)))")
             args.extend([q[:300]] * 5)
-        clause = " WHERE " + " AND ".join(where) if where else ""
         limit, offset = min(200, max(1, int(limit))), max(0, int(offset))
         with self.connect() as db:
             db.execute("BEGIN")
+            hidden = self.disabled_sources(db)
+            if hidden:
+                where.append("(deleted=1 OR source NOT IN (" + ','.join('?' for _ in hidden) + "))")
+                args.extend(hidden)
+            clause = " WHERE " + " AND ".join(where) if where else ""
             revision = db.execute("SELECT revision FROM clock WHERE id=1").fetchone()[0]
             total = db.execute("SELECT COUNT(*) FROM content" + clause, args).fetchone()[0]
             order = "revision" if after is not None else {"title": "lower(title),id", "size": "byte_size DESC,id"}.get(sort, "updated DESC,id")
@@ -337,7 +540,7 @@ class ContentLibrary:
         with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             row = db.execute("SELECT * FROM content WHERE id=? AND deleted=0", (identifier,)).fetchone()
-            if not row:
+            if not row or not self.source_enabled(row["source"], db=db):
                 raise LookupError("Content not found")
             if row["revision"] != expected_revision:
                 raise FileExistsError("This item changed on another device. Refresh before saving.")
@@ -348,13 +551,12 @@ class ContentLibrary:
     def forget(self, source, source_id):
         with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
-            if not db.execute("SELECT 1 FROM content WHERE source=? AND source_id=? AND deleted=0", (source, str(source_id))).fetchone():
+            parent = db.execute("SELECT id FROM content WHERE source=? AND source_id=? AND deleted=0", (source, str(source_id))).fetchone()
+            if not parent:
                 return
-            db.execute("UPDATE content SET deleted=1,revision=?,updated=? WHERE source=? AND source_id=?",
-                       (self.tick(db), time.time(), source, str(source_id)))
-            parent = db.execute("SELECT id FROM content WHERE source=? AND source_id=?", (source, str(source_id))).fetchone()
-            for child in db.execute("SELECT id FROM content WHERE parent_id=? AND deleted=0", (parent[0],)).fetchall():
-                db.execute("UPDATE content SET deleted=1,revision=?,updated=? WHERE id=?", (self.tick(db), time.time(), child[0]))
+            self._tombstone(db, parent["id"], self.tick(db))
+            for child in db.execute("SELECT id FROM content WHERE parent_id=? AND deleted=0", (parent["id"],)).fetchall():
+                self._tombstone(db, child["id"], self.tick(db))
 
 
 def publish_content(*args, **kwargs):

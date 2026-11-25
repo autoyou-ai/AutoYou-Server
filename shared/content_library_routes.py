@@ -110,9 +110,12 @@ def register(app, authorize, prefix: str, worker=None):
         library = ContentLibrary()
         with library.connect() as db:
             row = db.execute("SELECT * FROM content WHERE id=? AND deleted=0", (item_id,)).fetchone()
-        if not row:
-            raise HTTPException(404, "Content not found")
+            if not row or not library.source_enabled(row["source"], db=db):
+                raise HTTPException(404, "Content not found")
         return library, row
+
+    def scope_key(allowed):
+        return None if allowed is None else sorted(allowed)
 
     @app.get(prefix + "/summary")
     async def summary(request: Request):
@@ -122,16 +125,22 @@ def register(app, authorize, prefix: str, worker=None):
 
         def build():
             library = ContentLibrary()
-            data = content_index.summary(library)
+            allowed = content_access.allowed_sources_filter(request)
+            data = content_index.summary(library, allowed_sources=allowed)
             sources = data.pop("sources")
             names = content_agents.describe_all(library, [row["source"] for row in sources])
             agents = [{**names[row["source"]], "count": row["count"], "bytes": row["bytes"], "latest": row["latest"],
                        "removal": content_removal.plan({"source": row["source"], "source_id": ""})["mode"]} for row in sources]
-            current = settings()
+            current = content_access.public_settings(request)
+            access_scope = content_index.etag("access", scope_key(allowed), content_access.abilities(request)["role"],
+                current["index_private"], current["index_profile"], current["index_reminders"])
             return {**data, "agents": agents, "abilities": content_access.abilities(request),
-                    "settings": {key: current[key] for key in ("output_root", "encrypted_at_rest", "auto_organize", "semantic_labels", "index_private", "index_profile", "index_reminders", "notes_sync_enabled", "content_sync_enabled")}}
+                    "settings": {key: current[key] for key in ("output_root", "encrypted_at_rest", "auto_organize", "semantic_labels", "index_private", "index_profile", "index_reminders", "notes_sync_enabled", "content_sync_enabled")},
+                    "access_scope": access_scope, "_scope": scope_key(allowed)}
         payload = await asyncio.to_thread(build)
-        tag = content_index.etag("summary", payload["revision"], payload["worker"], payload["settings"], payload["abilities"]["role"])
+        scope = payload.pop("_scope", None)
+        parts = ("summary", payload["revision"], payload["worker"], payload["settings"], payload["abilities"]["role"])
+        tag = content_index.etag(*parts, *(("scope", scope) if scope is not None else ()))
         return answer(request, payload, tag)
 
     @app.get(prefix + "/changes")
@@ -139,16 +148,36 @@ def register(app, authorize, prefix: str, worker=None):
         denied = gate(request)
         if denied is not None:
             return denied
-        result = await asyncio.to_thread(lambda: content_index.changes(ContentLibrary(), after, limit))
-        return answer(request, result, content_index.etag("changes", after, limit, result["revision"], result["cursor"]))
+
+        def build():
+            allowed = content_access.allowed_sources_filter(request)
+            readable = content_access.allowed_sources_filter(request, include_disabled=True)
+            return content_index.changes(ContentLibrary(), after, limit, allowed_sources=readable), scope_key(allowed)
+        result, scope = await asyncio.to_thread(build)
+        parts = ("changes", after, limit, result["revision"], result["cursor"])
+        tag = content_index.etag(*parts, *(("scope", scope) if scope is not None else ()))
+        return answer(request, result, tag)
 
     @app.get(prefix + "/groups")
     async def groups(request: Request, per: int = 6, q: str = "", kind: str = "", collection: str = ""):
         denied = gate(request)
         if denied is not None:
             return denied
-        result = await asyncio.to_thread(lambda: content_index.groups(ContentLibrary(), per=per, q=q, kind=kind, collection=collection))
-        return answer(request, result, content_index.etag("groups", per, q, kind, collection, result["revision"]))
+
+        def build():
+            library = ContentLibrary()
+            allowed = content_access.allowed_sources_filter(request)
+            scope = scope_key(allowed)
+            rev = content_index.revision(library)
+            parts = ("groups", per, q, kind, collection, rev)
+            candidate_tag = content_index.etag(*parts, *(("scope", scope) if scope is not None else ()))
+            if _matches(request.headers.get("if-none-match", ""), candidate_tag):
+                return None, candidate_tag
+            result = content_index.groups(library, per=per, q=q, kind=kind, collection=collection, allowed_sources=allowed)
+            final_parts = ("groups", per, q, kind, collection, result["revision"])
+            return result, content_index.etag(*final_parts, *(("scope", scope) if scope is not None else ()))
+        result, tag = await asyncio.to_thread(build)
+        return answer(request, result, tag)
 
     @app.get(prefix + "/index")
     async def index(request: Request, q: str = "", kind: str = "", source: str = "", collection: str = "",
@@ -156,9 +185,26 @@ def register(app, authorize, prefix: str, worker=None):
         denied = gate(request)
         if denied is not None:
             return denied
-        result = await asyncio.to_thread(lambda: content_index.listing(
-            ContentLibrary(), q=q, kind=kind, source=source, collection=collection, offset=offset, limit=limit, sort=sort))
-        return answer(request, result, content_index.etag("index", q, kind, source, collection, offset, limit, sort, result["revision"]))
+        if source and ContentLibrary.source_enabled(source):
+            source_denied = content_access.deny_source(request, source, ignore_privacy=True)
+            if source_denied is not None:
+                return source_denied
+
+        def build():
+            library = ContentLibrary()
+            allowed = content_access.allowed_sources_filter(request)
+            scope = scope_key(allowed)
+            rev = content_index.revision(library)
+            parts = ("index", q, kind, source, collection, offset, limit, sort, rev)
+            candidate_tag = content_index.etag(*parts, *(("scope", scope) if scope is not None else ()))
+            if _matches(request.headers.get("if-none-match", ""), candidate_tag):
+                return None, candidate_tag
+            result = content_index.listing(
+                library, q=q, kind=kind, source=source, collection=collection, offset=offset, limit=limit, sort=sort, allowed_sources=allowed)
+            final_parts = ("index", q, kind, source, collection, offset, limit, sort, result["revision"])
+            return result, content_index.etag(*final_parts, *(("scope", scope) if scope is not None else ()))
+        result, tag = await asyncio.to_thread(build)
+        return answer(request, result, tag)
 
     @app.get(prefix + "/items/{item_id}/preview")
     async def preview(item_id: str, request: Request):
@@ -167,7 +213,11 @@ def register(app, authorize, prefix: str, worker=None):
             return denied
 
         def build():
+            from shared.content_storage import resolve_path
             library, row = live(item_id)
+            source_denied = content_access.deny_source(request, row["source"])
+            if source_denied is not None:
+                return None, source_denied
             item = library.public(row)
             text = row["source_text"] or ""
             if row["kind"] in ("note", "page", "agent"):
@@ -181,7 +231,7 @@ def register(app, authorize, prefix: str, worker=None):
             if row["path"]:
                 media = {"type": mimetypes.guess_type(row["path"])[0] or "application/octet-stream",
                          "thumbnail": row["kind"] == "image"}
-                path = Path(row["managed_path"] or row["path"])
+                path = resolve_path(row)
                 if not text and path.is_file() and Path(row["path"]).suffix.lower() in {
                     ".txt", ".md", ".csv", ".tsv", ".json", ".yaml", ".yml", ".xml", ".html", ".srt", ".vtt", ".log", ".py", ".js", ".css"
                 }:
@@ -194,8 +244,10 @@ def register(app, authorize, prefix: str, worker=None):
                     text = document_excerpt(path, Path(row["path"]).suffix.lower())
             identity = content_agents.describe_all(library, [row["source"]])[row["source"]]
             return {"item": item, "text": text[:PREVIEW_CHARS], "truncated": len(text) > PREVIEW_CHARS, "media": media,
-                    "agent": identity, "removal": content_removal.plan(row), "abilities": content_access.abilities(request)}
-        payload = await asyncio.to_thread(build)
+                    "agent": identity, "removal": content_removal.plan(row), "abilities": content_access.abilities(request, source=row["source"])}, None
+        payload, source_denied = await asyncio.to_thread(build)
+        if source_denied is not None:
+            return source_denied
         return answer(request, payload, content_index.etag("preview", item_id, payload["item"]["revision"], payload["abilities"]["role"]))
 
     @app.get(prefix + "/items/{item_id}/thumbnail")
@@ -204,7 +256,11 @@ def register(app, authorize, prefix: str, worker=None):
         if denied is not None:
             return denied
         _, row = await asyncio.to_thread(live, item_id)
-        path = Path(row["managed_path"] or row["path"] or "")
+        source_denied = content_access.deny_source(request, row["source"])
+        if source_denied is not None:
+            return source_denied
+        from shared.content_storage import resolve_path
+        path = resolve_path(row) if (row["managed_path"] or row["path"]) else Path("")
         if row["kind"] != "image" or not row["path"] or not path.is_file():
             raise HTTPException(404, "No preview")
         pixels = content_thumbs.nearest_size(size)
@@ -222,7 +278,7 @@ def register(app, authorize, prefix: str, worker=None):
         denied = gate(request, "delete")
         if denied is not None:
             return denied
-        results = await asyncio.to_thread(lambda: content_removal.remove_many(ContentLibrary(), [{"id": item_id, "revision": expected_revision}]))
+        results = await asyncio.to_thread(lambda: content_removal.remove_many(ContentLibrary(), [{"id": item_id, "revision": expected_revision}], request=request))
         result = results[0]
         if not result["ok"]:
             return error(result["error"], result["status"], **{k: v for k, v in result.items() if k in ("owner", "app", "mode", "stale", "missing")})
@@ -235,7 +291,7 @@ def register(app, authorize, prefix: str, worker=None):
         if denied is not None:
             return denied
         results = await asyncio.to_thread(lambda: content_removal.remove_many(
-            ContentLibrary(), [{"id": item.id, "revision": item.revision} for item in payload.items]))
+            ContentLibrary(), [{"id": item.id, "revision": item.revision} for item in payload.items], request=request))
         return JSONResponse({"results": results, "removed": sum(1 for r in results if r["ok"])}, headers={"Cache-Control": "no-store"})
 
     @app.post(prefix + "/items/organize")
@@ -253,8 +309,12 @@ def register(app, authorize, prefix: str, worker=None):
                 try:
                     with library.connect() as db:
                         row = db.execute("SELECT * FROM content WHERE id=? AND deleted=0", (target.id,)).fetchone()
-                    if not row:
+                    if not row or not library.source_enabled(row["source"]):
                         raise LookupError("Content not found")
+                    if not content_access.source_allowed(request, row["source"]):
+                        info = content_agents.describe(row["source"])
+                        results.append({"ok": False, "id": target.id, "status": 403, "error": f"Sign in to {info['name']} to access its content."})
+                        continue
                     labels = [label for label in json.loads(row["labels"]) if label.strip().lower() not in drop]
                     labels += [label.strip() for label in payload.add_labels if label.strip()]
                     item = library.annotate(target.id, labels=list(dict.fromkeys(labels)), annotation=row["annotation"],

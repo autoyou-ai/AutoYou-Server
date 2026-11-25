@@ -5548,9 +5548,10 @@ def _get_security_mode_from_cfg(cfg: Optional[Dict[str, Any]]) -> str:
 
 
 def _secure_storage_scan_roots() -> List[Path]:
+    from shared.content_library import managed_roots
     from shared.http_request_monitor import default_storage_path as http_monitor_storage_path
 
-    roots: List[Path] = [get_mutable_data_dir("AutoYou", anchor=__file__)]
+    roots: List[Path] = [get_mutable_data_dir("AutoYou", anchor=__file__), *managed_roots()]
     # In source mode this owned store lives under shared/, which the general
     # envelope discovery walk intentionally skips as an implementation tree.
     roots.append(http_monitor_storage_path())
@@ -5752,6 +5753,8 @@ def _migrate_secure_control_files() -> None:
         get_mutable_data_dir("AutoYou", anchor=__file__) / "agent_install_registry.json",
         # Agent-website OTP mission/chat/shared session tokens (scheduler_mission_control.py).
         get_config_dir("AutoYou", anchor=__file__) / "agent_ui_sessions.json",
+        get_mutable_data_dir("AutoYou", anchor=__file__) / "content_library" / "settings.json",
+        get_mutable_data_dir("AutoYou", anchor=__file__) / "content_library" / "catalog.sqlite3",
     ]
     try:
         result = seal_secure_paths(eager_seal_paths)

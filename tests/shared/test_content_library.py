@@ -113,6 +113,7 @@ def test_rotation_discovers_old_and_new_output_destinations(sandbox, monkeypatch
     assert output_dir("custom_project").parent == sandbox / "second-destination"
     monkeypatch.setattr(secure_storage, "_PROTECTED_FILES", set())
     secure_storage.rotate_secure_storage(password="synthetic-library-password")
+    assert settings()["output_root"] == str((sandbox / "second-destination").resolve())
     assert b"".join(content_files.read_range(target)) == b"synthetic private music"
     assert ContentLibrary().list()["items"][0]["id"] == saved["id"]
 
@@ -333,3 +334,139 @@ def test_note_body_edits_are_visible_to_incremental_catalog_clients(sandbox):
     notes.update_note(note_id=note_id, content="Second draft")
     changed = ContentLibrary().list(after=first["revision"])["items"]
     assert len(changed) == 1 and changed[0]["id"] == first["id"]
+
+
+def test_organizer_session_rechecks_source_agent_permissions(sandbox, monkeypatch):
+    from fastapi.testclient import TestClient
+    from starlette.requests import Request
+    from autoyou_agents.organizer_agent.website.backend import app as organizer
+    from autoyou_agents.shared_tools import scheduler_mission_control as smc
+
+    library = ContentLibrary()
+    note = library.publish("notes_agent", "101", "Protected synthetic note", "note", source_text="Private note excerpt")
+    voice_path = sandbox / "recording.wav"
+    voice_path.write_bytes(b"RIFFsynthetic-voice-recording")
+    voice = library.publish("voice_training_agent", "recording:1", "recording.wav", "voice", path=str(voice_path))
+    custom = library.publish("custom_project", "c1", "Custom item", "note", source_text="Organizer-owned text")
+
+    unlocked_agents = {"organizer_agent"}
+
+    def fake_describe(request, agent_name):
+        if agent_name in unlocked_agents:
+            return {"auth_mode": "totp", "required": True, "authenticated": True, "via": "mission_session"}
+        return {"auth_mode": "totp", "required": True, "authenticated": False, "via": "none"}
+
+    monkeypatch.setattr(smc, "_describe_auth_state", fake_describe)
+    monkeypatch.setattr(smc, "_describe_chat_auth_state", fake_describe)
+    monkeypatch.setattr(organizer, "_describe_auth_state", fake_describe)
+
+    probe_req = Request({"type": "http", "method": "GET", "path": "/api/notes", "headers": []})
+    assert smc._api_auth_error("notes_agent", probe_req).status_code == 401
+    assert smc._api_auth_error("voice_training_agent", probe_req).status_code == 401
+
+    with TestClient(organizer.app) as client:
+        # Organizer-only session cannot read the indexed note preview or download the voice recording.
+        assert client.get(f"/api/content/items/{note['id']}/preview").status_code == 403
+        assert client.get(f"/api/content/items/{note['id']}").status_code == 403
+        assert client.get(f"/api/content/items/{voice['id']}/content").status_code == 403
+        assert client.get(f"/api/content/stream/{voice['id']}").status_code == 403
+        assert client.get("/api/content/index", params={"source": "notes_agent"}).status_code == 403
+        assert client.get("/api/content", params={"source": "voice_training_agent"}).status_code == 403
+
+        # Unfiltered listings only expose what the Organizer session is authorized to read.
+        assert [row["id"] for row in client.get("/api/content/index").json()["items"]] == [custom["id"]]
+        assert [row["id"] for row in client.get("/api/content").json()["items"]] == [custom["id"]]
+        assert [row["id"] for row in client.get("/api/content/changes", params={"after": 0}).json()["items"]] == [custom["id"]]
+        assert [g["source"] for g in client.get("/api/content/groups").json()["groups"]] == ["custom_project"]
+        assert [a["source"] for a in client.get("/api/content/summary").json()["agents"]] == ["custom_project"]
+        assert client.get(f"/api/content/items/{custom['id']}/preview").status_code == 200
+
+        # Once authenticated for Notes and Voice Training, preview and download succeed.
+        unlocked_agents.update({"notes_agent", "voice_training_agent"})
+        preview = client.get(f"/api/content/items/{note['id']}/preview")
+        assert preview.status_code == 200 and preview.json()["text"] == "Private note excerpt"
+        download = client.get(f"/api/content/items/{voice['id']}/content")
+        assert download.status_code == 200 and download.content == b"RIFFsynthetic-voice-recording"
+
+
+def test_readonly_and_304_requests_do_not_rewrite_encrypted_catalog_snapshots(sandbox, monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from shared.content_library_api import register_content_routes
+
+    secure_storage.enable_secure_storage(app_name="AutoYou-test", root=sandbox, password="synthetic-library-password")
+    library = ContentLibrary()
+    note = library.publish("notes_agent", "1", "Snapshot probe note", "note", source_text="Body text")
+
+    writes = []
+    original_atomic_write = secure_storage._atomic_write
+
+    def tracked_write(path, payload):
+        if Path(path).name == "catalog.sqlite3":
+            writes.append(Path(path))
+        return original_atomic_write(path, payload)
+
+    monkeypatch.setattr(secure_storage, "_atomic_write", tracked_write)
+
+    app = FastAPI()
+    register_content_routes(app, lambda _request: None)
+    with TestClient(app) as client:
+        writes.clear()
+        r_index = client.get("/api/admin/content/index")
+        assert r_index.status_code == 200
+        r_index_304 = client.get("/api/admin/content/index", headers={"If-None-Match": r_index.headers["etag"]})
+        assert r_index_304.status_code == 304
+
+        r_sum = client.get("/api/admin/content/summary")
+        assert r_sum.status_code == 200
+        assert client.get("/api/admin/content/summary", headers={"If-None-Match": r_sum.headers["etag"]}).status_code == 304
+
+        r_chg = client.get("/api/admin/content/changes", params={"after": 0})
+        assert r_chg.status_code == 200
+        assert client.get("/api/admin/content/changes", params={"after": 0}, headers={"If-None-Match": r_chg.headers["etag"]}).status_code == 304
+
+        r_grp = client.get("/api/admin/content/groups")
+        assert r_grp.status_code == 200
+        assert client.get("/api/admin/content/groups", headers={"If-None-Match": r_grp.headers["etag"]}).status_code == 304
+
+        assert client.get(f"/api/admin/content/items/{note['id']}/preview").status_code == 200
+        assert writes == [], f"Read-only and 304 requests must perform 0 catalog snapshots, got {len(writes)}"
+
+        # Re-publishing an unchanged row must also perform 0 snapshots.
+        library.publish("notes_agent", "1", "Snapshot probe note", "note", source_text="Body text")
+        assert writes == []
+
+        # A real mutation writes exactly 1 snapshot, not 2.
+        library.publish("notes_agent", "2", "Second note", "note")
+        assert len(writes) == 1
+
+
+def test_relocated_managed_object_recovery_and_media_transcript_evidence(sandbox):
+    from shared import content_organization, content_storage
+    from shared.content_library import save_output
+
+    secure_storage.enable_secure_storage(app_name="AutoYou-test", root=sandbox / "keys", password="synthetic-library-password")
+    first_root = sandbox / "root-a"
+    second_root = sandbox / "root-b"
+    configure_output_root(str(first_root))
+    saved = save_output("music_agent", "lecture.mp3", [b"synthetic-lecture-audio"], title="Lecture 1", kind="audio")
+    with ContentLibrary().connect() as db:
+        row = dict(db.execute("SELECT * FROM content WHERE id=?", (saved["id"],)).fetchone())
+    indexed = content_storage.index_file(row)
+    assert indexed["managed_path"] and indexed["digest"]
+
+    # Move the verified .objects store to the second managed root to simulate restoring a backup to a new folder.
+    configure_output_root(str(second_root))
+    old_obj = Path(indexed["managed_path"])
+    new_obj = second_root / ".objects" / indexed["digest"][:2] / indexed["digest"]
+    content_files.promote(old_obj, new_obj)
+    assert not old_obj.exists() and new_obj.is_file()
+
+    # Both reference_target (via row["path"]) and resolve_path recover the object from the active managed root.
+    recovered = content_storage.resolve_path({**row, **indexed})
+    assert b"".join(content_files.read_range(recovered)) == b"synthetic-lecture-audio"
+
+    # Sidecar transcript (.srt) next to an audio/video file is picked up as organization evidence.
+    sidecar = Path(row["path"]).with_suffix(".srt")
+    sidecar.write_text("1\n00:00:00,000 --> 00:00:04,000\nQuantum cryptography overview\n", encoding="utf-8")
+    assert "Quantum cryptography overview" in content_organization.evidence({**row, **indexed})

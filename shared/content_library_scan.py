@@ -126,7 +126,8 @@ def scan_attachments(catalog=None, cancelled=lambda: False):
                     sid = "attachment:" + str(row["id"]) + (":" + parent["source_id"] if parent and source == "page_agent" else "")
                     catalog.publish(source, sid, row.get("filename") or path.name, infer_kind(path.name), path=str(path),
                         parent_id=parent["id"] if parent else "", source_labels=parent["source_labels"] if parent else [],
-                        source_collection=parent["source_collection"] if parent else "Attachments")
+                        source_collection=parent["source_collection"] if parent else "Attachments",
+                        source_text=str(row.get("transcription") or ""))
                     seen.add(sid)
                     count += 1
             _reconcile(catalog, source, "attachment:", seen)
@@ -192,6 +193,62 @@ def scan_voice(catalog=None, cancelled=lambda: False):
     return count
 
 
+def _scan_custom_base(catalog, base_kind: str, enabled: bool, cancelled=lambda: False) -> int:
+    count = 0
+    seen_by_source: dict[str, set[str]] = {}
+    with catalog.connect() as db:
+        custom_sources = {
+            row[0] for row in db.execute("SELECT source FROM content_agents WHERE base_kind=?", (base_kind,)).fetchall()
+        }
+        has_native = bool(db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='native_content'").fetchone())
+        native_rows = (
+            db.execute(
+                "SELECT source,source_id,payload FROM native_content WHERE json_extract(payload,'$.base_kind')=?",
+                (base_kind,),
+            ).fetchall()
+            if has_native
+            else []
+        )
+    for row in native_rows:
+        custom_sources.add(row["source"])
+    if enabled:
+        kind = {"notes": "note", "diary": "note", "page": "page", "music": "audio"}.get(base_kind, "agent")
+        for row in native_rows:
+            if cancelled():
+                return count
+            record = _json(row["payload"], {})
+            if not isinstance(record, dict):
+                continue
+            item = catalog.publish(
+                row["source"],
+                row["source_id"],
+                record.get("title") or "Untitled",
+                kind,
+                base_kind=base_kind,
+                source_labels=record.get("tags"),
+                source_collection=record.get("category"),
+                source_text=record.get("body") or "",
+                href="/agent/organizer_agent/api/content/native/" + row["source"] + "/" + row["source_id"],
+            )
+            with catalog.connect() as db:
+                catalog.restore_native_files(db, row["source"], record=record, parent_id=item["id"])
+            seen_by_source.setdefault(row["source"], set()).add(row["source_id"])
+            count += 1
+    for source in sorted(custom_sources):
+        with catalog.connect() as db:
+            if enabled:
+                # Completed and not-yet-attached uploads belong to the native
+                # source store too; a parent-only scan must not remove them.
+                files = {row[0] for row in db.execute("SELECT source_id FROM content WHERE source=? AND deleted=0 AND path!=''", (source,))}
+                seen_by_source.setdefault(source, set()).update(files)
+            else:
+                for row in db.execute("SELECT id FROM content WHERE source=? AND deleted=0", (source,)).fetchall():
+                    catalog._tombstone(db, row["id"], catalog.tick(db), preserve_native_file=True)
+        if enabled:
+            _reconcile(catalog, source, "", seen_by_source.get(source, set()))
+    return count
+
+
 def scan_private(catalog=None, cancelled=lambda: False):
     """List Diary entries by title and a short preview, only when the owner has opted in.
 
@@ -200,8 +257,9 @@ def scan_private(catalog=None, cancelled=lambda: False):
     """
     from shared.content_library import settings
     catalog = catalog or ContentLibrary()
+    prefs = settings()
     seen, count = set(), 0
-    if settings()["index_private"]:
+    if prefs["index_private"]:
         from autoyou_agents.diary_agent.agent import list_diary_entries
         for entry in list_diary_entries():
             if cancelled():
@@ -211,8 +269,9 @@ def scan_private(catalog=None, cancelled=lambda: False):
             seen.add(entry["id"])
             count += 1
     _reconcile(catalog, "diary_agent", "", seen)
+    count += _scan_custom_base(catalog, "diary", prefs["index_private"], cancelled=cancelled)
     profile_ids = set()
-    if settings()["index_profile"]:
+    if prefs["index_profile"]:
         from autoyou_agents.profile_agent.agent import read_profile
         result = read_profile()
         if result.get("status") != "success":
@@ -223,14 +282,16 @@ def scan_private(catalog=None, cancelled=lambda: False):
             profile_ids.add("profile")
             count += 1
     _reconcile(catalog, "profile_agent", "", profile_ids)
+    count += _scan_custom_base(catalog, "profile", prefs["index_profile"], cancelled=cancelled)
     return count
 
 
 def scan_reminders(catalog, cancelled=lambda: False):
     from shared.content_library import settings
     from shared import scheduler_service as scheduler
+    prefs = settings()
     seen = set()
-    if settings()["index_reminders"]:
+    if prefs["index_reminders"]:
         for row in scheduler.load_json(scheduler.REMINDERS_FILE):
             if cancelled():
                 return len(seen)
@@ -241,7 +302,8 @@ def scan_reminders(catalog, cancelled=lambda: False):
                             source_text="\n".join(filter(None, (row.get("iso"), body))))
             seen.add(identifier)
     _reconcile(catalog, "reminders_agent", "", seen)
-    return len(seen)
+    custom_count = _scan_custom_base(catalog, "reminders", prefs["index_reminders"], cancelled=cancelled)
+    return len(seen) + custom_count
 
 
 def scan_games(catalog, cancelled=lambda: False):

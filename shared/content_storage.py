@@ -26,6 +26,45 @@ def owned(path):
     return not path.is_symlink() and any(path.resolve().is_relative_to(root) for root in managed_roots())
 
 
+def resolve_path(row) -> Path:
+    """Resolve the readable path for a catalog row, recovering across migrated or restored managed roots."""
+    import re
+    from shared.content_agent_upgrade import storage_path
+    keys = set(row.keys()) if hasattr(row, "keys") else set()
+    managed = str(row["managed_path"] or "") if "managed_path" in keys else ""
+    primary = str(row["path"] or "") if "path" in keys else ""
+    digest = str(row["digest"] or "") if "digest" in keys else ""
+    for candidate_str in (managed, primary):
+        if candidate_str:
+            candidate = Path(candidate_str)
+            if candidate.is_file():
+                if candidate_str == managed and not (
+                    re.fullmatch(r"[a-f0-9]{64}", digest) and not candidate.is_symlink()
+                    and any(candidate.resolve() == (root / ".objects" / digest[:2] / digest).resolve()
+                            and candidate.resolve().is_relative_to(root.resolve()) for root in managed_roots())
+                ):
+                    if primary == managed:
+                        primary = ""
+                    managed = ""
+                    continue
+                return candidate
+    if re.fullmatch(r"[a-f0-9]{64}", digest):
+        for root in managed_roots():
+            obj = root / ".objects" / digest[:2] / digest
+            if obj.is_file() and not obj.is_symlink() and obj.resolve().is_relative_to(root.resolve()):
+                return obj
+    source = str(row["source"] or "") if "source" in keys else ""
+    if primary and source:
+        name = Path(primary).name
+        for root in managed_roots():
+            relocated = storage_path(root, source) / name
+            if relocated.is_file() and not relocated.is_symlink() and relocated.resolve().is_relative_to(root.resolve()):
+                # A common basename is not enough to identify restored media.
+                if digest and content_files.fingerprint(relocated)[0] == digest:
+                    return relocated
+    return Path(managed or primary)
+
+
 def store_object(path, root=None, cancelled=lambda: False):
     """Return a SHA-256 verified object, with no whole-media allocation."""
     path = Path(path)
@@ -88,14 +127,36 @@ def index_file(row, *, copy_external=False, destination=None, cancelled=lambda: 
     return result
 
 
-def duplicates(library=None):
+def duplicates(library=None, *, allowed_sources=None):
     library = library or ContentLibrary()
+    source_filter = ""
+    source_args: list[str] = []
+    if allowed_sources is not None:
+        ordered = sorted(set(allowed_sources))
+        if not ordered:
+            return []
+        source_filter = " AND source IN (" + ",".join("?" for _ in ordered) + ")"
+        source_args = ordered
     with library.connect() as db:
-        groups = db.execute("""SELECT digest,MAX(byte_size) AS bytes,COUNT(*) AS count FROM content
-            WHERE deleted=0 AND digest!='' GROUP BY digest HAVING COUNT(*)>1 ORDER BY bytes DESC LIMIT 100""").fetchall()
-        return [{"digest": group["digest"], "byte_size": group["bytes"],
-                 "items": [library.public(row) for row in db.execute("SELECT * FROM content WHERE deleted=0 AND digest=?", (group["digest"],))]}
-                for group in groups]
+        groups = db.execute(
+            f"""SELECT digest,MAX(byte_size) AS bytes,COUNT(*) AS count FROM content
+            WHERE deleted=0 AND digest!=''{source_filter} GROUP BY digest HAVING COUNT(*)>1 ORDER BY bytes DESC LIMIT 100""",
+            source_args,
+        ).fetchall()
+        return [
+            {
+                "digest": group["digest"],
+                "byte_size": group["bytes"],
+                "items": [
+                    library.public(row)
+                    for row in db.execute(
+                        f"SELECT * FROM content WHERE deleted=0 AND digest=?{source_filter}",
+                        (group["digest"], *source_args),
+                    )
+                ],
+            }
+            for group in groups
+        ]
 
 
 def migration_plan(destination):

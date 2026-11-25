@@ -196,7 +196,7 @@ def test_overview_groups_every_agent_by_name_with_the_identity_phones_sent(scree
     shot = screen().open()
     shot.page.wait("document.querySelectorAll('.ayc-shelf').length >= 7", 15, "a shelf per agent")
     names = shot.js("Array.from(document.querySelectorAll('.ayc-shelf-title h3')).map(e => e.textContent)")
-    assert {"Notes", "Pages", "Media Generation", "Files", "Locations", "Garden Planner", "Reading List"} <= set(names)
+    assert {"Notes", "Pages", "Generate Media", "Files", "Locations", "Garden Planner", "Reading List"} <= set(names)
     accent = shot.js("(() => { const h = Array.from(document.querySelectorAll('.ayc-shelf')).find(s => s.querySelector('h3').textContent === 'Garden Planner'); return getComputedStyle(h.querySelector('.ayc-avatar')).getPropertyValue('--ayc-accent').trim(); })()")
     assert accent == "#2E9E5B"
     assert "items from" in shot.js("document.querySelector('.ayc-sub').textContent")
@@ -421,6 +421,25 @@ def test_an_idle_screen_costs_one_conditional_request_and_changes_arrive_as_delt
     paths = [e[1].split("&")[0] for e in arrived if not e[1].startswith("/summary")]
     assert paths == [f"/changes?after={cursor}"], arrived
     assert not [e for e in arrived if e[1].startswith("/groups") or e[1].startswith("/index")]
+
+
+def test_losing_source_permission_clears_cached_items_and_open_preview(screen, monkeypatch):
+    from shared import content_access
+    blocked = set()
+    monkeypatch.setattr(content_access, "is_agent_scoped_request", lambda request: True)
+    monkeypatch.setattr(content_access, "source_allowed", lambda request, source, **kwargs: source not in blocked)
+    shot = screen().open()
+    settle(shot)
+    note = ContentLibrary().list(source="notes_agent")["items"][0]
+    revision = shot.js("AutoYouContent._state().store.revision")
+    shot.js(f"document.querySelector('[data-act=open-preview][data-id=\"{note['id']}\"]').click()")
+    shot.page.wait("!document.querySelector('.ayc-preview').hidden", 10, "the note preview")
+    blocked.add("notes_agent")
+    shot.js("(() => { const s = AutoYouContent._state(); s.poll.floor = 150; s.poll.ceiling = 300; s.poll.wait = 150; AutoYouContent.unmount(); AutoYouContent.mount(document.getElementById('host'), window.ctx); })()")
+    shot.page.wait("AutoYouContent._state().store.walkComplete && AutoYouContent._state().store.all().every(r => r.source !== 'notes_agent') && document.querySelector('.ayc-preview').hidden", 10, "source revocation to clear cached rows and previews")
+    assert shot.js("AutoYouContent._state().store.revision") == revision, "permission changes need no content edit"
+    blocked.clear()
+    shot.page.wait("AutoYouContent._state().store.all().some(r => r.source === 'notes_agent')", 10, "a fresh walk after sign-in")
 
 
 def test_the_shells_rerenders_do_not_rebuild_the_screen_or_lose_the_users_place(screen):

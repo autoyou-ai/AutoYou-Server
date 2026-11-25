@@ -139,12 +139,11 @@ def _remove_catalog_item(library: ContentLibrary, row, expected_revision: int) -
         if current["revision"] != expected_revision:
             raise FileExistsError("This item changed on another device. Refresh before removing it.")
         family = [current, *db.execute("SELECT * FROM content WHERE parent_id=? AND deleted=0", (current["id"],)).fetchall()]
+        candidates = [(member["path"], member["managed_path"]) for member in family]
         for member in family:
-            db.execute("UPDATE content SET deleted=1,revision=?,updated=? WHERE id=?",
-                       (library.tick(db), time.time(), member["id"]))
+            library._tombstone(db, member["id"], library.tick(db))
         if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='native_content'").fetchone():
             db.execute("DELETE FROM native_content WHERE source=? AND source_id=?", (current["source"], current["source_id"]))
-        candidates = [(member["path"], member["managed_path"]) for member in family]
     files, warnings = _remove_files(library, candidates)
     return {"removed": [member["id"] for member in family], "files": files, "warnings": warnings}
 
@@ -168,12 +167,16 @@ def _remove_through_agent(library: ContentLibrary, row, expected_revision: int) 
     return {"removed": [row["id"]], "files": 0, "warnings": []}
 
 
-def remove(library: ContentLibrary, item_id: str, expected_revision: int) -> dict:
+def remove(library: ContentLibrary, item_id: str, expected_revision: int, *, request=None) -> dict:
     """Remove one item by the rules in the module docstring. Raises LookupError, FileExistsError or RemovalError."""
+    from shared import content_access
     with library.connect() as db:
         row = db.execute("SELECT * FROM content WHERE id=? AND deleted=0", (item_id,)).fetchone()
-    if not row:
+    if not row or not library.source_enabled(row["source"]):
         raise LookupError("Content not found")
+    if request is not None and not content_access.source_allowed(request, row["source"]):
+        info = content_agents.describe(row["source"])
+        raise RemovalError(f"Sign in to {info['name']} to access its content.", status=403, owner=row["source"], app=info["app"])
     decision = plan(row)
     if decision["mode"] == "open":
         info = content_agents.describe(row["source"])
@@ -183,13 +186,13 @@ def remove(library: ContentLibrary, item_id: str, expected_revision: int) -> dic
     return {"id": item_id, "mode": decision["mode"], **result}
 
 
-def remove_many(library: ContentLibrary, requests: list[dict]) -> list[dict]:
+def remove_many(library: ContentLibrary, requests: list[dict], *, request=None) -> list[dict]:
     """Per-item outcomes, so one stale or protected item never blocks the rest."""
     results = []
     for entry in requests:
         identifier = str(entry.get("id", ""))
         try:
-            results.append({"ok": True, **remove(library, identifier, int(entry.get("revision", 0)))})
+            results.append({"ok": True, **remove(library, identifier, int(entry.get("revision", 0)), request=request)})
         except RemovalError as error:
             results.append({"ok": False, "id": identifier, "status": error.status, "error": str(error), **error.extra})
         except FileExistsError as error:

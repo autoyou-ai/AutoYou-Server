@@ -37,11 +37,13 @@ The screen does not poll the whole library. It keeps an index in memory and asks
 
 Nothing about what is in the library is stored in the browser. The index lives in the page and is dropped when the tab closes; the only thing kept is a resume marker for an upload in progress, in session storage.
 
+When source access changes or the library session expires, the screen clears cached rows, previews and thumbnails and starts a fresh index walk. Source authorization is checked again for every resumed upload chunk and completion.
+
 ---
 
 ## Who may do what
 
-The person at this computer may do everything. A device paired from elsewhere carries the role its pairing was given, and the server checks it on every route, so a hidden button is never the only guard.
+The person at this computer may do everything. A device paired from elsewhere carries the role its pairing was given, and the server checks it on every route, so a hidden button is never the only guard. When the library is reached through the Organizer (`/agent/organizer_agent/api/content`), built-in agents that own their own data (Notes, Page, Diary, Profile, Reminders, Voice Training, TV, Music, Media Generation, Games and Location) also check that agent's own sign-in before listing, previewing, downloading or changing its items.
 
 | Action | Viewer | Editor | Admin |
 | :--- | :--- | :--- | :--- |
@@ -49,6 +51,8 @@ The person at this computer may do everything. A device paired from elsewhere ca
 | Organize, add files, sync | No | Yes | Yes |
 | Delete items | No | No | Yes |
 | Storage folder and organizing settings | No | No | Yes |
+
+Global storage and indexing settings require an Admin session. Signing into Organizer alone, including with an admin paired-device role, does not grant library-wide administration. Organizer rechecks each source application's own session before exposing its items; a shared session cannot override an assigned per-agent authenticator.
 
 ---
 
@@ -68,7 +72,9 @@ A file outside AutoYou's managed folders, a symbolic link, or a path that escape
 
 An agent created in the iOS or Android app publishes its records to `POST /content/native` with its name, handle, icon and accent. The server validates and keeps them in `content_agents`, so the agent appears in My Content with its own identity. Attachments belong to their record and are removed with it.
 
-The **Diary** keeps its own sign-in, so its entries are listed only if you turn on **Include Diary entries** in **Storage**. Turning it off removes them from the library again; the Diary itself is untouched.
+The **Diary** (and any custom agent based on Diary) keeps its own sign-in, so its entries and attachments are listed only if you turn on **Include Diary entries** in **Storage**. Turning it off scrubs their titles, labels, collections and text from the index into minimal tombstones (`id`, `source`, `deleted`, `revision`). Original native records and attachment locators remain in the private source store, so turning indexing on restores the same item IDs, files and relationships. Hiding content is not deleting its source data. A custom source cannot change its base type to bypass these settings.
+
+The catalog, private source records and internal reference receipts use the existing shared Maximus encryption boundary when Maximus is active. There are no per-agent encryption keys. Backup the catalog together with managed media and `.objects` directories. Internal reference receipts are bound to the managed file's identity, so uploaded magic bytes cannot impersonate another item's deduplication link.
 
 ---
 

@@ -1,7 +1,12 @@
 """Wall-clock recurrence shared with the iOS and Android reminder contract."""
 import calendar
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
+
+
+def _zone(name):
+    value = str(name or "UTC").strip()
+    return timezone.utc if value.upper() in {"UTC", "ETC/UTC", "Z"} else ZoneInfo(value)
 
 
 MAX_INTERVAL = {"daily":365, "weekly":52, "monthly":24, "yearly":10}
@@ -62,7 +67,7 @@ def after_delivery(row, now):
     if not repeat:
         rule["completed"] = True
     elif not rule.get("completed") and due <= now_ms + 1000:
-        zone = ZoneInfo(row.get("native_time_zone") or "UTC")
+        zone = _zone(row.get("native_time_zone") or "UTC")
         repeat = dict(repeat)
         if repeat.get("count") is not None:
             repeat["fired"] = min(repeat["count"],repeat.get("fired",0)+1)
@@ -78,4 +83,4 @@ def after_delivery(row, now):
             rule["due_at"] = following
     next_ms = next_alert(rule) or rule["due_at"]
     return {**row, "native_reminder":rule,"updated_at_s":now,"timestamp_s":next_ms/1000,
-            "iso":datetime.fromtimestamp(next_ms/1000,ZoneInfo("UTC")).isoformat()}
+            "iso":datetime.fromtimestamp(next_ms/1000,timezone.utc).isoformat()}

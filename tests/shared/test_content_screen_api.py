@@ -482,3 +482,70 @@ def test_document_previews_are_inert_and_keep_attachment_downloads(client):
     listing = client.get(PREFIX + "/index", params={"q": "rosemary"}).json()
     assert [row["id"] for row in listing["items"]] == [tagged["id"]]
     assert listing["items"][0]["source_labels"] == ["Rosemary"]
+
+
+def test_custom_diary_privacy_and_legacy_incremental_tombstones_scrub_metadata(client, monkeypatch):
+    from autoyou_agents.diary_agent import agent as diary
+    from shared.content_library_scan import refresh_existing
+    from shared.content_native import read_record
+
+    entry = {
+        "id": "00000000-0000-4000-8000-0000000000d9",
+        "date": "2026-11-22",
+        "time": "09:30",
+        "title": "Private journal reflection",
+        "preview": "Confidential diary reflection",
+        "journal": "SecretJournal",
+        "tags": ["PrivateTag", "Therapy"],
+        "has_media": False,
+    }
+    monkeypatch.setattr(diary, "list_diary_entries", lambda order="desc": [entry])
+
+    # 1. A custom agent based on Diary must not be indexed or previewable while index_private is False.
+    custom_diary = {
+        "id": "00000000-0000-4000-8000-0000000000c1",
+        "kind": "custom_personal_diary_a1b2c3",
+        "base_kind": "diary",
+        "title": "Custom diary entry",
+        "body": "Private custom diary body",
+        "category": "CustomSecretCollection",
+        "tags": ["CustomSecretTag"],
+        "updated_at": 200,
+        "attachments": [],
+    }
+    imported = client.post(f"{PREFIX}/native", json=custom_diary)
+    assert imported.status_code == 200
+    custom_item_id = imported.json()["item"]["id"]
+    assert imported.json()["item"]["deleted"] == 1
+    assert ContentLibrary().list(source="custom_personal_diary_a1b2c3")["total"] == 0
+    assert client.get(f"{PREFIX}/items/{custom_item_id}/preview").status_code == 404
+    assert client.get(f"{PREFIX}/native/custom_personal_diary_a1b2c3/{custom_diary['id']}").status_code == 404
+    with pytest.raises(LookupError):
+        read_record("custom_personal_diary_a1b2c3", custom_diary["id"])
+
+    # 2. Opting into index_private lists both built-in Diary and custom Diary records.
+    on = {"auto_organize": True, "semantic_labels": True, "index_private": True}
+    assert client.put(f"{PREFIX}/organization", json=on).status_code == 200
+    refresh_existing()
+    builtin_rows = ContentLibrary().list(source="diary_agent")["items"]
+    custom_rows = ContentLibrary().list(source="custom_personal_diary_a1b2c3")["items"]
+    assert len(builtin_rows) == 1 and len(custom_rows) == 1
+    rev_before_disable = min(builtin_rows[0]["revision"], custom_rows[0]["revision"]) - 1
+    assert client.get(f"{PREFIX}/items/{custom_rows[0]['id']}/preview").status_code == 200
+
+    # 3. Disabling index_private removes both and returns minimal tombstones on both /changes and legacy ?after=.
+    assert client.put(f"{PREFIX}/organization", json={**on, "index_private": False}).status_code == 200
+    assert ContentLibrary().list(source="diary_agent")["total"] == 0
+    assert ContentLibrary().list(source="custom_personal_diary_a1b2c3")["total"] == 0
+    assert client.get(f"{PREFIX}/items/{builtin_rows[0]['id']}/preview").status_code == 404
+    assert client.get(f"{PREFIX}/items/{custom_rows[0]['id']}/preview").status_code == 404
+    assert client.get(f"{PREFIX}/native/custom_personal_diary_a1b2c3/{custom_diary['id']}").status_code == 404
+
+    legacy_delta = client.get(PREFIX, params={"after": rev_before_disable}).json()
+    serialized_delta = json.dumps(legacy_delta)
+    for forbidden in ("SecretJournal", "PrivateTag", "Therapy", "CustomSecretCollection", "CustomSecretTag", "Private journal", "Custom diary"):
+        assert forbidden not in serialized_delta
+    for item in legacy_delta["items"]:
+        if item["source"] in {"diary_agent", "custom_personal_diary_a1b2c3"}:
+            assert set(item.keys()) == {"id", "source", "deleted", "revision"}
+            assert item["deleted"] == 1

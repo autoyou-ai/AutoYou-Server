@@ -460,7 +460,11 @@ def _shared_session_settings() -> Dict[str, Any]:
 
 def _shared_session_authenticates(request: Request, settings: Dict[str, Any]) -> bool:
     shared = _shared_session_settings()
-    if not shared["enabled"] or not settings.get("shared_session_eligible", True):
+    if (
+        not shared["enabled"]
+        or not settings.get("shared_session_eligible", True)
+        or settings.get("per_agent_profile")
+    ):
         return False
     return _shared_agent_session_is_valid(request.cookies.get(SHARED_SESSION_COOKIE_NAME))
 

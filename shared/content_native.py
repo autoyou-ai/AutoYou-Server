@@ -59,7 +59,12 @@ def import_record(payload):
     with library.connect() as db:
         db.execute("CREATE TABLE IF NOT EXISTS native_content(source TEXT,source_id TEXT,updated INTEGER,payload TEXT,PRIMARY KEY(source,source_id))")
         db.execute("BEGIN IMMEDIATE")
+        definition = db.execute("SELECT base_kind FROM content_agents WHERE source=?", (source,)).fetchone()
+        if definition and definition[0] and definition[0] != base:
+            raise FileExistsError("This custom agent has a different base on the computer")
         existing = db.execute("SELECT updated,payload FROM native_content WHERE source=? AND source_id=?", (source, identifier)).fetchone()
+        if existing and json.loads(existing["payload"]).get("base_kind", "notes") != base:
+            raise FileExistsError("A record cannot change its agent's base type")
         base_revision = payload.get("base_revision")
         revision = hashlib.sha256(existing["payload"].encode()).hexdigest() if existing else ""
         if base_revision is not None and base_revision != revision and (not existing or existing["payload"] != encoded):
@@ -72,6 +77,9 @@ def import_record(payload):
         for attachment in attachments:
             row = db.execute("SELECT parent_id FROM content WHERE id=? AND source=? AND path<>'' AND deleted=0",
                              (attachment, source)).fetchone()
+            if not row:
+                archived = db.execute("SELECT metadata FROM native_content_files WHERE id=? AND source=?", (attachment, source)).fetchone()
+                row = json.loads(archived[0]) if archived else None
             if not row or (row["parent_id"] and (not parent or row["parent_id"] != parent["id"])):
                 raise ValueError("An attachment has not finished uploading to this agent")
         db.execute("INSERT INTO native_content VALUES(?,?,?,?) ON CONFLICT(source,source_id) DO UPDATE SET updated=excluded.updated,payload=excluded.payload",
@@ -79,25 +87,31 @@ def import_record(payload):
         # The phone names its own agent; keep that so My Content shows it by name, icon and accent.
         content_agents.remember(db, source, content_agents.clean_identity(payload))
         kind = {"notes": "note", "diary": "note", "page": "page", "music": "audio"}.get(base, "agent")
-        item = library.publish(source, identifier, title, kind, _db=db,
+        item = library.publish(source, identifier, title, kind, _db=db, base_kind=base,
                                force_revision=bool(existing and existing["payload"] != encoded),
                                source_labels=value.get("tags"), source_collection=value.get("category"), source_text=body,
                                href="/agent/organizer_agent/api/content/native/" + source + "/" + identifier)
-        # Attachments belong to their record, so removing the record removes them with it.
-        for attachment in attachments:
-            db.execute("UPDATE content SET parent_id=? WHERE id=? AND source=? AND deleted=0", (item["id"], attachment, source))
+        # Attachments belong to their record, so removing or hiding the record removes or hides them with it.
+        if item.get("deleted"):
+            for attachment in attachments:
+                library._tombstone(db, attachment, library.tick(db), preserve_native_file=True)
+        else:
+            library.restore_native_files(db, source, record=value, parent_id=item["id"])
     return {"item": item, "revision":hashlib.sha256(encoded.encode()).hexdigest(), "updated_at": updated}
 
 
-def read_record(source, identifier):
+def read_record(source, identifier, *, allow_disabled=False):
     library = ContentLibrary()
     with library.connect() as db:
         if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='native_content'").fetchone():
             raise LookupError("Record not found")
         row = db.execute("SELECT payload FROM native_content WHERE source=? AND source_id=?", (source, identifier)).fetchone()
-    if not row:
-        raise LookupError("Record not found")
-    return json.loads(row[0])
+        if not row:
+            raise LookupError("Record not found")
+        record = json.loads(row[0])
+        if not allow_disabled and not library.source_enabled(source, db=db, base_kind=str(record.get("base_kind") or "")):
+            raise LookupError("Record not found")
+    return record
 
 
 def register_collection(app, authorize):

@@ -6,6 +6,8 @@ from shared.content_library_api import register_content_routes
 
 def authorize(request):
     # A cross-agent catalog must never inherit an agent's optional public mode.
+    if hasattr(request, "state"):
+        request.state.content_auth_agent = "organizer_agent"
     auth = _describe_auth_state(request, "organizer_agent")
     if auth.get("via") == "open":
         return JSONResponse({"error": "The Organizer requires private, authenticated access. Choose gated access in agent settings."}, status_code=403)

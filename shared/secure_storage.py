@@ -222,20 +222,49 @@ class _SecureDatabaseState:
     uri: str
     anchor: Any
     lock: threading.RLock = field(default_factory=threading.RLock)
+    persisted_data_version: Optional[int] = None
+    persisted_digest: str = ""
 
-    def persist(self) -> None:
+    def _current_data_version(self) -> int:
+        return int(self.anchor.execute("PRAGMA data_version").fetchone()[0])
+
+    def mark_clean(self, payload: Optional[bytes] = None) -> None:
+        self.persisted_data_version = self._current_data_version()
+        if payload is not None:
+            self.persisted_digest = hashlib.sha256(payload).hexdigest()
+
+    def persist(self, *, force: bool = False) -> None:
         with _STORAGE_LOCK:
             with self.lock:
+                current_version = self._current_data_version()
+                if (
+                    not force
+                    and self.persisted_data_version is not None
+                    and current_version == self.persisted_data_version
+                    and self.path.exists()
+                ):
+                    return
                 try:
                     payload = _normalise_sqlite_snapshot(self.anchor.serialize())
                 except Exception as exc:  # pragma: no cover - sqlite error text varies by platform.
                     raise SecureStorageError(
                         f"Cannot snapshot protected SQLite database {self.path.name}: {exc}"
                     ) from exc
+                digest = hashlib.sha256(payload).hexdigest()
+                if (
+                    not force
+                    and self.persisted_digest
+                    and digest == self.persisted_digest
+                    and self.path.exists()
+                ):
+                    self.persisted_data_version = current_version
+                    return
                 context = _require_context()
                 envelope = SQLITE_HEADER + context.fernet.encrypt(payload)
                 _atomic_write(self.path, envelope)
                 _remove_sqlite_sidecars(self.path)
+                self.persisted_data_version = current_version
+                self.persisted_digest = digest
 
 
 def _require_context() -> _SecureStorageContext:
@@ -958,7 +987,8 @@ def recover_stranded_envelopes(
     permanent loss rather than merely fail to read.
     """
     resolved_root = Path(root).expanduser().resolve()
-    raw_roots = [resolved_root, *scan_roots]
+    from shared.content_library import managed_roots
+    raw_roots = [resolved_root, *managed_roots(), *scan_roots]
     roots: List[Path] = []
     seen_roots: Set[Path] = set()
     for raw_root in raw_roots:
@@ -1266,6 +1296,7 @@ def _initialise_database(path: Path, kwargs: Dict[str, Any]) -> _SecureDatabaseS
                     source.backup(anchor)
                 finally:
                     source.close()
+                state.mark_clean(payload)
             elif raw:
                 disk = _ORIGINAL_SQLITE_CONNECT(str(path), check_same_thread=False)
                 try:
@@ -1277,12 +1308,14 @@ def _initialise_database(path: Path, kwargs: Dict[str, Any]) -> _SecureDatabaseS
                 finally:
                     disk.close()
                 try:
-                    state.persist()
+                    state.persist(force=True)
                 except PermissionError:
                     # Windows can keep the plaintext DB locked until the
                     # caller's previous sqlite3 connection is released.
                     # The returned protected connection persists on close.
                     pass
+            else:
+                state.persist(force=True)
         except (InvalidToken, ValueError, sqlite3.DatabaseError, OSError) as exc:
             try:
                 anchor.close()
@@ -1290,7 +1323,7 @@ def _initialise_database(path: Path, kwargs: Dict[str, Any]) -> _SecureDatabaseS
                 pass
             raise SecureStorageError(f"Cannot open protected SQLite database {path.name}") from exc
     else:
-        state.persist()
+        state.persist(force=True)
     with _DATABASES_LOCK:
         _DATABASES[path] = state
     return state
@@ -1326,7 +1359,9 @@ class _SecureSQLiteConnection:
         return False
 
     def commit(self) -> None:
-        with self._state.lock:
+        # Rotation and persistence always take the storage lock before a DB
+        # lock. Taking them in reverse here can deadlock the library worker.
+        with _STORAGE_LOCK, self._state.lock:
             self._connection.commit()
             self._state.persist()
 
@@ -1337,7 +1372,7 @@ class _SecureSQLiteConnection:
     def close(self) -> None:
         if self._closed:
             return
-        with self._state.lock:
+        with _STORAGE_LOCK, self._state.lock:
             try:
                 if not self._connection.in_transaction:
                     self._state.persist()
@@ -1373,6 +1408,13 @@ def _secure_connect(database: Any, *args: Any, **kwargs: Any) -> Any:
         return _ORIGINAL_SQLITE_CONNECT(database, **options)
     with _DATABASES_LOCK:
         state = _DATABASES.get(path)
+        if state is not None and not path.exists():
+            try:
+                state.anchor.close()
+            except Exception:
+                pass
+            _DATABASES.pop(path, None)
+            state = None
     if state is None:
         # Keep lock acquisition in the same order as rotation/persistence:
         # storage lock first, then database registry lock.  This avoids a
@@ -1381,6 +1423,13 @@ def _secure_connect(database: Any, *args: Any, **kwargs: Any) -> Any:
         with _STORAGE_LOCK:
             with _DATABASES_LOCK:
                 state = _DATABASES.get(path)
+                if state is not None and not path.exists():
+                    try:
+                        state.anchor.close()
+                    except Exception:
+                        pass
+                    _DATABASES.pop(path, None)
+                    state = None
                 if state is None:
                     state = _initialise_database(path, options)
     connection_options = dict(options)

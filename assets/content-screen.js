@@ -155,7 +155,7 @@
             view: "agents", limit: PAGE, load: "loading", error: "", offline: false,
             selected: new Set(), lastPicked: "", active: "", preview: null, previewState: "idle", previewToken: 0,
             etag: "", groups: null, groupsKey: "", server: null, serverKey: "", serverToken: 0,
-            walking: false, walkError: "", poll: { timer: 0, wait: 5000, floor: 5000, ceiling: 60000 }, uploads: [], uploading: false, syncing: false,
+            walking: false, walkToken: 0, walkError: "", poll: { timer: 0, wait: 5000, floor: 5000, ceiling: 60000 }, uploads: [], uploading: false, syncing: false,
             sigs: {}, scheduled: false, thumbs: new Map(), thumbFail: new Set(), thumbQueue: [], thumbBusy: 0, observer: null,
             started: false, polling: false, memos: {}, restoreFocus: null, ro: null, wide: window.matchMedia ? window.matchMedia("(min-width: 1180px)") : { matches: true, addEventListener: function () {} }
         };
@@ -336,9 +336,21 @@
         });
     }
     var OLD_SERVER = "This computer's AutoYou-Server is older than this screen expects. Update the server to use My Content.";
+    function clearAccessCache() {
+        ++S.walkToken; ++S.serverToken;
+        S.walking = false; S.groups = null; S.server = null;
+        S.groupsKey = ""; S.serverKey = ""; S.selected.clear();
+        S.thumbs.forEach(function (url) { URL.revokeObjectURL(url); });
+        S.thumbs.clear(); S.thumbFail.clear(); S.thumbQueue = [];
+        closePreview(true); S.sigs = {};
+    }
     function loadSummary(force) {
         var headers = !force && S.etag ? { "If-None-Match": S.etag } : {};
         return api("/summary", { headers: headers }).catch(function (error) {
+            if (error.status === 401 || error.status === 403) {
+                S.store.reset(); S.store.summary = null; S.etag = "";
+                clearAccessCache(); schedule();
+            }
             if (error.status === 404 || error.status === 405) { var old = new Error(OLD_SERVER); old.status = 400; throw old; }
             throw error;
         }).then(function (result) {
@@ -346,14 +358,16 @@
             if (result.notModified) { return false; }
             if (!result.body || !Array.isArray(result.body.agents) || typeof result.body.revision !== "number") { var skew = new Error(OLD_SERVER); skew.status = 400; throw skew; }
             S.etag = result.etag;
-            S.store.setSummary(result.body);
+            if (S.store.setSummary(result.body)) { clearAccessCache(); }
             schedule();
             return true;
         });
     }
     function loadGroups() {
         if (S.store.walkComplete) { return Promise.resolve(); }
+        var scope = S.store.summary && S.store.summary.access_scope;
         return api("/groups?per=6").then(function (result) {
+            if (scope !== (S.store.summary && S.store.summary.access_scope)) { return; }
             if (!result.notModified && result.body && Array.isArray(result.body.groups)) { S.groups = result.body; S.groupsKey = String(result.body.revision); }
             schedule();
         }).catch(function () { /* the walk will fill the screen in */ });
@@ -361,9 +375,11 @@
     function walk() {
         if (S.walking) { return Promise.resolve(); }
         S.walking = true;
+        var ticket = ++S.walkToken;
         S.walkError = "";
         function page() {
             return api("/changes?after=" + S.store.cursor + "&limit=500").then(function (result) {
+                if (ticket !== S.walkToken) { return; }
                 if (result.notModified) { return; }
                 if (!result.body || !Array.isArray(result.body.items)) { var skew = new Error(OLD_SERVER); skew.status = 400; throw skew; }
                 S.store.applyChanges(result.body);
@@ -372,7 +388,8 @@
                 S.store.walkComplete = true;
             });
         }
-        return page().then(function () { S.walking = false; S.offline = false; schedule(); }, function (error) {
+        return page().then(function () { if (ticket !== S.walkToken) { return; } S.walking = false; S.offline = false; schedule(); }, function (error) {
+            if (ticket !== S.walkToken) { return; }
             S.walking = false;
             S.walkError = error.message;
             S.offline = unreachable(error);
@@ -747,6 +764,7 @@
         }
     }
     function fetchThumb(job) {
+        var scope = S.store.summary && S.store.summary.access_scope;
         var id = job.img.getAttribute("data-thumb"), size = job.img.getAttribute("data-size");
         var done = function () { S.thumbBusy -= 1; pumpThumbs(); };
         var cached = S.thumbs.get(job.key);
@@ -755,6 +773,7 @@
             if (!response.ok) { throw new Error("none"); }
             return response.blob();
         }).then(function (blob) {
+            if (scope !== (S.store.summary && S.store.summary.access_scope)) { return; }
             var url = URL.createObjectURL(blob);
             S.thumbs.set(job.key, url);
             if (S.thumbs.size > 240) { var oldest = S.thumbs.keys().next().value; URL.revokeObjectURL(S.thumbs.get(oldest)); S.thumbs.delete(oldest); }

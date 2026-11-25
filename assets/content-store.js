@@ -98,9 +98,12 @@
             },
 
             setSummary: function (summary) {
+                var changedScope = !!store.summary && store.summary.access_scope !== summary.access_scope;
+                if (changedScope) { store.reset(); }
                 store.summary = summary;
                 store.agents = new Map();
                 (summary.agents || []).forEach(function (agent) { store.agents.set(agent.source, agent); });
+                return changedScope;
             },
 
             agent: function (source) {

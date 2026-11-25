@@ -14,14 +14,17 @@ from shared.content_storage import index_file, migration_plan
 
 def initialize(library):
     with library.connect() as db:
-        db.executescript("""
-            CREATE TABLE IF NOT EXISTS content_operations(
-                id TEXT PRIMARY KEY, destination TEXT NOT NULL, status TEXT NOT NULL,
-                created REAL NOT NULL, updated REAL NOT NULL, cancel INTEGER NOT NULL DEFAULT 0);
-            CREATE TABLE IF NOT EXISTS content_operation_items(
-                operation_id TEXT NOT NULL,item_id TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',
-                error TEXT NOT NULL DEFAULT '',PRIMARY KEY(operation_id,item_id));
-        """)
+        # A restored/recreated catalog can reuse a pathname. A cheap schema
+        # read avoids trusting stale process caches and never writes a snapshot.
+        if db.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('content_operations','content_operation_items')").fetchone()[0] != 2:
+            db.executescript("""
+                CREATE TABLE IF NOT EXISTS content_operations(
+                    id TEXT PRIMARY KEY, destination TEXT NOT NULL, status TEXT NOT NULL,
+                    created REAL NOT NULL, updated REAL NOT NULL, cancel INTEGER NOT NULL DEFAULT 0);
+                CREATE TABLE IF NOT EXISTS content_operation_items(
+                    operation_id TEXT NOT NULL,item_id TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',
+                    error TEXT NOT NULL DEFAULT '',PRIMARY KEY(operation_id,item_id));
+            """)
 
 
 def start_migration(destination):
@@ -47,25 +50,38 @@ def cancel_migration(identifier):
         db.execute("UPDATE content_operations SET cancel=1 WHERE id=? AND status IN ('queued','running')", (identifier,))
 
 
-def activity():
+def activity(*, allowed_sources=None):
     library = ContentLibrary()
     initialize(library)
+    source_filter = ""
+    source_args: list[str] = []
+    if allowed_sources is not None:
+        ordered = sorted(set(allowed_sources))
+        if not ordered:
+            source_filter = " AND 0"
+        else:
+            source_filter = " AND source IN (" + ",".join("?" for _ in ordered) + ")"
+            source_args = ordered
     with library.connect() as db:
-        summary = dict(db.execute("""SELECT COUNT(*) AS total,
+        summary = dict(db.execute(f"""SELECT COUNT(*) AS total,
             COALESCE(SUM(organization_state='pending'),0) AS pending,
             COALESCE(SUM(organization_state='waiting_model'),0) AS waiting_model,
             COALESCE(SUM(organization_state IN ('failed','missing')),0) AS needs_attention,
-            COALESCE(SUM(byte_size),0) AS logical_bytes FROM content WHERE deleted=0""").fetchone())
+            COALESCE(SUM(byte_size),0) AS logical_bytes FROM content WHERE deleted=0{source_filter}""", source_args).fetchone())
         state = db.execute("SELECT value FROM content_state WHERE key='worker'").fetchone()
         operations = []
-        for op in db.execute("SELECT * FROM content_operations ORDER BY created DESC LIMIT 8"):
+        for op in db.execute("SELECT * FROM content_operations ORDER BY created DESC LIMIT 8") if allowed_sources is None else []:
             counts = {r[0]: r[1] for r in db.execute("SELECT status,COUNT(*) FROM content_operation_items WHERE operation_id=? GROUP BY status", (op["id"],))}
             operations.append({**dict(op), "counts": counts, "total": sum(counts.values())})
-        sources = [{"source": r[0], "count": r[1]} for r in db.execute("SELECT source,COUNT(*) FROM content WHERE deleted=0 GROUP BY source ORDER BY source")]
+        sources = [{"source": r[0], "count": r[1]} for r in db.execute(f"SELECT source,COUNT(*) FROM content WHERE deleted=0{source_filter} GROUP BY source ORDER BY source", source_args)]
         collections = [r[0] for r in db.execute(
-            f"SELECT DISTINCT {COLLECTION} AS name FROM content WHERE deleted=0 AND {COLLECTION}!='' ORDER BY name LIMIT 200"
+            f"SELECT DISTINCT {COLLECTION} AS name FROM content WHERE deleted=0{source_filter} AND {COLLECTION}!='' ORDER BY name LIMIT 200",
+            source_args,
         )]
-    return {"summary": summary, "worker": json.loads(state[0]) if state else {"state": "waiting", "message": "Organization starts after the server is unlocked"}, "operations": operations, "sources": sources, "collections": collections}
+    worker = json.loads(state[0]) if state else {"state": "waiting", "message": "Organization starts after the server is unlocked"}
+    if allowed_sources is not None:
+        worker = {key: worker[key] for key in ("state", "message", "updated", "last_scan") if key in worker}
+    return {"summary": summary, "worker": worker, "operations": operations, "sources": sources, "collections": collections}
 
 
 class ContentWorker:

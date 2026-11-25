@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from shared import content_access, content_files
-from shared.content_library import ContentLibrary, configure_output_root, configure_organization, infer_kind, output_dir, settings
+from shared.content_library import ContentLibrary, SOURCE, configure_output_root, configure_organization, infer_kind, output_dir, settings
 from shared.platform_runtime import get_resources_root
 
 
@@ -75,7 +75,7 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
         if denied is not None:
             return denied
         from shared.content_worker import activity
-        return json_response(await asyncio.to_thread(activity))
+        return json_response(await asyncio.to_thread(lambda: activity(allowed_sources=content_access.allowed_sources_filter(request))))
 
     @app.get(prefix + "/duplicates")
     async def library_duplicates(request: Request):
@@ -83,7 +83,7 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
         if denied is not None:
             return denied
         from shared.content_storage import duplicates
-        return json_response({"groups": await asyncio.to_thread(duplicates)})
+        return json_response({"groups": await asyncio.to_thread(lambda: duplicates(allowed_sources=content_access.allowed_sources_filter(request)))})
 
     @app.put(prefix + "/organization")
     async def organization(request: Request, payload: Organization):
@@ -93,6 +93,11 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
         denied = content_access.deny(request, "manage")
         if denied is not None:
             return denied
+        for source, flag in (("diary_agent", payload.index_private), ("profile_agent", payload.index_profile), ("reminders_agent", payload.index_reminders)):
+            if flag is True:
+                source_denied = content_access.deny_source(request, source, ignore_privacy=True)
+                if source_denied is not None:
+                    return source_denied
         result = await asyncio.to_thread(configure_organization, **payload.model_dump())
         if worker:
             worker.wake.set()
@@ -167,6 +172,9 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
         denied = content_access.deny(request, "upload")
         if denied is not None:
             return denied
+        source_denied = content_access.deny_source(request, payload.source)
+        if source_denied is not None:
+            return source_denied
         from shared.content_transfers import ContentTransfers
         return json_response(await asyncio.to_thread(lambda: ContentTransfers().begin(owner(request), **payload.model_dump())))
 
@@ -182,6 +190,11 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
         from shared.content_transfers import ContentTransfers, CHUNK_BYTES
         identity = owner(request)
         transfers = ContentTransfers()
+        with transfers.library.connect() as db:
+            receipt = transfers.row(db, identifier, identity)
+        source_denied = content_access.deny_source(request, receipt["source"])
+        if source_denied is not None:
+            return source_denied
         if request.method == "GET":
             return json_response(await asyncio.to_thread(transfers.status, identifier, identity))
         if request.method == "DELETE":
@@ -200,7 +213,13 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
         if denied is not None:
             return denied
         from shared.content_transfers import ContentTransfers
-        return json_response(await asyncio.to_thread(lambda: ContentTransfers().complete(identifier, owner(request))))
+        transfers, identity = ContentTransfers(), owner(request)
+        with transfers.library.connect() as db:
+            receipt = transfers.row(db, identifier, identity)
+        source_denied = content_access.deny_source(request, receipt["source"])
+        if source_denied is not None:
+            return source_denied
+        return json_response(await asyncio.to_thread(transfers.complete, identifier, identity))
 
     @app.get(prefix + "/items/{item_id}")
     async def metadata(item_id: str, request: Request):
@@ -210,8 +229,11 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
         library = ContentLibrary()
         with library.connect() as db:
             row = db.execute("SELECT * FROM content WHERE id=? AND deleted=0", (item_id,)).fetchone()
-        if not row:
-            raise HTTPException(404, "Content not found")
+            if not row or not library.source_enabled(row["source"], db=db):
+                raise HTTPException(404, "Content not found")
+        source_denied = content_access.deny_source(request, row["source"])
+        if source_denied is not None:
+            return source_denied
         return json_response({**library.public(row), "status": "ready"})
 
     @app.post(prefix + "/native")
@@ -238,6 +260,11 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
         denied = authorize(request)
         if denied is not None:
             return denied
+        if not ContentLibrary.source_enabled(source):
+            raise HTTPException(404, "Record not found")
+        source_denied = content_access.deny_source(request, source)
+        if source_denied is not None:
+            return source_denied
         from fastapi.responses import HTMLResponse
         from shared.content_native import read_record
         try:
@@ -288,8 +315,17 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
         denied = authorize(request)
         if denied is not None:
             return denied
-        result = await asyncio.to_thread(lambda: ContentLibrary().list(q=q, kind=kind, source=source, collection=collection, after=after, offset=offset, limit=limit))
-        return json_response({**result, "settings": settings()})
+        if source and ContentLibrary.source_enabled(source):
+            source_denied = content_access.deny_source(request, source, ignore_privacy=True)
+            if source_denied is not None:
+                return source_denied
+        result = await asyncio.to_thread(
+            lambda: ContentLibrary().list(
+                q=q, kind=kind, source=source, collection=collection, after=after,
+                offset=offset, limit=limit, allowed_sources=content_access.allowed_sources_filter(request, include_disabled=after is not None),
+            )
+        )
+        return json_response({**result, "settings": content_access.public_settings(request)})
 
     @app.put(prefix + "/settings")
     async def destination(request: Request, payload: Destination):
@@ -312,8 +348,16 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
         denied = content_access.deny(request, "edit")
         if denied is not None:
             return denied
+        library = ContentLibrary()
+        with library.connect() as db:
+            row = db.execute("SELECT source FROM content WHERE id=? AND deleted=0", (item_id,)).fetchone()
+            if not row or not library.source_enabled(row["source"], db=db):
+                return json_response({"error": "Content not found"}, 404)
+        source_denied = content_access.deny_source(request, row["source"])
+        if source_denied is not None:
+            return source_denied
         try:
-            return json_response(await asyncio.to_thread(lambda: ContentLibrary().annotate(item_id, **payload.model_dump())))
+            return json_response(await asyncio.to_thread(lambda: library.annotate(item_id, **payload.model_dump())))
         except FileExistsError as error:
             return json_response({"error": str(error)}, 409)
         except LookupError as error:
@@ -329,6 +373,10 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
         denied = content_access.deny(request, "upload")
         if denied is not None:
             return denied
+        if SOURCE.fullmatch(source):
+            source_denied = content_access.deny_source(request, source)
+            if source_denied is not None:
+                return source_denied
         name = Path(filename.replace("\\", "/")).name[:180] or "file"
         suffix = Path(name).suffix.lower()
         if len(suffix) > 16 or not all(char.isalnum() or char == "." for char in suffix):
@@ -364,10 +412,14 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
             return denied
         library = ContentLibrary()
         with library.connect() as db:
-            row = db.execute("SELECT path,managed_path,title FROM content WHERE id=? AND deleted=0", (item_id,)).fetchone()
-        if not row or not row["path"]:
-            raise HTTPException(404, "Open this item in its source agent")
-        path = Path(row["managed_path"] or row["path"])
+            row = db.execute("SELECT source,path,managed_path,title,digest FROM content WHERE id=? AND deleted=0", (item_id,)).fetchone()
+            if not row or not row["path"] or not library.source_enabled(row["source"], db=db):
+                raise HTTPException(404, "Open this item in its source agent")
+        source_denied = content_access.deny_source(request, row["source"])
+        if source_denied is not None:
+            return source_denied
+        from shared.content_storage import resolve_path
+        path = resolve_path(row)
         if not path.is_file():
             raise HTTPException(404, "This file is unavailable; check its source folder")
         import mimetypes

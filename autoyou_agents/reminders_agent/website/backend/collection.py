@@ -176,12 +176,13 @@ def register(app):
             if not message or len(message) > 64000:
                 raise HTTPException(400, "Invalid reminder message")
             zone = data.get("time_zone","")
-            try:
-                ZoneInfo(zone or "UTC")
-            except (ValueError, TypeError, ZoneInfoNotFoundError) as e:
-                raise HTTPException(400, "Invalid reminder time zone") from e
             if not isinstance(zone,str) or len(zone) > 120:
                 raise HTTPException(400, "Invalid reminder time zone")
+            try:
+                if (zone or "UTC").upper() not in {"UTC", "ETC/UTC", "Z"}:
+                    ZoneInfo(zone)
+            except (ValueError, TypeError, ZoneInfoNotFoundError) as e:
+                raise HTTPException(400, "Invalid reminder time zone") from e
         with scheduler.reminder_lock(scheduler.REMINDERS_FILE):
             rows = scheduler.load_json(scheduler.REMINDERS_FILE)
             old = next((row for row in rows if row.get("id") == identifier), None)

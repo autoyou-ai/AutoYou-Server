@@ -22,6 +22,18 @@ const row = (id, over = {}) => ({
 const tomb = (id, revision) => ({id, source: 'notes_agent', deleted: 1, revision});
 const page = (items, cursor, extra = {}) => ({items, cursor, revision: cursor, has_more: false, ...extra});
 
+test('a permission scope change clears old rows and restarts the cursor even without a data revision change', () => {
+    const store = createStore();
+    assert.equal(store.setSummary({agents: [], access_scope: 'synthetic-notes-unlocked'}), false);
+    store.applyChanges(page([row('private-note')], 8));
+    assert.equal(store.setSummary({agents: [], access_scope: 'synthetic-notes-unlocked'}), false);
+    assert.equal(store.size(), 1);
+    assert.equal(store.setSummary({agents: [], access_scope: 'synthetic-notes-locked'}), true);
+    assert.equal(store.size(), 0);
+    assert.equal(store.cursor, 0);
+    assert.equal(store.walkComplete, false);
+});
+
 test('applying a change feed adds, updates and removes rows and is safe to repeat', () => {
     const store = createStore();
     eq(store.applyChanges(page([row('a'), row('b')], 2)), {added: 2, updated: 0, removed: 0});

@@ -7,11 +7,12 @@ def read_content(item_id: str) -> dict:
     from pathlib import Path
     from shared import content_files
     from shared.content_native import read_record
+    from shared.content_storage import resolve_path
     library = ContentLibrary()
     with library.connect() as db:
         row = db.execute("SELECT * FROM content WHERE id=? AND deleted=0", (item_id,)).fetchone()
-    if not row:
-        return {"error": "Content not found"}
+        if not row or not library.source_enabled(row["source"], db=db):
+            return {"error": "Content not found"}
     if row["source"] in {"notes_agent", "page_agent"}:
         import sqlite3
         from shared.platform_runtime import get_mutable_data_dir
@@ -32,8 +33,8 @@ def read_content(item_id: str) -> dict:
             return {"content": read_record(row["source"], row["source_id"]), "untrusted_content": True}
         except LookupError:
             pass
-    path = Path(row["path"])
-    if row["path"] and path.is_file() and path.suffix.lower() in {".txt", ".md", ".csv", ".json"}:
+    path = resolve_path(row) if row["path"] else Path("")
+    if row["path"] and path.is_file() and Path(row["path"]).suffix.lower() in {".txt", ".md", ".csv", ".json"}:
         value = b"".join(content_files.read_range(path, 0, 32767)).decode("utf-8", errors="replace")
         return {"text": value, "truncated": content_files.size(path) > 32768, "untrusted_content": True}
     return {"message": "Read this media in its source agent. The catalog does not transcribe recordings or describe images.", "item": library.public(row)}
