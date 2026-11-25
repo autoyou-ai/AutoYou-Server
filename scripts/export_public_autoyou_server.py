@@ -217,6 +217,7 @@ PUBLIC_DOC_EXACT_PATHS = {
     'docs/admin-ui/assistant-mode.mdx',
     'docs/admin-ui/live-view-and-media.mdx',
     'docs/admin-ui/messaging-bridges.mdx',
+    'docs/admin-ui/my-content.mdx',
     'docs/admin-ui/overview-and-status.mdx',
     'docs/admin-ui/security-console.mdx',
     'docs/admin-ui/setup-and-recipes.mdx',
