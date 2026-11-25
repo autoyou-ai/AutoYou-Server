@@ -1123,6 +1123,7 @@ ensure_system_deps() {
         log_error "Homebrew is not installed. Install it from https://brew.sh and retry."
         exit 1
     fi
+    MACOS_BREW_PREFIX="$(brew --prefix)"
 
     # Map: brew formula -> what it provides / why it's needed
     local -a brew_deps=()
@@ -1945,6 +1946,14 @@ verify_voice_processing_libs() {
 install_dependencies() {
     log "Installing Python dependencies..."
     log "Requirements type: $REQUIREMENTS_TYPE"
+    if requirements_has_voice || [[ "${AUTOYOU_BUILD_DESKTOP_V2:-0}" == "1" ]]; then
+        local portaudio_prefix
+        portaudio_prefix="$(brew --prefix portaudio 2>/dev/null || true)"
+        if [[ -n "$portaudio_prefix" && -f "$portaudio_prefix/include/portaudio.h" ]]; then
+            local -x C_INCLUDE_PATH="$portaudio_prefix/include${C_INCLUDE_PATH:+:$C_INCLUDE_PATH}"
+            local -x LIBRARY_PATH="$portaudio_prefix/lib${LIBRARY_PATH:+:$LIBRARY_PATH}"
+        fi
+    fi
     if include_cognee_enabled; then
         log "Optional Cognee memory backend: enabled"
     fi
@@ -2076,8 +2085,33 @@ install_dependencies() {
     log_success "Dependencies installed"
 }
 
-# Copy libsox.dylib from Homebrew into torchaudio's lib directory.
-#
+macos_brew_library() {
+    local formula="$1" filename="$2" prefix candidate
+    prefix="$(brew --prefix "$formula" 2>/dev/null || true)"
+    if [[ -n "$prefix" && -f "$prefix/lib/$filename" ]]; then
+        printf '%s\n' "$prefix/lib/$filename"
+        return 0
+    fi
+    for prefix in /opt/homebrew /usr/local; do
+        for candidate in "$prefix/opt/$formula/lib/$filename" "$prefix/lib/$filename" "$prefix/Cellar/$formula"/*/lib/"$filename"; do
+            if [[ -f "$candidate" ]]; then
+                printf '%s\n' "$candidate"
+                return 0
+            fi
+        done
+    done
+    return 1
+}
+
+is_macos_brew_dependency() {
+    [[ "$1" == /opt/homebrew/* || "$1" == /usr/local/* ||
+       ( -n "${MACOS_BREW_PREFIX:-}" && "$1" == "${MACOS_BREW_PREFIX:-}"/* ) ]]
+}
+
+macos_linked_libraries() {
+    otool -L "$1" 2>/dev/null | sed -E '1d; s/^[[:space:]]+//; s/ \(compatibility version .*$//'
+}
+
 # Recursively vendor a Homebrew dylib closure into a target directory and
 # rewrite all non-system load commands to @loader_path/<basename>.
 #
@@ -2141,13 +2175,13 @@ bundle_macos_dylib_closure() {
         while IFS= read -r dep_path; do
             [[ -z "$dep_path" ]] && continue
             resolved_dep_path="$dep_path"
-            if [[ "$resolved_dep_path" != /opt/homebrew/* && "$resolved_dep_path" != /usr/local/* ]]; then
+            if ! is_macos_brew_dependency "$resolved_dep_path"; then
                 resolved_dep_path="$(resolve_macos_dependency_path "$dep_path" "$bundled_path" || true)"
             fi
             if [[ -z "$resolved_dep_path" ]]; then
                 continue
             fi
-            if [[ "$resolved_dep_path" != /opt/homebrew/* && "$resolved_dep_path" != /usr/local/* && "$resolved_dep_path" != /Library/Frameworks/Python.framework/Versions/*/lib/*.dylib ]]; then
+            if ! is_macos_brew_dependency "$resolved_dep_path" && [[ "$resolved_dep_path" != /Library/Frameworks/Python.framework/Versions/*/lib/*.dylib ]]; then
                 continue
             fi
 
@@ -2170,7 +2204,7 @@ bundle_macos_dylib_closure() {
                     queue+=("$dep_bundled")
                     ;;
             esac
-        done < <(otool -L "$bundled_path" 2>/dev/null | awk 'NR>1 {print $1}')
+        done < <(macos_linked_libraries "$bundled_path")
         adhoc_sign_macos_path "$bundled_path"
     done
 }
@@ -2249,7 +2283,7 @@ resolve_macos_dependency_path() {
                 fi
             done < <(iter_macos_rpaths "$owner_path")
 
-            for resolved_rpath in /opt/homebrew/lib /usr/local/lib; do
+            for resolved_rpath in "${MACOS_BREW_PREFIX:-/opt/homebrew}/lib" /opt/homebrew/lib /usr/local/lib; do
                 candidate="${resolved_rpath%/}/$dep_tail"
                 if [[ -f "$candidate" ]]; then
                     printf '%s\n' "$candidate"
@@ -2376,23 +2410,8 @@ PY
 patch_torchaudio_sox() {
     log "Patching torchaudio: installing libsox.dylib and its dylib closure into torchaudio/lib..."
 
-    # Locate libsox.dylib from Homebrew (works on both Apple Silicon and Intel).
-    # Search each candidate directory individually so that a missing directory
-    # (e.g. /usr/local/Cellar/sox absent on Apple Silicon) does not cause `find`
-    # to exit 1 and abort the script under set -eo pipefail.
-    local libsox=""
-    for _sox_dir in /opt/homebrew/Cellar/sox /usr/local/Cellar/sox; do
-        [[ -d "$_sox_dir" ]] || continue
-        libsox=$(find "$_sox_dir" -name "libsox.dylib" 2>/dev/null | head -1) || true
-        [[ -n "$libsox" ]] && break
-    done
-    if [[ -z "$libsox" ]]; then
-        for _lib_dir in /opt/homebrew/lib /usr/local/lib; do
-            [[ -f "${_lib_dir}/libsox.dylib" ]] && libsox="${_lib_dir}/libsox.dylib" && break
-        done
-    fi
-
-    if [[ -z "$libsox" ]]; then
+    local libsox
+    if ! libsox="$(macos_brew_library sox libsox.dylib)"; then
         log_error "libsox.dylib not found - ensure sox is installed ('brew install sox' runs automatically in step 1)"
         exit 1
     fi
@@ -2425,27 +2444,8 @@ patch_torchaudio_sox() {
 patch_pyaudio_portaudio() {
     log "Patching pyaudio: installing libportaudio.2.dylib into pyaudio package dir..."
 
-    # Locate libportaudio.2.dylib from Homebrew (Apple Silicon + Intel paths).
-    local libportaudio=""
-    for _lib_dir in \
-        /opt/homebrew/opt/portaudio/lib \
-        /opt/homebrew/lib \
-        /usr/local/opt/portaudio/lib \
-        /usr/local/lib; do
-        if [[ -f "${_lib_dir}/libportaudio.2.dylib" ]]; then
-            libportaudio="${_lib_dir}/libportaudio.2.dylib"
-            break
-        fi
-    done
-    if [[ -z "$libportaudio" ]]; then
-        for _pa_dir in /opt/homebrew/Cellar/portaudio /usr/local/Cellar/portaudio; do
-            [[ -d "$_pa_dir" ]] || continue
-            libportaudio=$(find "$_pa_dir" -name "libportaudio.2.dylib" 2>/dev/null | head -1) || true
-            [[ -n "$libportaudio" ]] && break
-        done
-    fi
-
-    if [[ -z "$libportaudio" ]]; then
+    local libportaudio
+    if ! libportaudio="$(macos_brew_library portaudio libportaudio.2.dylib)"; then
         log_error "libportaudio.2.dylib not found - ensure portaudio is installed ('brew install portaudio' runs automatically in step 1)"
         exit 1
     fi
@@ -2476,9 +2476,8 @@ patch_pyaudio_portaudio() {
 
     # Determine the current absolute path embedded in the .so.
     local embedded_path
-    embedded_path=$(otool -L "$portaudio_so" 2>/dev/null \
-        | awk '/libportaudio/{print $1}' \
-        | grep -v '@loader_path' \
+    embedded_path=$(macos_linked_libraries "$portaudio_so" \
+        | grep '/libportaudio[^/]*\.dylib$' | grep -v '^@loader_path/' \
         | head -1) || true
 
     if [[ -z "$embedded_path" ]]; then
@@ -2971,13 +2970,13 @@ bundle_macos_executable_with_dylib_closure() {
     while IFS= read -r dep_path; do
         [[ -z "$dep_path" ]] && continue
         resolved_dep_path="$dep_path"
-        if [[ "$resolved_dep_path" != /opt/homebrew/* && "$resolved_dep_path" != /usr/local/* ]]; then
+        if ! is_macos_brew_dependency "$resolved_dep_path"; then
             resolved_dep_path="$(resolve_macos_dependency_path "$dep_path" "$bundled_executable" || true)"
         fi
         if [[ -z "$resolved_dep_path" ]]; then
             continue
         fi
-        if [[ "$resolved_dep_path" != /opt/homebrew/* && "$resolved_dep_path" != /usr/local/* ]]; then
+        if ! is_macos_brew_dependency "$resolved_dep_path"; then
             continue
         fi
 
@@ -2987,7 +2986,7 @@ bundle_macos_executable_with_dylib_closure() {
 
         log "  Rewriting executable load command: $dep_path → @executable_path/$dep_base"
         install_name_tool -change "$dep_path" "@executable_path/$dep_base" "$bundled_executable"
-    done < <(otool -L "$bundled_executable" 2>/dev/null | awk 'NR>1 {print $1}')
+    done < <(macos_linked_libraries "$bundled_executable")
 }
 
 install_whisper_cpp_runtime() {

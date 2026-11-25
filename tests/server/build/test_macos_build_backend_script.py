@@ -253,25 +253,38 @@ PYTHON_CMD=fake_python
 
 
 @pytest.mark.skipif(sys.platform != "darwin" or not shutil.which("cc"), reason="requires macOS native signing tools")
-def test_native_dylib_rewrites_are_signed_before_import(tmp_path):
+def test_native_dylibs_from_active_brew_prefix_are_bundled_signed_and_loadable(tmp_path):
     text = BUILD_SCRIPT.read_text(encoding="utf-8")
     functions = "\n".join(
         name + "() {" + text.split(name + "() {", 1)[1].split("\n}\n", 1)[0] + "\n}\n"
-        for name in ("bundle_macos_dylib_closure", "adhoc_sign_macos_path")
+        for name in ("macos_brew_library", "is_macos_brew_dependency", "macos_linked_libraries",
+                     "resolve_macos_dependency_path", "resolve_macos_loader_token", "iter_macos_rpaths",
+                     "bundle_macos_dylib_closure", "adhoc_sign_macos_path")
     )
-    source = tmp_path / "original.dylib"
+    prefix = tmp_path / "synthetic brew"
+    dependency = prefix / "lib" / "libsynthetic.dylib"
+    library = prefix / "opt" / "sox" / "lib" / "libsox.dylib"
+    for path in (dependency, library):
+        path.parent.mkdir(parents=True)
     target = tmp_path / "runtime"
-    subprocess.run(["cc", "-dynamiclib", "-x", "c", "-o", str(source), "-"],
-                   input="int synthetic_voice_runtime(void) { return 42; }", text=True, check=True)
+    subprocess.run(["cc", "-dynamiclib", "-x", "c", "-", "-o", str(dependency)],
+                   input="int synthetic_audio(void) { return 42; }", text=True, check=True)
+    subprocess.run(["cc", "-dynamiclib", "-x", "c", "-", "-x", "none", str(dependency), "-o", str(library)],
+                   input="int synthetic_audio(void); int synthetic_voice_runtime(void) { return synthetic_audio(); }",
+                   text=True, check=True)
     script = functions + '''
 log() { :; }
 log_warning() { printf '%s\\n' "$*" >&2; }
-resolve_macos_dependency_path() { return 1; }
-bundle_macos_dylib_closure "$1" "$2" synthetic.dylib
+MACOS_BREW_PREFIX="$1"
+brew() { [[ "$1" == --prefix ]] && printf '%s/opt/%s\\n' "$MACOS_BREW_PREFIX" "$2"; }
+library="$(macos_brew_library sox libsox.dylib)"
+bundle_macos_dylib_closure "$library" "$2" synthetic.dylib
 '''
-    subprocess.run(["bash", "-ec", script, "native-sign-check", str(source), str(target)], check=True)
+    subprocess.run(["bash", "-ec", script, "native-sign-check", str(prefix), str(target)], check=True)
+    shutil.rmtree(prefix)
     binary = target / "synthetic.dylib"
     subprocess.run(["codesign", "--verify", "--strict", str(binary)], check=True)
+    subprocess.run(["codesign", "--verify", "--strict", str(target / dependency.name)], check=True)
     import ctypes
     assert ctypes.CDLL(str(binary)).synthetic_voice_runtime() == 42
     pyaudio = text.split("patch_pyaudio_portaudio() {", 1)[1].split("\n}\n", 1)[0]
