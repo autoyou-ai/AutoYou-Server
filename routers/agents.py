@@ -1303,10 +1303,16 @@ def register_routes(
         if not agent_name or not port:
             return JSONResponse(status_code=400, content={"success": False, "error": "'agent_name' and 'port' are required"})
 
+        if not server.re.fullmatch(r"[a-z0-9_-]{1,100}", agent_name):
+            return JSONResponse(status_code=400, content={"success": False, "error": "Invalid 'agent_name'"})
+
         try:
             port = int(port)
         except (TypeError, ValueError):
             return JSONResponse(status_code=400, content={"success": False, "error": "'port' must be an integer"})
+
+        if port < 1 or port > 65535:
+            return JSONResponse(status_code=400, content={"success": False, "error": "'port' must be between 1 and 65535"})
 
         server.STATE.dynamic_agent_proxy_ports[agent_name] = port
         server._sync_frontend_registry_from_builder_payload(server._build_agent_builder_listing_payload())
@@ -1885,7 +1891,7 @@ def register_routes(
         if redir:
             return redir
         client_ip = server._rate_limit_client_key(request)
-        if not server.LOGIN_RATE_LIMITER.is_allowed(client_ip):
+        if not server.LOGIN_RATE_LIMITER.is_allowed(server._credential_rate_limit_key(request)):
             return JSONResponse(
                 {"success": False, "error": "Too many attempts. Please wait a minute and try again."},
                 status_code=429,
@@ -1990,7 +1996,7 @@ def register_routes(
             return redir
         # Rate-limit verification attempts to blunt TOTP brute-force (shared limiter).
         client_ip = server._rate_limit_client_key(request)
-        if not server.LOGIN_RATE_LIMITER.is_allowed(client_ip):
+        if not server.LOGIN_RATE_LIMITER.is_allowed(server._credential_rate_limit_key(request)):
             return JSONResponse(
                 {"success": False, "error": "Too many attempts. Please wait a minute and try again."},
                 status_code=429,

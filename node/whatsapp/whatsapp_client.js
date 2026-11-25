@@ -740,12 +740,22 @@ function initializeWebSocketServer() {
         });
         
         wss.on('connection', (ws, request) => {
+            const originHeader = String(request?.headers?.origin || '').trim();
+            const hasValidBridgeToken = Boolean(
+                CONTACT_BRIDGE_TOKEN && request?.headers?.['x-autoyou-contact-bridge'] === CONTACT_BRIDGE_TOKEN
+            );
+            if (originHeader && !hasValidBridgeToken) {
+                try {
+                    ws.close(1008, 'Cross-origin browser connections are not allowed');
+                } catch (_) {}
+                return;
+            }
             const isProbe = request?.url?.includes('probe=1');
             if (!isProbe) {
                 console.log('[WebSocket] New connection established');
             }
             wsConnections.add(ws);
-            if (CONTACT_BRIDGE_TOKEN && request.headers['x-autoyou-contact-bridge'] === CONTACT_BRIDGE_TOKEN) {
+            if (hasValidBridgeToken) {
                 contactBridgeClients.add(ws);
             }
             
@@ -1012,7 +1022,8 @@ function saveMediaToUploads(media, preferredName, chatName) {
         const whatsappDir = ensureUploadsDir();
         if (!whatsappDir) return null;
         const ts = Date.now();
-        const baseName = preferredName || 'attachment';
+        const rawBaseName = path.basename(String(preferredName || 'attachment').replace(/\\/g, '/'));
+        const baseName = rawBaseName.replace(/[^a-zA-Z0-9._-]+/g, '_').replace(/^\.+/, '') || 'attachment';
         // Pick extension from mimetype when filename missing
         let ext = '';
         if (media?.mimetype && typeof media.mimetype === 'string') {
@@ -1028,7 +1039,12 @@ function saveMediaToUploads(media, preferredName, chatName) {
         }
         const safeChat = (chatName || '').toString().replace(/[^a-zA-Z0-9_-]+/g, '');
         const fname = `${ts}_${safeChat || 'whatsapp'}_${baseName}${ext}`;
-        const targetPath = path.join(whatsappDir, fname);
+        const resolvedDir = path.resolve(whatsappDir);
+        const targetPath = path.resolve(resolvedDir, fname);
+        if (!targetPath.startsWith(resolvedDir + path.sep)) {
+            console.error('[WhatsApp] Refusing to save media outside uploads directory');
+            return null;
+        }
         const buf = Buffer.from(media.data, 'base64');
         fs.writeFileSync(targetPath, buf);
         console.log(`[WhatsApp] Saved media to WhatsApp uploads (${buf.length} bytes)`);

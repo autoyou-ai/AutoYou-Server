@@ -80,6 +80,39 @@ def test_live_indexes_exist(sandbox):
     assert {"content_live_updated", "content_live_source", "content_live_kind"} <= names
 
 
+def test_failed_worker_retry_reaches_the_change_feed_and_preserves_saved_edits(client, monkeypatch):
+    from shared import content_worker
+    from shared.content_library import settings
+    library = ContentLibrary()
+    item = library.publish("files_agent", "synthetic-retry", "Synthetic output", "file")
+    library.annotate(item["id"], labels=["synthetic-review"], annotation="Synthetic saved note", collection="Studio", expected_revision=item["revision"])
+    with library.connect() as db:
+        row = dict(db.execute("SELECT * FROM content WHERE id=?", (item["id"],)).fetchone())
+
+    def unavailable(*args, **kwargs):
+        raise FileNotFoundError("Synthetic missing output")
+
+    monkeypatch.setattr(content_worker, "index_file", unavailable)
+    content_worker.ContentWorker().process(library, row, settings())
+    changed = client.get(PREFIX + "/changes", params={"after": row["revision"]}).json()["items"]
+    assert len(changed) == 1 and changed[0]["organization_state"] == "failed"
+    preview = client.get(PREFIX + "/items/" + item["id"] + "/preview").json()["item"]
+    assert preview["revision"] > row["revision"]
+    assert preview["labels"] == ["synthetic-review"] and preview["annotation"] == "Synthetic saved note" and preview["collection"] == "Studio"
+
+
+def test_preview_reports_an_unavailable_original_without_disclosing_its_path(client, sandbox):
+    item = add_file(client, "synthetic-document.txt", b"Synthetic body")
+    with ContentLibrary().connect() as db:
+        path = Path(db.execute("SELECT path FROM content WHERE id=?", (item["id"],)).fetchone()[0])
+    assert path.resolve().is_relative_to(sandbox.resolve())
+    path.unlink()
+    preview = client.get(PREFIX + "/items/" + item["id"] + "/preview")
+    assert preview.status_code == 200 and preview.json()["media"]["available"] is False
+    assert str(path) not in preview.text
+    assert client.get(PREFIX + "/items/" + item["id"] + "/content").status_code == 404
+
+
 # ---- summary -------------------------------------------------------------------------------------
 def test_summary_names_every_agent_and_is_conditional(client):
     library = ContentLibrary()
@@ -96,6 +129,7 @@ def test_summary_names_every_agent_and_is_conditional(client):
     garden = agents["custom_garden_a1b2c3"]
     assert (garden["name"], garden["handle"], garden["icon"], garden["accent"]) == ("Garden Planner", "garden", "note", "#22AA66")
     assert garden["native"] and garden["removal"] == "catalog"
+    assert garden["app"] == "/agent/organizer_agent/?content_source=custom_garden_a1b2c3"
     assert body["total"] == 3 and body["kinds"] == {"note": 2, "page": 1}
     assert body["collections"] == [{"name": "References", "count": 1}]
     assert body["abilities"]["role"] == "owner" and body["abilities"]["delete"]

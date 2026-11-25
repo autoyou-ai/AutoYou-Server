@@ -3,6 +3,19 @@
  * of its own except an agent's accent, which is mixed into the theme's text colour. */
 
 .ayc-root { display: grid; gap: 18px; min-width: 0; position: relative; }
+/* Hidden horizontal overflow creates an ancestor scroll container, which traps
+ * sticky previews above the viewport. Clip without creating a scroll container
+ * while this screen is mounted, including inside the Admin shell. */
+html.ayc-mounted, html.ayc-mounted body, html.ayc-mounted .ayu-shell { overflow-x: clip; }
+.ayc-workspace { max-width: 1600px; margin: 0 auto; }
+.ayc-toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 90;
+    width: max-content; max-width: calc(100vw - 40px); padding: 14px 20px; border-radius: var(--ayu-radius-md);
+    background: var(--ayu-surface-strong); border: 1px solid var(--ayu-border-strong); box-shadow: var(--ayu-shadow);
+    color: var(--ayu-text); font: 600 14px/1.5 var(--ayu-font-body); overflow-wrap: anywhere;
+}
+.ayc-toast[hidden] { display: none; }
+.ayc-toast[data-kind="error"] { border-color: var(--ayu-red); }
 .ayc-root.is-dropping::after {
     content: ""; position: absolute; inset: -8px; border: 2px dashed var(--ayu-primary); border-radius: var(--ayu-radius-lg);
     background: var(--ayu-primary-soft); opacity: .45; pointer-events: none;
@@ -29,9 +42,18 @@
 .ayc-note { display: flex; align-items: center; gap: 10px; }
 .ayc-note > span { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
 .ayc-note .ayu-btn { flex: 0 0 auto; }
+.ayc-note.ayu-note-gray { color: var(--ayu-text); }
 
 /* search, filters, chips */
 .ayc-controls { display: grid; grid-template-columns: minmax(240px, 1.3fr) minmax(0, 2fr); gap: 12px; align-items: center; }
+.ayc-filter-panel { display: contents; }
+.ayc-filter-panel > .ayc-filters { grid-column: 2; grid-row: 1; }
+.ayc-filter-panel > .ayc-chips { grid-column: 1 / -1; }
+.ayc-filter-toggle, .ayc-filter-done { display: none; }
+.ayc-active-filters { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.ayc-active-filters[hidden] { display: none; }
+.ayc-filter-token { min-width: 0; max-width: 100%; background: var(--ayu-primary-soft); color: var(--ayu-primary-strong); }
+.ayc-filter-token span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ayc-search { min-width: 0; }
 .ayc-search .ayc-icon { color: var(--ayu-muted); }
 .ayc-search-input { font-size: 14px; }
@@ -249,12 +271,26 @@ html.ayc-lock { overflow: hidden; }
 .ayc-dialog-error { color: var(--ayu-red) !important; min-height: 0; }
 .ayc-dialog-error:empty { display: none; }
 .ayc-dialog-actions { justify-content: flex-end; margin-top: 4px; }
+.ayc-access-step { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 12px; padding: 14px 0; border-top: 1px solid var(--ayu-border); }
+.ayc-access-step > .ayc-icon { color: var(--ayu-primary-strong); width: 24px; height: 24px; margin-top: 2px; }
+.ayc-access-step h3, .ayc-organization h3 { margin: 0 0 6px; color: var(--ayu-text); font-size: 14px; line-height: 1.5; }
+.ayc-access-step .ayu-btn { margin-top: 12px; }
+.ayc-access-status { color: var(--ayu-text) !important; }
+.ayc-organization { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--ayu-border); border-radius: var(--ayu-radius-md); background: var(--ayu-surface-muted); }
+.ayc-organization-heading { display: flex; gap: 8px; align-items: center; color: var(--ayu-primary-strong); cursor: pointer; list-style: none; font-size: 12px; font-weight: 700; }
+.ayc-organization-heading::-webkit-details-marker { display: none; }
+.ayc-organization-chevron { margin-left: auto; width: 14px; height: 14px; }
+.ayc-organization[open] .ayc-organization-chevron { transform: rotate(180deg); }
+.ayc-organization[open] > p, .ayc-organization[open] > .ayu-inline-actions { margin-top: 10px; }
+.ayc-organization-heading h3 { margin: 0; }
+.ayc-organization p { margin: 0; font-size: 12px; line-height: 1.6; color: var(--ayu-muted); overflow-wrap: anywhere; }
+.ayc-empty-access { margin-top: 12px; display: grid; gap: 10px; justify-items: center; }
 
 /* motion is optional */
 @media (prefers-reduced-motion: no-preference) {
     .ayc-card, .ayc-row, .ayc-chip, .ayc-iconbtn, .ayc-thumb img { transition: border-color .16s ease, background-color .16s ease, box-shadow .16s ease, opacity .2s ease, color .16s ease; }
     .ayc-line { background: linear-gradient(90deg, var(--ayu-border), var(--ayu-surface-muted), var(--ayu-border)); background-size: 220% 100%; animation: ayc-shimmer 1.4s ease-in-out infinite; }
-    .ayc-preview, .ayc-menu, .ayc-dialog[open] .ayc-dialog-body { animation: ayc-rise .18s ease-out; }
+    .ayc-menu, .ayc-dialog[open] .ayc-dialog-body { animation: ayc-rise .18s ease-out; }
 }
 @keyframes ayc-shimmer { from { background-position: 120% 0; } to { background-position: -120% 0; } }
 @keyframes ayc-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
@@ -271,14 +307,23 @@ html.ayc-lock { overflow: hidden; }
 }
 @media (max-width: 900px) {
     .ayc-controls { grid-template-columns: minmax(0, 1fr); }
+    .ayc-filter-panel > .ayc-filters { grid-column: 1; grid-row: auto; }
 }
 @media (max-width: 720px) {
+    .ayc-root { gap: 14px; }
+    .ayc-controls { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
+    .ayc-search { grid-column: 1; }
+    .ayc-filter-toggle { display: inline-flex; grid-column: 2; min-height: 44px; padding: 10px 12px; }
+    .ayc-filter-panel { display: none; grid-column: 1 / -1; gap: 14px; padding: 14px; border: 1px solid var(--ayu-border); border-radius: var(--ayu-radius-md); background: var(--ayu-surface-strong); }
+    .has-filters .ayc-filter-panel { display: grid; }
+    .ayc-filter-done { display: inline-flex; justify-content: center; width: 100%; }
+    .ayc-filter-panel > .ayc-agentrail { display: none; }
+    .ayc-active-filters .ayu-btn { min-height: 36px; }
     .ayc-actions { flex-wrap: nowrap; justify-content: stretch; gap: 8px; }
     .ayc-actions > .ayc-addwrap { flex: 1 1 auto; min-width: 0; }
     .ayc-addwrap .ayu-btn { width: 100%; }
     .ayc-actions .ayc-compact { flex: 0 0 44px; width: 44px; height: 44px; padding: 0; }
     .ayc-actions .ayc-compact span { display: none; }
-    .ayc-filters .ayc-select[data-ayc="source"] { display: none; }  /* the agent chips below do the same job */
     .ayc-menu { left: 0; right: 0; min-width: 0; }
     .ayc-filters .ayc-select { flex-basis: calc(50% - 4px); min-width: 0; }
     .ayc-seg { width: 100%; }

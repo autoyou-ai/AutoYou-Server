@@ -53,7 +53,8 @@ def _pages(row):
     from shared.platform_runtime import get_config_dir
     config_dir = get_config_dir("AutoYou", anchor=Path(__file__).resolve().parents[1] / "server.py")
     db = PageFeedDB(db_path=os.path.join(str(config_dir), "page_feed.db"))
-    result = db.delete_item_and_cleanup(_number(row), uploads_dir=os.path.join(str(config_dir), "uploads"))
+    from shared.media_paths import page_upload_dir
+    result = db.delete_item_and_cleanup(_number(row), uploads_dir=str(page_upload_dir()))
     if not result.get("deleted"):
         raise LookupError("Page not found")
 

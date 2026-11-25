@@ -2970,6 +2970,8 @@ def _explicit_attachment_ingest_target(
     metadata: Optional[Dict[str, Any]] = None,
 ) -> Optional[str]:
     payload = metadata if isinstance(metadata, dict) else {}
+    if str(payload.get("authenticated_actor_role") or "").strip().lower() == "viewer":
+        return None
     raw_text = str(payload.get("steering_command_raw") or "").strip()
     text = str(message or "").strip()
     search_text = " ".join(part for part in (raw_text, text) if part).strip()
@@ -3098,9 +3100,9 @@ def _summarize_explicit_attachment_ingest(
 
 def _get_temp_media_dir() -> str:
     """Return the temp directory for pre-saved media, ensuring it exists."""
-    base = os.path.join(tempfile.gettempdir(), "autoyou_media")
-    Path(base).mkdir(parents=True, exist_ok=True)
-    return base
+    from shared.media_paths import temp_media_root
+
+    return str(temp_media_root(create=True))
 
 def _safe_path_component(value: Optional[str], fallback: str) -> str:
     """Return a filesystem-safe single path component."""

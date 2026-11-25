@@ -42,6 +42,31 @@
 
     function collectionOf(row) { return row.collection || row.source_collection || ""; }
 
+    // Only this screen's query parameters are owned here. Admin hash routes,
+    // pairing parameters and other host state survive content navigation.
+    function readRoute(search) {
+        var params = new URLSearchParams(search || "");
+        function value(key, limit) { return (params.get("content_" + key) || "").slice(0, limit); }
+        var kind = value("kind", 24), source = value("source", 80), sort = value("sort", 12), item = value("item", 64);
+        return {
+            filter: { text: value("q", 300), kind: Object.prototype.hasOwnProperty.call(KIND_LABEL, kind) ? kind : "",
+                source: /^[a-z][a-z0-9_-]{0,79}$/.test(source) ? source : "", collection: value("collection", 100),
+                sort: ["updated", "title", "size"].indexOf(sort) !== -1 ? sort : "updated" },
+            view: value("view", 12) === "list" ? "list" : "agents",
+            item: /^[A-Za-z0-9_-]{1,64}$/.test(item) ? item : ""
+        };
+    }
+    function routeSearch(search, filter, view, item) {
+        var params = new URLSearchParams(search || "");
+        var values = { q: filter.text, kind: filter.kind, source: filter.source, collection: filter.collection,
+            sort: filter.sort === "updated" ? "" : filter.sort, view: view === "list" ? "list" : "", item: item };
+        Object.keys(values).forEach(function (key) {
+            if (values[key]) { params.set("content_" + key, values[key]); } else { params.delete("content_" + key); }
+        });
+        var result = params.toString();
+        return result ? "?" + result : "";
+    }
+
     function compare(sort) {
         if (sort === "title") {
             return function (a, b) { return fold(a.title).localeCompare(fold(b.title)) || (a.id < b.id ? -1 : 1); };
@@ -149,11 +174,26 @@
                 return out.sort(compare(filter.sort));
             },
 
-            facets: function (filter) {
+            facets: function (filter, serverRows) {
                 var kinds = {}, sources = {}, collections = {};
-                store.query(filter, "kind").forEach(function (row) { kinds[row.kind] = (kinds[row.kind] || 0) + 1; });
-                store.query(filter, "source").forEach(function (row) { sources[row.source] = (sources[row.source] || 0) + 1; });
-                store.query(filter, "collection").forEach(function (row) {
+                filter = filter || {};
+                function candidates(skip) {
+                    var local = store.query(filter, skip);
+                    if (!serverRows || !serverRows.length) { return local; }
+                    var seen = new Set(local.map(function (row) { return row.id; }));
+                    serverRows.forEach(function (item) {
+                        var row = rows.get(item.id) || item;
+                        if (seen.has(row.id) || row.deleted) { return; }
+                        if (skip !== "kind" && filter.kind && row.kind !== filter.kind) { return; }
+                        if (skip !== "source" && filter.source && row.source !== filter.source) { return; }
+                        if (skip !== "collection" && filter.collection && collectionOf(row) !== filter.collection) { return; }
+                        seen.add(row.id); local.push(row);
+                    });
+                    return local;
+                }
+                candidates("kind").forEach(function (row) { kinds[row.kind] = (kinds[row.kind] || 0) + 1; });
+                candidates("source").forEach(function (row) { sources[row.source] = (sources[row.source] || 0) + 1; });
+                candidates("collection").forEach(function (row) {
                     var name = collectionOf(row);
                     if (name) { collections[name] = (collections[name] || 0) + 1; }
                 });
@@ -195,6 +235,6 @@
 
     return {
         createStore: createStore, fold: fold, tokens: tokens, formatBytes: formatBytes, relativeTime: relativeTime, safeUrl: safeUrl,
-        compare: compare, collectionOf: collectionOf, KINDS: KINDS, KIND_LABEL: KIND_LABEL
+        compare: compare, collectionOf: collectionOf, readRoute: readRoute, routeSearch: routeSearch, KINDS: KINDS, KIND_LABEL: KIND_LABEL
     };
 }));

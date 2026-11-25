@@ -585,11 +585,12 @@ def _agent_app_csrf_guard(exempt_paths: frozenset = frozenset({"/api/auth/login"
                 return _json_response({"success": False, "error": "Invalid JSON body."}, status_code=400)
             try:
                 from shared.agent_otp_attempts import reserve_attempt
+                from shared.remote_access_policy import request_is_direct_loopback
 
                 # Keep standalone local authenticators independent of imports.
                 key_fn = getattr(loaded_server, "_rate_limit_client_key", None)
                 caller = key_fn(request) if callable(key_fn) else (request.client.host if request.client else "unknown")
-                attempt = reserve_attempt(str(caller))
+                attempt = reserve_attempt(str(caller), local=request_is_direct_loopback(request))
             except Exception:
                 return _json_response({"success": False, "error": "Authentication is temporarily unavailable."}, status_code=503)
             if attempt is None:

@@ -46,8 +46,8 @@ class TunnelmoleClient {
     }
 
     setupWebSocketServer() {
-        // Create WebSocket server for communication with server.py
-        this.wsServer = new WebSocket.Server({ port: this.wsPort });
+        // Create WebSocket server for communication with server.py (loopback only)
+        this.wsServer = new WebSocket.Server({ port: this.wsPort, host: '127.0.0.1' });
         
         this.wsServer.on('connection', (ws) => {
             console.log('[Tunnelmole] WebSocket connection established with server.py');
@@ -592,9 +592,9 @@ class TunnelmoleClient {
                 return { success: true, url: this.tunnelmoleUrl };
             }
 
-            // Start Express server
-            this.server = this.app.listen(this.port, () => {
-                console.log(`[Tunnelmole] Local server started on port ${this.port}`);
+            // Start Express server on loopback only
+            this.server = this.app.listen(this.port, '127.0.0.1', () => {
+                console.log(`[Tunnelmole] Local server started on 127.0.0.1:${this.port}`);
             });
 
             // Start Tunnelmole tunnel with timeout and error handling

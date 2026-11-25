@@ -177,6 +177,7 @@ def test_permissions_save_audio_only_call_recording(monkeypatch):
 
 def test_audio_only_call_recording_writes_received_pcm(tmp_path, monkeypatch):
     import wave
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path))
 
     config = server._default_config()
     config["video_call"]["record_audio_only_calls"] = True
@@ -364,6 +365,7 @@ def test_remote_desktop_storage_tier_does_not_block_chat_capabilities(monkeypatc
 
 
 def test_webrtc_capabilities_reflect_video_and_remote_desktop_policy(monkeypatch, tmp_path):
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path))
     cfg = server._default_config()
     cfg["video_call"]["record_my_video"] = True
     cfg["video_call"]["record_audio_only_calls"] = True
@@ -1824,7 +1826,8 @@ def test_safety_recording_default_dir_honors_test_root(monkeypatch, tmp_path):
     cfg = server._default_config()
     cfg["video_call"]["silent_recording_dir"] = ""
 
-    assert server._resolve_silent_recording_dir(cfg=cfg) == str(tmp_path / "AutoYou" / "output" / "safety-recordings")
+    from shared.content_library import output_dir
+    assert server._resolve_silent_recording_dir(cfg=cfg) == str(output_dir("music_agent") / "recordings" / "safety")
 
 
 def test_recording_default_paths_use_runtime_data_root(monkeypatch, tmp_path):
@@ -1835,9 +1838,12 @@ def test_recording_default_paths_use_runtime_data_root(monkeypatch, tmp_path):
 
     paths = server._build_recording_paths_payload(cfg)
 
-    assert server._resolve_video_recording_dir(cfg=cfg) == str(tmp_path / "AutoYou" / "output" / "video-recordings")
-    assert paths["video_recording"]["default_dir"] == str(tmp_path / "AutoYou" / "output" / "video-recordings")
-    assert paths["safety_recording"]["default_dir"] == str(tmp_path / "AutoYou" / "output" / "safety-recordings")
+    from shared.content_library import output_dir
+    video_dir = output_dir("media_agent") / "recordings" / "video"
+    safety_dir = output_dir("music_agent") / "recordings" / "safety"
+    assert server._resolve_video_recording_dir(cfg=cfg) == str(video_dir)
+    assert paths["video_recording"]["default_dir"] == str(video_dir)
+    assert paths["safety_recording"]["default_dir"] == str(safety_dir)
     # Fresh installations keep voice training beside the other agents' output (the unified content library).
     assert paths["voice_training"]["default_dir"] == str(
         tmp_path / "AutoYou" / "content_library" / "content" / "voice_training_agent")

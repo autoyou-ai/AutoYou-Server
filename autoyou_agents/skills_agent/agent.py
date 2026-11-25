@@ -12,8 +12,10 @@ __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 
+import json
 import logging
 import os
+import re
 import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -51,6 +53,26 @@ def get_skills_root() -> Path:
     return skills_dir.resolve()
 
 
+_SKILL_NAME_RE = re.compile(r"^([a-z0-9]+(-[a-z0-9]+)*|[a-z0-9]+(_[a-z0-9]+)*)$")
+
+
+def _resolve_safe_skill_dir(skills_dir: Path, name: Any) -> Optional[Path]:
+    clean_name = str(name or "").strip().lower()
+    if not clean_name or len(clean_name) > 64 or not _SKILL_NAME_RE.fullmatch(clean_name):
+        return None
+    root = skills_dir.resolve()
+    candidate = skills_dir / clean_name
+    try:
+        if candidate.is_symlink():
+            return None
+        resolved = candidate.resolve()
+        if resolved == root or not resolved.is_relative_to(root):
+            return None
+        return resolved
+    except Exception:
+        return None
+
+
 # ─── Dynamic Skill Toolset ───────────────────────────────────────────────────
 
 class DynamicSkillToolset(SkillToolset):
@@ -75,7 +97,10 @@ class DynamicSkillToolset(SkillToolset):
 
     def _get_skill(self, skill_name: str) -> Optional[models.Skill]:
         try:
-            return adk_skills.load_skill_from_dir(self._skills_dir / skill_name)
+            skill_path = _resolve_safe_skill_dir(self._skills_dir, skill_name)
+            if skill_path is None or not skill_path.is_dir():
+                return None
+            return adk_skills.load_skill_from_dir(skill_path)
         except Exception:
             return None
 
@@ -153,23 +178,34 @@ def create_or_save_skill(
             validated_files.append((parts, content))
 
     skills_dir = get_skills_root()
-    skill_path = skills_dir / name
+    skill_path = _resolve_safe_skill_dir(skills_dir, name)
+    if skill_path is None:
+        return {
+            "status": "error",
+            "message": "Skill name must be lowercase kebab-case or snake_case with no spaces/special characters.",
+        }
     skill_path.mkdir(parents=True, exist_ok=True)
     
+    clean_description = " ".join(description.splitlines()).strip()
     # Write SKILL.md with standardized YAML frontmatter format
     skill_md_content = f"""---
 name: {name}
-description: "{description}"
+description: {json.dumps(clean_description)}
 ---
-{instructions.strip()}
+{str(instructions or "").strip()}
 """
-    (skill_path / "SKILL.md").write_text(skill_md_content, encoding="utf-8")
+    skill_md_path = skill_path / "SKILL.md"
+    if skill_md_path.is_symlink():
+        return {"status": "error", "message": "Refusing to write to a symlinked SKILL.md."}
+    skill_md_path.write_text(skill_md_content, encoding="utf-8")
     
     # Write additional files
     for parts, content in validated_files:
         dest_file = skill_path.joinpath(*parts)
+        if dest_file.is_symlink() or not dest_file.resolve().is_relative_to(skill_path.resolve()):
+            return {"status": "error", "message": "Invalid destination file path inside skill."}
         dest_file.parent.mkdir(parents=True, exist_ok=True)
-        dest_file.write_text(content, encoding="utf-8")
+        dest_file.write_text(str(content or ""), encoding="utf-8")
             
     return {"status": "success", "message": f"Skill '{name}' saved successfully."}
 
@@ -181,8 +217,8 @@ def read_skill_details(name: str) -> Dict[str, Any]:
         name: The exact name of the skill directory.
     """
     skills_dir = get_skills_root()
-    skill_path = skills_dir / name
-    if not skill_path.is_dir():
+    skill_path = _resolve_safe_skill_dir(skills_dir, name)
+    if skill_path is None or not skill_path.is_dir():
         return {"status": "error", "message": f"Skill '{name}' not found."}
         
     try:
@@ -196,6 +232,8 @@ def read_skill_details(name: str) -> Dict[str, Any]:
     for root, _, filenames in os.walk(skill_path):
         for fn in filenames:
             file_absolute = Path(root) / fn
+            if file_absolute.is_symlink():
+                continue
             rel_path = file_absolute.relative_to(skill_path)
             rel_path_str = str(rel_path).replace("\\", "/")
             try:
@@ -221,8 +259,8 @@ def delete_skill(name: str) -> Dict[str, Any]:
         name: The exact name of the skill directory to delete.
     """
     skills_dir = get_skills_root()
-    skill_path = skills_dir / name
-    if not skill_path.is_dir():
+    skill_path = _resolve_safe_skill_dir(skills_dir, name)
+    if skill_path is None or not skill_path.is_dir():
         return {"status": "error", "message": f"Skill '{name}' does not exist."}
         
     try:
@@ -252,6 +290,24 @@ async def _skills_before_model_callback(callback_context: Any, llm_request: Any)
     return None
 
 
+def _skills_before_tool_callback(tool: Any, args: Dict[str, Any], tool_context: Any) -> Any:
+    """Protect the ADK entrypoint as well as the website's skill controls."""
+    readonly = {"get_current_datetime", "list_skills", "read_skill_details", "load_skill", "load_skill_resource"}
+    if str(getattr(tool, "name", "")) in readonly:
+        return None
+    state = getattr(tool_context, "state", None)
+    try:
+        if state.get("autoyou_authenticated_actor_role") == "admin":
+            return None
+    except (AttributeError, TypeError):
+        pass
+    from autoyou_agents.admin_agent.admin_tool import _check_admin_session
+
+    if _check_admin_session(tool_context):
+        return None
+    return {"status": "error", "message": "Changing skills or running scripts requires an active admin session."}
+
+
 def create_skills_agent(model_config: Any) -> Any:
     """Factory function to build the Skills Agent."""
     from google.adk.agents import Agent
@@ -270,4 +326,5 @@ def create_skills_agent(model_config: Any) -> Any:
         instruction=AGENT_INSTRUCTION,
         tools=all_agent_tools,
         before_model_callback=_skills_before_model_callback,
+        before_tool_callback=_skills_before_tool_callback,
     )

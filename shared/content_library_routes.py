@@ -135,11 +135,16 @@ def register(app, authorize, prefix: str, worker=None):
             access_scope = content_index.etag("access", scope_key(allowed), content_access.abilities(request)["role"],
                 current["index_private"], current["index_profile"], current["index_reminders"])
             return {**data, "agents": agents, "abilities": content_access.abilities(request),
+                    # This explanation is independent of hidden catalog rows. Do
+                    # not disclose which locked sources contain private content.
+                    "access": {"agent_scoped": content_access.is_agent_scoped_request(request),
+                               "apps_url": "/websites", "admin_url": "/agent/admin_agent/#content",
+                               "ai_url": "/agent/admin_agent/#ai-models"},
                     "settings": {key: current[key] for key in ("output_root", "encrypted_at_rest", "auto_organize", "semantic_labels", "index_private", "index_profile", "index_reminders", "notes_sync_enabled", "content_sync_enabled")},
                     "access_scope": access_scope, "_scope": scope_key(allowed)}
         payload = await asyncio.to_thread(build)
         scope = payload.pop("_scope", None)
-        parts = ("summary", payload["revision"], payload["worker"], payload["settings"], payload["abilities"]["role"])
+        parts = ("summary", payload["revision"], payload["worker"], payload["settings"], payload["abilities"], payload["access"])
         tag = content_index.etag(*parts, *(("scope", scope) if scope is not None else ()))
         return answer(request, payload, tag)
 
@@ -232,6 +237,7 @@ def register(app, authorize, prefix: str, worker=None):
                 media = {"type": mimetypes.guess_type(row["path"])[0] or "application/octet-stream",
                          "thumbnail": row["kind"] == "image"}
                 path = resolve_path(row)
+                media["available"] = path.is_file()
                 if not text and path.is_file() and Path(row["path"]).suffix.lower() in {
                     ".txt", ".md", ".csv", ".tsv", ".json", ".yaml", ".yml", ".xml", ".html", ".srt", ".vtt", ".log", ".py", ".js", ".css"
                 }:

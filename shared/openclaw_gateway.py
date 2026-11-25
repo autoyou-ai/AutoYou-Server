@@ -87,9 +87,138 @@ def _safe_path_component(value: Optional[str], fallback: str) -> str:
 
 
 def _get_temp_media_dir() -> str:
-    base = os.path.join(tempfile.gettempdir(), "autoyou_media")
-    Path(base).mkdir(parents=True, exist_ok=True)
-    return base
+    from shared.media_paths import temp_media_root
+
+    return str(temp_media_root(create=True))
+
+
+_FORBIDDEN_ATTACHMENT_FILENAMES = frozenset(
+    {
+        "config.encrypted",
+        "config.encrypted.bak",
+        "config.keystore.enc",
+        "config.keystore.enc.keychain-backup",
+        "server_unlock.json",
+        "license_acknowledgement",
+        "ai_agent_internal_api_token",
+        "agent_ui_sessions.json",
+        "agent_install_registry.json",
+        "agent_frontends_registry.json",
+        "jailbreak_root_prompt.txt",
+        "jailbreak_root_prompt.sig",
+        "jailbreak_acknowledgement.json",
+        ".env",
+    }
+)
+_FORBIDDEN_ATTACHMENT_SUFFIXES = (
+    ".sqlite3",
+    ".db",
+    ".db-wal",
+    ".db-shm",
+    ".enc",
+    ".key",
+    ".pem",
+    ".py",
+    ".pyc",
+    ".pyd",
+    ".so",
+)
+_FORBIDDEN_ATTACHMENT_DIR_NAMES = frozenset(
+    {
+        ".adk",
+        "local_tls",
+        ".git",
+        "autoyou_agents",
+        "core_server",
+        "routers",
+        "shared",
+        "crypt",
+    }
+)
+
+
+def is_allowed_attachment_path(path_value: Any) -> bool:
+    """Return True only when ``path_value`` is an AutoYou-owned media/temp attachment file."""
+    text = str(path_value or "").strip().strip('"').strip("'")
+    if not text:
+        return False
+    try:
+        candidate = Path(text)
+        if candidate.is_symlink():
+            return False
+        resolved = candidate.resolve()
+    except Exception:
+        return False
+    if not resolved.is_file():
+        return False
+
+    lower_name = resolved.name.lower()
+    if lower_name in _FORBIDDEN_ATTACHMENT_FILENAMES or lower_name.endswith(_FORBIDDEN_ATTACHMENT_SUFFIXES):
+        return False
+    allowed_roots: List[Path] = []
+    try:
+        from shared.conversation_media_store import is_servable_media_path
+        if is_servable_media_path(str(resolved)):
+            return True
+    except Exception:
+        pass
+    try:
+        allowed_roots.append(Path(_get_temp_media_dir()).resolve())
+    except Exception:
+        pass
+    try:
+        from shared.content_library import managed_roots
+        from shared.content_agents import BUILTIN, is_custom
+        from shared.content_agent_upgrade import PREVIOUS_NAMES
+
+        # The selected output folder may be a broad pre-existing directory.
+        # Only app namespaces inside it are owned, never every sibling file.
+        names = set(BUILTIN) | set(PREVIOUS_NAMES.values())
+        for base in managed_roots():
+            base = base.resolve()
+            if base in resolved.parents:
+                relative = resolved.relative_to(base)
+                namespace = relative.parts[0]
+                if len(relative.parts) > 1 and (namespace in names or is_custom(namespace) or namespace == ".objects"):
+                    allowed_roots.append(base / namespace)
+    except Exception:
+        pass
+    try:
+        from shared.voice_training_storage import get_voice_training_dir
+        voice_root = get_voice_training_dir()
+        allowed_roots.extend((voice_root / name).resolve() for name in ("recordings", "models"))
+        from autoyou_agents.media_agent.website.backend.store import data_root
+        allowed_roots.append((data_root() / "media").resolve())
+        from autoyou_agents.notes_agent.notes_tool import NotesTool
+        allowed_roots.append((NotesTool._resolve_default_storage_dir() / "media").resolve())
+    except Exception:
+        pass
+    try:
+        from shared.platform_runtime import get_config_dir, get_mutable_data_dir
+
+        anchor = Path(__file__).resolve().parents[1] / "server.py"
+        bases = (
+            get_mutable_data_dir("AutoYou", anchor=anchor),
+            get_config_dir("AutoYou", anchor=anchor),
+        )
+        if not os.getenv("AUTOYOU_TEST_ROOT"):
+            bases += (anchor.parent,)
+        for base in bases:
+            for subdir in ("uploads", "output", "files_workspace", "conversation_media"):
+                allowed_roots.append((base / subdir).resolve())
+    except Exception:
+        pass
+
+    for root in allowed_roots:
+        if root in resolved.parents:
+            relative = resolved.relative_to(root)
+            if not any(part.lower() in _FORBIDDEN_ATTACHMENT_DIR_NAMES for part in relative.parts[:-1]):
+                return True
+    try:
+        from shared.recording_content import is_registered_recording
+        return is_registered_recording(resolved)
+    except Exception:
+        return False
 
 
 def safe_filename(filename: Optional[str], mimetype_hint: Optional[str]) -> str:
@@ -225,7 +354,7 @@ def attachment_to_path(
         existing_path = att.get("path")
         filename_hint = att.get("filename") or existing_path
         filename = safe_filename(filename_hint, mimetype_hint)
-        if existing_path and os.path.exists(existing_path):
+        if existing_path and os.path.exists(existing_path) and is_allowed_attachment_path(existing_path):
             normalized_mimetype = _normalize_attachment_mimetype(
                 {
                     "mimetype": mimetype_hint,
@@ -412,6 +541,8 @@ def _normalize_attachment_mimetype(att: Dict[str, Any]) -> str:
 def _load_attachment_bytes(att: Dict[str, Any]) -> Tuple[Optional[bytes], Optional[str]]:
     path_value = att.get("path")
     if isinstance(path_value, str) and path_value and os.path.exists(path_value):
+        if not is_allowed_attachment_path(path_value):
+            return None, f"attachment path is outside allowed media directories: {os.path.basename(path_value)}"
         try:
             path = Path(path_value)
             raw = path.read_bytes()

@@ -102,6 +102,29 @@ def png(width=96, height=64):
     return data.getvalue()
 
 
+def pdf():
+    """A valid one-page document containing synthetic text, with a real xref."""
+    stream = b"BT /F1 22 Tf 72 720 Td (Synthetic preview document) Tj 0 -34 Td /F1 12 Tf (Test content only. No lease terms or personal data.) Tj ET"
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+        b"<< /Length " + str(len(stream)).encode() + b" >>\nstream\n" + stream + b"\nendstream",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ]
+    data = bytearray(b"%PDF-1.4\n")
+    offsets = []
+    for index, value in enumerate(objects, 1):
+        offsets.append(len(data))
+        data.extend(str(index).encode() + b" 0 obj\n" + value + b"\nendobj\n")
+    xref = len(data)
+    data.extend(b"xref\n0 6\n0000000000 65535 f \n")
+    for offset in offsets:
+        data.extend(f"{offset:010d} 00000 n \n".encode())
+    data.extend(b"trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n" + str(xref).encode() + b"\n%%EOF\n")
+    return bytes(data)
+
+
 def seed():
     """A library like a real one: several built-in agents, two agents made on a phone, one agent with no safe remote removal."""
     from autoyou_agents.notes_agent.notes_tool import NotesTool
@@ -116,7 +139,7 @@ def seed():
     save_output("media_generation_agent", "aurora.png", [png()], title="Aurora over a quiet harbor", kind="image")
     save_output("media_generation_agent", "teaser.mp4", [b"synthetic video bytes" * 50], title="Product teaser", kind="video")
     save_output("files_agent", "budget.csv", [b"item,cost\nsynthetic,1\n"], title="Budget 2027", kind="file")
-    save_output("files_agent", "lease.pdf", [b"%PDF-1.4 synthetic"], title="Lease agreement (draft)", kind="file")
+    save_output("files_agent", "lease.pdf", [pdf()], title="Lease agreement (draft)", kind="file")
     library.publish("location_agent", "2026-11-20", "Locations on 2026-11-20", "location", href="/agent/location_agent/")
     for index, (source, title, identity) in enumerate((
             ("custom_garden_planner_a1b2c3", "Tomato bed layout", dict(agent_name="Garden Planner", agent_handle="garden", agent_icon="leaf", agent_accent="#2E9E5B")),
@@ -187,8 +210,13 @@ def settle(shot):
 
 
 def to_list(shot):
+    if not shot.js("document.querySelector('button[data-act=\"view\"][data-id=\"list\"]').getClientRects().length > 0"):
+        shot.page.click('button[data-act="toggle-filters"]')
+        shot.page.wait("document.querySelector('button[data-act=\"view\"][data-id=\"list\"]').getClientRects().length > 0", 5, "mobile filters")
     shot.page.click('button[data-act="view"][data-id="list"]')
     shot.page.wait("!!document.querySelector('.ayc-list')", 10, "the list view")
+    if shot.js("AutoYouContent._state().filtersOpen === true"):
+        shot.page.click('button[data-act="close-filters"]')
 
 
 # ---------------------------------------------------------------------------------------------------------

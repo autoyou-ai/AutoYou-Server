@@ -132,8 +132,8 @@ def _safe_filename(value: Any, mimetype: Any) -> str:
 def _attachment_bytes(attachment: Dict[str, Any], *, trusted_path: bool) -> Optional[bytes]:
     """Inline bytes first; a ``path`` only when AutoYou produced it.
 
-    ``trusted_path`` is for server-side producers (TTS replies, agent tools).
-    Anything a client sent may only point into AutoYou's own media folders.
+    Paths from clients and provider replies must stay in app-owned media
+    folders. An assistant role does not establish filesystem ownership.
     """
     from shared.secure_storage import FILE_HEADER, read_secure_file
 
@@ -144,9 +144,12 @@ def _attachment_bytes(attachment: Dict[str, Any], *, trusted_path: bool) -> Opti
     if isinstance(url_value, str) and url_value.startswith("data:") and "," in url_value:
         return base64.b64decode(url_value.split(",", 1)[1], validate=False)
     path_value = str(attachment.get("path") or "").strip()
-    if path_value and os.path.isfile(path_value) and (trusted_path or is_servable_media_path(path_value)):
-        raw = Path(path_value).read_bytes()
-        return read_secure_file(path_value) if raw.startswith(FILE_HEADER) else raw
+    if path_value and os.path.isfile(path_value):
+        from shared.openclaw_gateway import is_allowed_attachment_path
+
+        if is_allowed_attachment_path(path_value):
+            raw = Path(path_value).read_bytes()
+            return read_secure_file(path_value) if raw.startswith(FILE_HEADER) else raw
     return None
 
 
@@ -237,9 +240,9 @@ def archive_attachment(
 
 
 def _temp_media_root() -> Path:
-    import tempfile
+    from shared.media_paths import temp_media_root
 
-    return (Path(tempfile.gettempdir()) / "autoyou_media").resolve()
+    return temp_media_root()
 
 
 def is_servable_media_path(path_value: Any) -> bool:
@@ -258,12 +261,19 @@ def is_servable_media_path(path_value: Any) -> bool:
         return False
     if not resolved.is_file():
         return False
-    roots = [_temp_media_root()]
+    if _temp_media_root() in resolved.parents:
+        return True
+    # A configured archive root may be the user's entire temp/Documents folder.
+    # Accept only files the backend actually archived and indexed there.
+    from shared.content_library import ContentLibrary, state_root
+    if not (state_root() / "catalog.sqlite3").is_file() or not re.fullmatch(r"[a-f0-9]{32}", resolved.stem):
+        return False
     try:
-        roots.extend(conversation_media_roots())
+        with ContentLibrary().connect() as db:
+            return db.execute("SELECT 1 FROM content WHERE source='conversation' AND source_id=? AND path=? AND deleted=0",
+                              (resolved.stem, str(resolved))).fetchone() is not None
     except Exception:
-        pass
-    return any(root in resolved.parents for root in roots)
+        return False
 
 
 def read_attachment_bytes(attachment: Optional[Dict[str, Any]]) -> Optional[bytes]:

@@ -234,12 +234,9 @@ class PageFeedService:
             LOGGER.error(f"Failed to initialize page_feed.db: {e}")
             config_dir = os.getcwd()
 
-        try:
-            self.uploads_dir = os.path.join(config_dir, "uploads")
-            os.makedirs(self.uploads_dir, exist_ok=True)
-        except Exception as e:
-            self.uploads_dir = os.getcwd()
-            LOGGER.error(f"Failed to prepare uploads directory: {e}")
+        from shared.media_paths import page_upload_dir
+
+        self.uploads_dir = str(page_upload_dir())
         self.config_dir = config_dir
 
         try:

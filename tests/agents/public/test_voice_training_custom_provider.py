@@ -520,10 +520,12 @@ def test_installer_default_target_matches_runtime_lookup(voice_root):
     assert installer.WORKER_SCRIPT == custom_voice_tts.voice_clone_worker_script()
     lines = installer.REQUIREMENTS_FILE.read_text(encoding="utf-8").splitlines()
     pins = {}
+    from packaging.requirements import Requirement
     for line in lines:
         if line.strip() and not line.startswith("#"):
-            name, _, version = line.partition("==")
-            pins[name.split(">")[0].strip()] = version.strip()
+            requirement = Requirement(line)
+            if requirement.marker is None or requirement.marker.evaluate():
+                pins[requirement.name] = str(requirement.specifier).removeprefix("==")
     assert "chatterbox-tts" not in pins  # installed separately with --no-deps
     assert "torch" not in pins  # chosen per machine before this file
     assert "resemble-perth" in pins

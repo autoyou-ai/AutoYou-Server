@@ -634,7 +634,7 @@ def create_app(data_dir: Path | None = None, *, otp_verifier=None) -> FastAPI:
                         break
         except OSError:
             raise ValueError("This folder could not be opened") from None
-        locations = [{"label": "TV uploads", "path": str(store.media_dir)}]
+        locations = [{"label": "Media uploads", "path": str(store.media_dir)}]
         # During tests/QA, browse only synthetic locations by default.
         import os
         home = Path(os.environ["AUTOYOU_TEST_ROOT"]) if os.getenv("AUTOYOU_TEST_ROOT") else Path.home()

@@ -197,17 +197,29 @@ def _install_ai_agent_lan_otp_gate(app_instance: FastAPI) -> None:
             return await call_next(request)
 
         code = request.headers.get(_LAN_OTP_HEADER_NAME) or request.query_params.get(_LAN_OTP_QUERY_PARAM)
-        if code and server._verify_totp_secret(totp_secret, code, valid_window=1):
-            response = await call_next(request)
-            response.set_cookie(
-                _LAN_OTP_COOKIE_NAME,
-                _make_lan_otp_gate_token(totp_secret),
-                max_age=_LAN_OTP_TOKEN_MAX_AGE_SECONDS,
-                httponly=True,
-                samesite="lax",
-                secure=True,
-            )
-            return response
+        if code:
+            from shared.agent_otp_attempts import accept_attempt, reserve_attempt
+            from shared.remote_access_policy import request_is_direct_loopback
+
+            client_host = getattr(getattr(request, "client", None), "host", None) or "unknown"
+            attempt = reserve_attempt(f"ai_agent_lan_otp:{client_host}", local=request_is_direct_loopback(request))
+            if attempt is None:
+                return server.JSONResponse(
+                    status_code=429,
+                    content={"error": "Too many OTP attempts. Please wait before trying again."},
+                )
+            if server._verify_totp_secret(totp_secret, code, valid_window=1):
+                accept_attempt(attempt)
+                response = await call_next(request)
+                response.set_cookie(
+                    _LAN_OTP_COOKIE_NAME,
+                    _make_lan_otp_gate_token(totp_secret),
+                    max_age=_LAN_OTP_TOKEN_MAX_AGE_SECONDS,
+                    httponly=True,
+                    samesite="lax",
+                    secure=True,
+                )
+                return response
 
         return server.JSONResponse(
             status_code=401,

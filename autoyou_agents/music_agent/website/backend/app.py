@@ -390,8 +390,8 @@ def _normalize_roots(explicit_roots: Optional[str] = None) -> List[str]:
         roots = list(roots) + [str(import_root())]
         if legacy_import_root().is_dir():
             roots.append(str(legacy_import_root()))
-        from shared.content_library import managed_roots
-        roots.extend(str(root / "music_agent") for root in managed_roots() if (root / "music_agent").is_dir())
+        from shared.content_library import output_roots
+        roots.extend(str(root) for root in output_roots("music_agent") if root.is_dir())
     normalized: List[str] = []
     seen: set[str] = set()
     for root in roots:

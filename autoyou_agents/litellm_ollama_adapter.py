@@ -355,6 +355,10 @@ def _normalize_tool_name(name: Any) -> Any:
     if not isinstance(name, str):
         return name
     cleaned = _TOOL_CALLS_PREFIX_RE.sub("", name).strip()
+    from autoyou_agents.shared_tools.agent_identity import RENAMED_AGENT_PACKAGES, resolve_runtime_agent_name
+
+    if cleaned.lower().removeprefix("autoyou_") in RENAMED_AGENT_PACKAGES:
+        return resolve_runtime_agent_name(cleaned)
     return cleaned or name.strip()
 
 def _unwrap_json_wrapped_content(text: Any) -> Any:

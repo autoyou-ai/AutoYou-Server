@@ -37,12 +37,14 @@ _describe_chat_auth_state = _smc._describe_chat_auth_state
 _json_response = _smc._json_response
 
 from autoyou_agents.skills_agent.agent import (
+    _resolve_safe_skill_dir,
     list_skills,
     create_or_save_skill,
     read_skill_details,
     delete_skill,
     get_skills_root,
 )
+from shared.remote_access_policy import request_remote_access_role
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +77,8 @@ def _extra_routes(app, agent_name: str) -> None:
         auth = _describe_chat_auth_state(request, agent_name)
         if not auth.get("authenticated"):
             return _json_response({"success": False, "error": "Not authenticated"}, status_code=401)
+        if request_remote_access_role(request) != "admin":
+            return _json_response({"success": False, "error": "Changing skills requires admin access."}, status_code=403)
         try:
             payload = await request.json()
         except Exception:
@@ -96,6 +100,8 @@ def _extra_routes(app, agent_name: str) -> None:
         auth = _describe_chat_auth_state(request, agent_name)
         if not auth.get("authenticated"):
             return _json_response({"success": False, "error": "Not authenticated"}, status_code=401)
+        if request_remote_access_role(request) != "admin":
+            return _json_response({"success": False, "error": "Changing skills requires admin access."}, status_code=403)
         res = delete_skill(name)
         if res.get("status") == "error":
             return _json_response({"success": False, "error": res.get("message")}, status_code=400)
@@ -106,18 +112,27 @@ def _extra_routes(app, agent_name: str) -> None:
         auth = _describe_chat_auth_state(request, agent_name)
         if not auth.get("authenticated"):
             return _json_response({"success": False, "error": "Not authenticated"}, status_code=401)
+        if request_remote_access_role(request) != "admin":
+            return _json_response({"success": False, "error": "Running skill scripts requires admin access."}, status_code=403)
         try:
             payload = await request.json()
         except Exception:
             payload = {}
         
-        script_path = str(payload.get("script") or "scripts/run.py").replace("\\", "/").strip("/")
-        parts = [p for p in script_path.split("/") if p not in ("", ".", "..")]
-        if not parts or parts[0] != "scripts":
+        script_path = str(payload.get("script") or "scripts/run.py").replace("\\", "/")
+        parts = script_path.split("/")
+        if not parts or parts[0] != "scripts" or any(p in {"", ".", ".."} or ":" in p for p in parts):
             return _json_response({"success": False, "error": "Script path must reside inside scripts/"}, status_code=400)
         
         skills_root = get_skills_root()
-        abs_script_path = skills_root.joinpath(name, *parts)
+        skill_dir = _resolve_safe_skill_dir(skills_root, name)
+        if skill_dir is None:
+            return _json_response({"success": False, "error": "Invalid skill name."}, status_code=400)
+        if not skill_dir.is_dir():
+            return _json_response({"success": False, "error": f"Skill '{name}' not found."}, status_code=404)
+        abs_script_path = skill_dir.joinpath(*parts)
+        if abs_script_path.is_symlink() or not abs_script_path.resolve().is_relative_to(skill_dir.resolve()):
+            return _json_response({"success": False, "error": "Invalid script path."}, status_code=400)
         if not abs_script_path.is_file():
             return _json_response({"success": False, "error": f"Script file '{script_path}' not found in skill folder."}, status_code=404)
         
@@ -138,7 +153,7 @@ def _extra_routes(app, agent_name: str) -> None:
                 capture_output=True,
                 text=True,
                 timeout=30,
-                cwd=str(skills_root / name),
+                cwd=str(skill_dir),
             )
             return _json_response({
                 "success": True,

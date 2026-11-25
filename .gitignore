@@ -104,6 +104,22 @@ ${PLAYWRIGHT_BROWSERS_PATH}
 # ------------------------------------------------------------------------------
 # 6. Media & Audio Storage
 # ------------------------------------------------------------------------------
+# App-owned content and legacy stores may contain private recordings and GPS data.
+/content_library/
+/autoyou_media/
+/audio_agent/
+/music_agent/
+/tv_agent/
+/tv_agent_data/
+/media_agent_data/
+/voice_training/
+/voice_training_storage.json
+/autoyou_agents/tv_agent/website/backend/tv_agent_data/
+/autoyou_agents/media_agent/website/backend/tv_agent_data/
+/autoyou_agents/persona_agent/persona_agent/
+/autoyou_agents/location_agent/location_agent/
+/autoyou_agents/voice_training_agent/voice_training_agent/
+/autoyou_agents/media_generation_agent/media_generation_agent/
 uploads/
 media/
 !tests/**/media/

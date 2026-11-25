@@ -1,13 +1,15 @@
 <!doctype html>
 <html lang="en"><head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>My Content · AutoYou</title>
-  <link rel="stylesheet" href="assets/admin-ui.css"><link rel="stylesheet" href="assets/content-screen.css">
+  <title>My Content - AutoYou</title>
+  <link rel="stylesheet" href="__CONTENT_API__/assets/admin-ui.css">
+  <link rel="stylesheet" href="__CONTENT_API__/assets/content-screen.css?v=20261125b">
 </head><body>
-  <main class="ayu-main"><h1>My Content</h1>
-    <div id="content-host"></div><p id="content-status" role="status"></p>
-    <a href="view">File storage and imports</a>
+  <main class="ayu-main ayc-workspace">
+    <div id="content-host"></div>
   </main>
-  <script src="assets/content-store.js"></script><script src="assets/content-screen.js"></script>
-  <script src="assets/content-workspace.js"></script>
+  <div id="content-status" class="ayc-toast" role="status" aria-live="polite" hidden></div>
+  <script src="__CONTENT_API__/assets/content-store.js?v=20261125b"></script>
+  <script src="__CONTENT_API__/assets/content-screen.js?v=20261125b"></script>
+  <script src="__CONTENT_API__/assets/content-workspace.js?v=20261125b"></script>
 </body></html>

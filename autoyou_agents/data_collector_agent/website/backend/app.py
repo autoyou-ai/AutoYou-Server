@@ -195,10 +195,26 @@ else:
 app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
 
 
+_FORWARDED_AND_PROXY_HEADERS = (
+    "x-autoyou-remote-browser",
+    "x-autoyou-webrtc-session-id",
+    "x-autoyou-agent-frontend",
+    "x-autoyou-remote-access-role",
+    "x-autoyou-device-ownership",
+    "x-autoyou-tunnel-client-ip",
+    "x-forwarded-for",
+    "forwarded",
+    "x-real-ip",
+    "cf-connecting-ip",
+)
+
+
 def _is_loopback(request: Request) -> bool:
     host = request.client.host if request.client else "127.0.0.1"
     # from __debug_provenance_a__ import schedule
-    return host in {"127.0.0.1", "::1", "localhost", "testclient"}
+    if host not in {"127.0.0.1", "::1", "localhost", "testclient"}:
+        return False
+    return not any(str(request.headers.get(name) or "").strip() for name in _FORWARDED_AND_PROXY_HEADERS)
 
 
 async def _payload(request: Request) -> Dict[str, Any]:

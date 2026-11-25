@@ -1309,9 +1309,9 @@ def register_routes(
         if transport_error:
             return transport_error
         async_mode = server._is_async_login_request(request)
-        # Rate limit login attempts (H-2: real client IP when behind bridge)
+        # Login and unlock share one remote guessing cap and a reserved local cap.
         client_ip = server._rate_limit_client_key(request)
-        if not server.LOGIN_RATE_LIMITER.is_allowed(client_ip):
+        if not server.LOGIN_RATE_LIMITER.is_allowed(server._credential_rate_limit_key(request)):
             server.LOGGER.warning(f"Rate limit exceeded for login from {client_ip}")
             if async_mode:
                 return JSONResponse(

@@ -1306,6 +1306,9 @@ class IncomingVideoTrackSink:
         with self._recording_lock:
             self._close_video_recording_locked()
             self._flush_recording_manifest_locked()
+            if (self.recording_mode == INBOUND_VIDEO_RECORDING_MODE_IMAGES or self._recording_video_disabled) and self._recording_manifest_path:
+                from shared.recording_content import publish_recording
+                publish_recording(self._recording_manifest_path, kind="frames")
 
     def _close_video_recording_locked(self, *, discard: bool = False) -> None:
         container = self._recording_container
@@ -1358,6 +1361,8 @@ class IncomingVideoTrackSink:
             try:
                 if not discard and finalize_error is None and video_path is not None:
                     write_secure_file(video_path, video_buffer.getvalue())
+                    from shared.recording_content import publish_recording
+                    publish_recording(video_path, kind="video")
             except Exception as exc:
                 logger.warning("Failed to publish encrypted inbound video recording: %s", exc)
             finally:
@@ -1376,6 +1381,8 @@ class IncomingVideoTrackSink:
             return
         try:
             os.replace(temp_video_path, video_path)
+            from shared.recording_content import publish_recording
+            publish_recording(video_path, kind="video")
         except Exception as exc:
             logger.warning("Failed to publish finalized inbound video recording: %s", exc)
 

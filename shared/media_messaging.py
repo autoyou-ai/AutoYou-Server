@@ -182,6 +182,10 @@ def load_attachment_bytes(attachment: Dict[str, Any]) -> Tuple[Optional[bytes], 
     max_bytes = _media_attachment_max_bytes()
     path_value = str(attachment.get("path") or "").strip()
     if path_value and os.path.exists(path_value):
+        from shared.openclaw_gateway import is_allowed_attachment_path
+
+        if not is_allowed_attachment_path(path_value):
+            return None, "attachment path is outside allowed media directories"
         try:
             path = Path(path_value)
             if path.stat().st_size > max_bytes:
@@ -401,6 +405,11 @@ def _candidate_attachment_from_mapping(value: Dict[str, Any], *, source: str) ->
             "source": source,
         },
     }
+    if path_value:
+        from shared.openclaw_gateway import is_allowed_attachment_path
+
+        if not is_allowed_attachment_path(path_value):
+            path_value = None
     for key, raw in (("path", path_value), ("url", url_value), ("data", data_value)):
         if isinstance(raw, str) and raw.strip():
             candidate[key] = raw.strip()

@@ -545,7 +545,13 @@ def _request_uses_shutdown_token(request: "Request") -> bool:
   expected_token = str(os.getenv(SHUTDOWN_TOKEN_ENV, "")).strip()
   provided_token = str(request.headers.get(SHUTDOWN_TOKEN_HEADER, "")).strip()
   client_host = getattr(getattr(request, "client", None), "host", None)
-  if not expected_token or not provided_token or not _is_loopback_client_host(client_host):
+  if (
+    not expected_token
+    or not provided_token
+    or not _is_loopback_client_host(client_host)
+    or _request_via_remote_browser_proxy(request)
+    or _request_forwarded_from_elsewhere(request)
+  ):
     return False
   try:
     return secrets.compare_digest(provided_token, expected_token)
@@ -7769,6 +7775,17 @@ def _rate_limit_client_key(request: "Request") -> str:
             return f"xff:{trusted}"
     return direct_host or "unknown"
 
+def _credential_rate_limit_key(request: "Request") -> str:
+    """Reserve a local budget while all remote credential guesses share a cap.
+
+    This deliberately does not use a client-supplied session, address or agent
+    name. Rotating them cannot multiply the remote password/TOTP budget.
+    """
+    from shared.remote_access_policy import request_is_direct_loopback
+
+    return "credentials:local" if request_is_direct_loopback(request) else "credentials:remote"
+
+
 def _autopair_rate_limit_bucket(request: "Request") -> Tuple[str, str]:
     client_key = _rate_limit_client_key(request)
     return f"autopair:{client_key}", client_key
@@ -8764,12 +8781,15 @@ _REMOTE_BROWSER_CREDENTIAL_PATHS = frozenset({
     "/api/admin/security/mode",
     "/api/admin/security/tier",
     "/api/admin/security/storage/rotate",
+    "/api/admin/session/verify",
+    "/api/builder/agent_port",
     "/api/native/security/totp/setup",
     "/api/native/security/totp/confirm",
     "/api/native/security/totp/import",
     "/api/native/security/totp/delete",
     "/api/agent-websites/security",
     "/api/agent-security/profiles",
+    "/api/login/native-unlock",
     "/api/login/factory-reset",
     "/change-password",
     "/save-security",
@@ -8834,6 +8854,7 @@ _FORWARDED_REQUEST_HEADERS = (
     "x-forwarded-for",
     "forwarded",
     "cf-connecting-ip",
+    "x-real-ip",
 )
 
 
@@ -9945,12 +9966,13 @@ def _resolve_video_recording_dir(
     cfg: Optional[Dict[str, Any]] = None,
 ) -> str:
     configured_dir = str(_get_video_call_config(cfg=cfg).get("recording_dir") or "").strip()
-    if configured_dir:
+    if configured_dir and (not os.getenv("AUTOYOU_TEST_ROOT") or Path(configured_dir).expanduser().resolve().is_relative_to(Path(os.environ["AUTOYOU_TEST_ROOT"]).resolve())):
         return configured_dir
     return str(_default_video_recording_dir())
 
 def _default_video_recording_dir() -> Path:
-    return get_mutable_data_dir("AutoYou", anchor=__file__) / "output" / "video-recordings"
+    from shared.content_library import output_dir
+    return output_dir("media_agent") / "recordings" / "video"
 
 def _get_background_mode_enabled(
     *,
@@ -10025,12 +10047,13 @@ def _resolve_silent_recording_dir(
     cfg: Optional[Dict[str, Any]] = None,
 ) -> str:
     configured_dir = str(_get_video_call_config(cfg=cfg).get("silent_recording_dir") or "").strip()
-    if configured_dir:
+    if configured_dir and (not os.getenv("AUTOYOU_TEST_ROOT") or Path(configured_dir).expanduser().resolve().is_relative_to(Path(os.environ["AUTOYOU_TEST_ROOT"]).resolve())):
         return configured_dir
     return str(_default_silent_recording_dir())
 
 def _default_silent_recording_dir() -> Path:
-    return get_mutable_data_dir("AutoYou", anchor=__file__) / "output" / "safety-recordings"
+    from shared.content_library import output_dir
+    return output_dir("music_agent") / "recordings" / "safety"
 
 def _voice_training_recording_paths_payload() -> Dict[str, Any]:
     try:
@@ -14304,7 +14327,11 @@ def _is_loopback_client_host(host: Optional[str]) -> bool:
 
 def _require_loopback_request(request: Request) -> Optional[JSONResponse]:
     client_host = request.client.host if request.client else None
-    if _is_loopback_client_host(client_host):
+    if (
+        _is_loopback_client_host(client_host)
+        and not _request_via_remote_browser_proxy(request)
+        and not _request_forwarded_from_elsewhere(request)
+    ):
         return None
     return JSONResponse(
         status_code=403,
@@ -14563,7 +14590,11 @@ def _require_loopback_or_token(request: Request) -> Optional[JSONResponse]:
     if _request_uses_ai_agent_internal_token(request):
         return None
     client_host = request.client.host if request.client else None
-    if _is_loopback_client_host(client_host):
+    if (
+        _is_loopback_client_host(client_host)
+        and not _request_via_remote_browser_proxy(request)
+        and not _request_forwarded_from_elsewhere(request)
+    ):
         return None
     return JSONResponse(
         status_code=403,

@@ -201,7 +201,10 @@ class ContentWorker:
             return
         except Exception:
             with library.connect() as db:
-                db.execute("UPDATE content SET organization_state='failed',retry_at=? WHERE id=? AND source_version=?", (time.time() + 300, row["id"], row["source_version"]))
+                db.execute("BEGIN IMMEDIATE")
+                if db.execute("SELECT 1 FROM content WHERE id=? AND deleted=0 AND source_version=?", (row["id"], row["source_version"])).fetchone():
+                    db.execute("UPDATE content SET organization_state='failed',retry_at=?,revision=? WHERE id=? AND deleted=0 AND source_version=?",
+                               (time.time() + 300, library.tick(db), row["id"], row["source_version"]))
 
     def process_migration(self, library):
         with library.connect() as db:

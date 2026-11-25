@@ -6,7 +6,7 @@ import vm from 'node:vm';
 // The store is plain browser JavaScript, so run it the way a page does: in a context whose
 // global is `self`, with no module system.
 const source = await readFile(new URL('../../assets/content-store.js', import.meta.url), 'utf8');
-const sandbox = {};
+const sandbox = {URLSearchParams};
 sandbox.self = sandbox;
 vm.runInNewContext(source, sandbox);
 const {createStore, fold, tokens, formatBytes, relativeTime, safeUrl} = sandbox.AutoYouContentStore;
@@ -21,6 +21,26 @@ const row = (id, over = {}) => ({
 });
 const tomb = (id, revision) => ({id, source: 'notes_agent', deleted: 1, revision});
 const page = (items, cursor, extra = {}) => ({items, cursor, revision: cursor, has_more: false, ...extra});
+
+test('content deep links round-trip filters and the selected item without changing host parameters', () => {
+    const {readRoute, routeSearch} = sandbox.AutoYouContentStore;
+    const filter = {text: 'synthetic garden', kind: 'note', source: 'custom_garden_a1b2c3', collection: 'Spring & Summer', sort: 'title'};
+    const search = routeSearch('?screen=content&role=synthetic-viewer', filter, 'list', 'synthetic-item');
+    eq(readRoute(search), {filter, view: 'list', item: 'synthetic-item'});
+    const params = new URLSearchParams(search);
+    assert.equal(params.get('screen'), 'content');
+    assert.equal(params.get('role'), 'synthetic-viewer');
+    assert.equal(routeSearch(search, {text: '', kind: '', source: '', collection: '', sort: 'updated'}, 'agents', ''), '?screen=content&role=synthetic-viewer');
+});
+
+test('deep links reject invalid sources, kinds and item IDs and bound user text', () => {
+    const {readRoute} = sandbox.AutoYouContentStore;
+    const state = readRoute('?content_source=../escape&content_kind=__proto__&content_sort=invalid&content_item=%3Cscript%3E&content_q=' + 'x'.repeat(500));
+    eq({...state.filter, text: ''}, {text: '', source: '', kind: '', collection: '', sort: 'updated'});
+    assert.equal(state.filter.text.length, 300);
+    assert.equal(state.item, '');
+    assert.equal(readRoute('?content_source=custom_garden_a1b2c3').filter.source, 'custom_garden_a1b2c3');
+});
 
 test('a permission scope change clears old rows and restarts the cursor even without a data revision change', () => {
     const store = createStore();
@@ -91,6 +111,17 @@ test('filters combine, and the collection falls back to the collection the agent
     ], 4));
     eq(store.query({collection: 'Studio', kind: 'note'}).map(r => r.id).sort(), ['1', '2']);
     eq(store.query({source: 'media_generation_agent'}).map(r => r.id), ['3']);
+});
+
+test('facet counts include body-search matches once and still respect the other filters', () => {
+    const store = createStore();
+    const note = row('note', {title: 'Microphone checklist', source_collection: 'Studio'});
+    const page = row('page', {title: 'Recording guide', kind: 'page', source: 'page_agent', collection: 'References'});
+    store.applyChanges({items: [note, page], cursor: 2, revision: 2, has_more: false});
+    eq(store.facets({text: 'gain staging'}, [note, note, page]), {
+        kinds: {note: 1, page: 1}, sources: {notes_agent: 1, page_agent: 1}, collections: {Studio: 1, References: 1},
+    });
+    eq(store.facets({text: 'gain staging', collection: 'Studio'}, [note, page]).kinds, {note: 1});
 });
 
 test('sorting is stable by recency, name or size', () => {

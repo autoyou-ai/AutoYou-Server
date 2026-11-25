@@ -96,7 +96,7 @@ def describe(source: str, stored: dict | None = None) -> dict:
     return {"source": source, "name": stored.get("name") or fallback_name(source), "icon": icon,
             "accent": stored.get("accent", ""), "handle": stored.get("handle", ""),
             "native": is_custom(source), "builtin": False, "owns_data": False,
-            "app": "/agent/organizer_agent/" if is_custom(source) else ""}
+            "app": "/agent/organizer_agent/?content_source=" + source if is_custom(source) else ""}
 
 
 def describe_all(library: ContentLibrary, sources) -> dict:

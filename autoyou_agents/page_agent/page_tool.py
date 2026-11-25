@@ -202,16 +202,17 @@ class PageTool:
                     runtime_anchor = parent
                     break
             config_dir = get_config_dir("AutoYou", anchor=runtime_anchor)
-            self._uploads_dir = str(config_dir / "uploads")
             if not db_path:
                 db_path = str(config_dir / "page_feed.db")
         except Exception:
             from pathlib import Path
-            self._uploads_dir = str(Path(__file__).resolve().parent / "uploads")
             if not db_path:
                 db_path = str(Path(__file__).resolve().parent / "page_feed.db")
 
         self._db_path = db_path
+        from shared.media_paths import page_upload_dir
+
+        self._uploads_dir = str(page_upload_dir())
         self._db_instance = None
 
     @property
@@ -349,7 +350,11 @@ class PageTool:
     def update_server_display_photo_from_path(self, path: str) -> Dict[str, Any]:
         """Replace the server-owned Page avatar with a local image attachment."""
         try:
+            from shared.openclaw_gateway import is_allowed_attachment_path
+
             raw_path = os.path.normpath(str(path or "").strip().strip('"').strip("'"))
+            if not is_allowed_attachment_path(raw_path):
+                return {"success": False, "error": "Display photo path must reside in an AutoYou media directory."}
             with open(raw_path, "rb") as source:
                 raw = source.read(2 * 1024 * 1024 + 1)
             if len(raw) > 2 * 1024 * 1024:
@@ -779,6 +784,11 @@ class PageTool:
                 # If still not resolved or points to a directory, surface a clear error
                 return {"success": False, "error": f"path not readable: {norm_path}"}
 
+            from shared.openclaw_gateway import is_allowed_attachment_path
+
+            if not is_allowed_attachment_path(norm_path):
+                return {"success": False, "error": f"attachment path is outside allowed media directories: {os.path.basename(norm_path)}"}
+
             # Read bytes
             with open(norm_path, "rb") as f:
                 raw_bytes = f.read()
@@ -924,7 +934,7 @@ class PageTool:
                     # Normalize and adjust directory-only paths by appending filename
                     try:
                         import os as _os
-                        import tempfile as _tempfile
+                        from shared.media_paths import temp_media_root
                         raw_p = str(path).strip().strip('"').strip("'")
                         norm_p = _os.path.normpath(raw_p)
                         if _os.path.isdir(norm_p) and filename:
@@ -935,7 +945,7 @@ class PageTool:
                         if not _os.path.exists(str(path)):
                             base_candidates = []
                             try:
-                                troot = _os.path.join(_tempfile.gettempdir(), "autoyou_media")
+                                troot = str(temp_media_root())
                                 # Build most-specific path first: source/user/session
                                 if source and user_id and session_id:
                                     base_candidates.append(_os.path.join(troot, str(source), str(user_id), str(session_id), filename))

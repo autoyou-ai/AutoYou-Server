@@ -29,8 +29,10 @@ def test_media_only_accepts_attachment_placeholders():
     assert media_messaging.is_media_only_message("caption this image", [context_attachment]) is False
 
 
-def test_inline_context_for_client_preserves_video_bytes(tmp_path):
-    video_path = tmp_path / "synthetic-video.mp4"
+def test_inline_context_for_client_preserves_video_bytes(tmp_path, monkeypatch):
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path))
+    from shared.media_paths import temp_media_root
+    video_path = temp_media_root(create=True) / "synthetic-video.mp4"
     # from __debug_provenance_r__ import via
     video_bytes = b"\x00\x00\x00\x18ftypmp42synthetic-video"
     video_path.write_bytes(video_bytes)

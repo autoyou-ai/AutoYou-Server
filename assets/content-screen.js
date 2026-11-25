@@ -54,11 +54,6 @@
         lock: "M19 11H5a2 2 0 00-2 2v7a2 2 0 002 2h14a2 2 0 002-2v-7a2 2 0 00-2-2zM7 11V7a5 5 0 0110 0v4",
         tag: "M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82zM7 7h.01"
     };
-    var STATES = {
-        pending: "Organizing soon", waiting_model: "Waiting for the local AI", failed: "Could not be organized yet",
-        missing: "File not found in its folder", ready: ""
-    };
-
     var S = null; // the one screen instance, created on first mount and kept
 
     // ---- small DOM helpers ------------------------------------------------------------------------
@@ -115,7 +110,6 @@
     function kindLabel(kind) { return Store.KIND_LABEL[kind] || kind; }
     function singular(kind) { return { note: "Note", page: "Page", image: "Image", video: "Video", audio: "Audio", voice: "Voice", file: "File", location: "Location", agent: "Record" }[kind] || kind; }
     function kindIcon(kind) { return ICONS[kind] ? kind : "file"; }
-    function stateText(row) { return STATES[row.organization_state] || ""; }
 
     // ---- network ------------------------------------------------------------------------------------
     function api(path, options) {
@@ -157,7 +151,7 @@
             etag: "", groups: null, groupsKey: "", server: null, serverKey: "", serverToken: 0,
             walking: false, walkToken: 0, walkError: "", poll: { timer: 0, wait: 5000, floor: 5000, ceiling: 60000 }, uploads: [], uploading: false, syncing: false,
             sigs: {}, scheduled: false, thumbs: new Map(), thumbFail: new Set(), thumbQueue: [], thumbBusy: 0, observer: null,
-            started: false, polling: false, memos: {}, restoreFocus: null, ro: null, wide: window.matchMedia ? window.matchMedia("(min-width: 1180px)") : { matches: true, addEventListener: function () {} }
+            started: false, polling: false, filtersOpen: false, pendingItem: "", retrying: "", memos: {}, restoreFocus: null, ro: null, wide: window.matchMedia ? window.matchMedia("(min-width: 1180px)") : { matches: true, addEventListener: function () {} }
         };
         build();
         return S;
@@ -168,6 +162,27 @@
     function agentOf(source) { return S.store.agent(source); }
     function hasFilter() { var f = S.filter; return !!(f.text.trim() || f.kind || f.source || f.collection); }
     function overview() { return S.view === "agents" && !hasFilter(); }
+
+    function writeRoute(replace) {
+        if (!S.mounted || S.applyingRoute) { return; }
+        var search = Store.routeSearch(window.location.search, S.filter, S.view, S.active || S.pendingItem);
+        if (search === window.location.search) { return; }
+        try { window.history[replace ? "replaceState" : "pushState"](window.history.state, "", window.location.pathname + search + window.location.hash); }
+        catch (e) { /* Navigation remains usable in hosts that prohibit history writes. */ }
+    }
+    function readRoute() {
+        var route = Store.readRoute(window.location.search);
+        S.applyingRoute = true;
+        closePreview(true);
+        S.filter = route.filter; S.view = route.view; S.pendingItem = route.item;
+        S.search.value = route.filter.text;
+        S.selected.clear(); S.limit = PAGE; S.server = null; S.sigs = {};
+        S.applyingRoute = false;
+    }
+    function onRouteChange() {
+        if (!S || !S.mounted) { return; }
+        readRoute(); S.focusResults = true; askServer(); schedule();
+    }
 
     function schedule() {
         if (S.scheduled || !S.mounted) { return; }
@@ -190,7 +205,7 @@
         s.actions = h("div", { class: "ayu-inline-actions ayc-actions" });
         s.banner = h("div", { class: "ayc-banners" });
         s.search = h("input", {
-            type: "search", class: "ayc-search-input", placeholder: "Search titles, labels, notes and agents", maxlength: "300",
+            type: "search", class: "ayc-search-input", placeholder: "Search your content", maxlength: "300",
             "aria-label": "Search My Content", autocomplete: "off", spellcheck: "false", "data-ayc": "search"
         });
         s.searchClear = iconButton("close", "Clear search", "clear-search", "", "ayc-search-clear");
@@ -203,6 +218,10 @@
             h("button", { type: "button", "data-act": "view", "data-id": "list", "aria-pressed": "false", title: "Show one list" }, icon("list"), h("span", { text: "List" })));
         s.kinds = h("div", { class: "ayc-chips", role: "group", "aria-label": "Type" });
         s.agentRail = h("div", { class: "ayc-chips ayc-agentrail", role: "group", "aria-label": "Agent" });
+        s.filterToggle = button("Filters", { act: "toggle-filters", icon: "sliders", extra: "ayc-filter-toggle" });
+        s.filterToggle.setAttribute("aria-controls", "ayc-filter-panel");
+        s.filterToggle.setAttribute("aria-expanded", "false");
+        s.activeFilters = h("div", { class: "ayc-active-filters", "aria-label": "Active filters", hidden: true });
         s.results = h("div", { class: "ayc-results", "data-ayc": "results" });
         s.resultsPanel = h("section", { class: "ayu-panel ayc-panel", "aria-label": "Content" },
             h("div", { class: "ayu-panel-head ayc-panel-head" }, s.panelHead = h("div")), s.results);
@@ -218,12 +237,14 @@
             h("button", { type: "button", role: "menuitem", "data-act": "pick-folder" }, icon("folder"), h("span", { text: "Choose a folder" })),
             h("p", { text: "Or drop files and folders anywhere on this screen." }));
 
+        s.filterPanel = h("div", { class: "ayc-filter-panel", id: "ayc-filter-panel", role: "group", "aria-label": "Content filters" },
+            h("div", { class: "ayc-filters" }, s.agentSelect, s.collectionSelect, s.sortSelect, s.viewToggle), s.kinds, s.agentRail,
+            s.filterDone = button("Show content", { act: "close-filters", extra: "ayc-filter-done", icon: "check", variant: "primary" }));
         s.controls = h("div", { class: "ayc-controls" },
-            h("label", { class: "ayu-agent-search ayc-search" }, icon("search"), s.search, s.searchClear),
-            h("div", { class: "ayc-filters" }, s.agentSelect, s.collectionSelect, s.sortSelect, s.viewToggle));
+            h("label", { class: "ayu-agent-search ayc-search" }, icon("search"), s.search, s.searchClear), s.filterToggle, s.filterPanel);
         s.root = h("div", { class: "ayc-root", "data-ayc-root": "" },
             h("header", { class: "ayu-hero ayc-hero" }, h("div", { class: "ayu-hero-copy" }, s.title, s.sub), s.actions),
-            s.banner, s.controls, s.kinds, s.agentRail, s.main, s.bulk, s.uploadPanel, s.live, s.fileInput, s.folderInput);
+            s.banner, s.controls, s.activeFilters, s.main, s.bulk, s.uploadPanel, s.live, s.fileInput, s.folderInput);
         s.layer = h("div", { class: "ayc-layer", "data-ayc-layer": "" });
         s.confirm = h("dialog", { class: "ayc-dialog", "aria-labelledby": "ayc-confirm-title" });
         s.storage = h("dialog", { class: "ayc-dialog ayc-dialog-wide", "aria-labelledby": "ayc-storage-title" });
@@ -254,9 +275,12 @@
     // ---- mount / detach ------------------------------------------------------------------------------
     function mount(host, ctx) {
         if (!S) { create(); }
+        var wasMounted = S.mounted;
         S.ctx = ctx;
         S.host = host;
         S.mounted = true;
+        document.documentElement.classList.add("ayc-mounted");
+        if (!S.started || !wasMounted) { readRoute(); }
         clear(host);
         host.appendChild(S.root);
         if (!S.layer.parentNode) { document.body.appendChild(S.layer); }
@@ -266,10 +290,11 @@
         document.addEventListener("dragleave", onDragLeave);
         document.addEventListener("drop", onDrop);
         document.addEventListener("click", onDocumentClick, true);
+        window.addEventListener("popstate", onRouteChange);
         if (S.restoreFocus) { var again = S.restoreFocus; S.restoreFocus = null; var el = findFocus(again); if (el) { el.focus({ preventScroll: true }); } }
         renderAll();
         if (!S.started) { S.started = true; start(); }
-        else if (!S.polling) { pollSoon(300); }
+        else if (!S.polling) { askServer(); pollSoon(300); }
     }
     function detach() {
         if (!S || !S.root.parentNode || S.root.parentNode === S.parking) { return; }
@@ -280,6 +305,7 @@
     function unmount() {
         if (!S) { return; }
         S.mounted = false;
+        document.documentElement.classList.remove("ayc-mounted");
         S.polling = false;
         window.clearTimeout(S.poll.timer);
         document.removeEventListener("visibilitychange", onVisible);
@@ -288,6 +314,7 @@
         document.removeEventListener("dragleave", onDragLeave);
         document.removeEventListener("drop", onDrop);
         document.removeEventListener("click", onDocumentClick, true);
+        window.removeEventListener("popstate", onRouteChange);
         if (S.confirm.open) { S.confirm.close(); }
         if (S.storage.open) { S.storage.close(); }
         closePreview(true);
@@ -325,6 +352,7 @@
         schedule();
         loadSummary(true).then(function () {
             S.load = "ready";
+            if (S.filter.text.trim().length >= 3) { askServer(); }
             schedule();
             return Promise.all([loadGroups(), walk()]);
         }).then(function () { pollSoon(S.poll.wait); }).catch(function (error) {
@@ -342,7 +370,7 @@
         S.groupsKey = ""; S.serverKey = ""; S.selected.clear();
         S.thumbs.forEach(function (url) { URL.revokeObjectURL(url); });
         S.thumbs.clear(); S.thumbFail.clear(); S.thumbQueue = [];
-        closePreview(true); S.sigs = {};
+        closePreview(true); S.sigs = {}; S.memos = {};
     }
     function loadSummary(force) {
         var headers = !force && S.etag ? { "If-None-Match": S.etag } : {};
@@ -445,7 +473,7 @@
         S.memos[name] = { key: key, value: value };
         return value;
     }
-    function dataKey() { return [S.store.cursor, S.store.size(), S.store.walkComplete, JSON.stringify(S.filter), S.server ? S.server.revision : 0, S.serverKey].join("~"); }
+    function dataKey() { return [S.store.summary && S.store.summary.access_scope, S.store.cursor, S.store.size(), S.store.walkComplete, JSON.stringify(S.filter), S.server ? S.server.revision : 0, S.serverKey].join("~"); }
     function results() {
         return memo("results", dataKey(), computeResults);
     }
@@ -473,9 +501,16 @@
 
     // ---- rendering --------------------------------------------------------------------------------------------
     function renderAll() {
+        if (S.pendingItem && S.store.get(S.pendingItem)) {
+            var pending = S.pendingItem; S.pendingItem = ""; openPreview(pending, true);
+        } else if (S.pendingItem && S.store.walkComplete) {
+            S.pendingItem = ""; writeRoute(true);
+            notify("warning", "This item is unavailable or requires a separate agent sign-in.");
+        }
         renderHero();
         renderBanner();
         renderControls();
+        renderActiveFilters();
         renderResults();
         syncMarks();
         renderPreview();
@@ -496,12 +531,35 @@
             clear(S.actions);
             S.actions.appendChild(button(S.syncing ? "Syncing…" : "Sync from agents", { icon: "refresh", act: "sync", variant: "ghost", extra: "ayc-compact", label: S.syncing ? "Syncing agent content" : "Sync from agents", disabled: S.syncing || !can("edit") }));
             if (can("manage")) { S.actions.appendChild(button("Storage", { icon: "sliders", act: "storage", variant: "secondary", extra: "ayc-compact", label: "Storage and organizing settings" })); }
+            else if (summary) { S.actions.appendChild(button("Access", { icon: "lock", act: "library-access", extra: "ayc-compact", label: "Library access and settings" })); }
             if (can("upload")) {
                 var add = button("Add content", { icon: "plus", act: "toggle-add", variant: "primary" });
                 add.setAttribute("aria-haspopup", "menu");
                 add.setAttribute("aria-expanded", String(!S.addMenu.hidden));
                 S.actions.appendChild(h("div", { class: "ayc-addwrap" }, add, S.addMenu));
             }
+        });
+    }
+
+    function renderActiveFilters() {
+        var f = S.filter;
+        var parts = [];
+        if (f.source) { parts.push(["source", agentOf(f.source).name]); }
+        if (f.kind) { parts.push(["kind", kindLabel(f.kind)]); }
+        if (f.collection) { parts.push(["collection", f.collection]); }
+        if (f.text.trim()) { parts.push(["text", "Search: " + f.text.trim()]); }
+        S.root.classList.toggle("has-filters", S.filtersOpen);
+        S.filterToggle.setAttribute("aria-expanded", String(S.filtersOpen));
+        S.filterToggle.querySelector("span").textContent = "Filters" + (parts.length ? " (" + parts.length + ")" : "");
+        S.filterDone.querySelector("span").textContent = S.store.walkComplete ? "Show " + plural(results().length, "item") : "Show content";
+        once("active-filters", JSON.stringify(parts), function () {
+            clear(S.activeFilters);
+            S.activeFilters.hidden = !parts.length;
+            if (!parts.length) { return; }
+            S.activeFilters.appendChild(button("All content", { act: "clear-filters", small: true, variant: "ghost", label: "Back to all content" }));
+            parts.forEach(function (part) {
+                S.activeFilters.appendChild(button(part[1], { act: "clear-filter", id: part[0], icon: "close", small: true, extra: "ayc-filter-token", label: "Remove filter: " + part[1] }));
+            });
         });
     }
 
@@ -515,9 +573,6 @@
         }
         if (summary && summary.worker && summary.worker.state === "indexing") { items.push(["blue", "refresh", "Finding new content from your agents…"]); }
         if (summary && summary.worker && summary.worker.scan_errors && summary.worker.scan_errors.length) { items.push(["amber", "alert", summary.worker.scan_errors.join(" · ")]); }
-        if (summary && summary.attention && summary.attention.needs_attention) {
-            items.push(["amber", "info", plural(summary.attention.needs_attention, "item") + " could not be organized. They stay listed; open one for details."]);
-        }
         if (summary && summary.abilities && summary.abilities.role !== "owner" && !summary.abilities.delete) {
             items.push(["gray", "lock", "Remote access is set to " + summary.abilities.role + ". " + (summary.abilities.edit ? "You can organize and add content, but not delete it." : "You can browse but not change content.")]);
         }
@@ -547,7 +602,7 @@
         if (document.activeElement !== s.search && s.search.value !== f.text) { s.search.value = f.text; }
         s.searchClear.hidden = !f.text;
         var ready = s.store.walkComplete;
-        var facets = ready ? memo("facets", dataKey(), function () { return s.store.facets(f); }) : null;
+        var facets = ready ? memo("facets", dataKey(), function () { return s.store.facets(f, s.server && s.serverKey === serverKey() ? s.server.items : []); }) : null;
         var agents = summary ? summary.agents : [];
         var collections = summary ? summary.collections : [];
         optionList(s.agentSelect, "All agents", agents.map(function (a) { return [a.source, a.name + " (" + (facets ? facets.sources[a.source] || 0 : a.count) + ")"]; }), f.source);
@@ -617,7 +672,7 @@
                 return;
             }
             var label = list.length === 1 ? "1 result" : list.length.toLocaleString() + " results";
-            head(hasFilter() ? "Results" : "All content", label + (hasFilter() ? " for your filters" : ""));
+            head(s.filter.source ? agentOf(s.filter.source).name : hasFilter() ? "Results" : "All content", label + (hasFilter() ? " for your filters" : ""));
             if (!list.length) {
                 // Until the index is complete only the server's own answer to this exact filter can say "nothing".
                 var waiting = !s.store.walkComplete && !(s.server && s.serverKey === serverKey());
@@ -638,6 +693,13 @@
             if (meta) { s.panelHead.appendChild(h("p", { text: meta })); }
         }
         observeThumbs();
+        if (s.focusResults && s.load === "ready") {
+            s.focusResults = false;
+            var destination = s.panelHead.querySelector("h2");
+            if (destination && destination.textContent) { destination.setAttribute("tabindex", "-1"); destination.focus({ preventScroll: true }); }
+            else { s.search.focus({ preventScroll: true }); }
+            s.root.scrollIntoView({ block: "start", behavior: "auto" });
+        }
     }
 
     // The open item and the selection change often; mark them in place so rows keep their focus.
@@ -666,16 +728,19 @@
             h("p", { text: S.error || "The computer did not answer. Check that the server is running and unlocked." }), button("Try again", { act: "retry", variant: "primary", icon: "refresh" }));
     }
     function emptyState(filtered) {
+        var scoped = S.store.summary && S.store.summary.access && S.store.summary.access.agent_scoped;
+        var access = scoped ? h("div", { class: "ayc-empty-access" },
+            h("p", { text: "Missing content? Some apps require a separate sign-in." }), button("Check access", { act: "library-access", small: true, icon: "lock" })) : null;
         if (filtered) {
             return h("div", { class: "ayc-state" }, icon("search", "ayc-state-icon"), h("h3", { text: "Nothing matches these filters" }),
-                h("p", { text: "Try fewer words, or clear the filters to see everything again." }), button("Clear filters", { act: "clear-filters", variant: "secondary" }));
+                h("p", { text: "Try fewer words, or clear the filters to see everything again." }), button("Clear filters", { act: "clear-filters", variant: "secondary" }), access);
         }
         var actions = h("div", { class: "ayu-inline-actions ayc-state-actions" });
         if (can("upload")) { actions.appendChild(button("Add files", { act: "pick-files", variant: "primary", icon: "upload" })); }
         if (can("edit")) { actions.appendChild(button("Sync from agents", { act: "sync", variant: "secondary", icon: "refresh" })); }
         actions.appendChild(button("Manage agents", { act: "go-agents", variant: "ghost", icon: "agent" }));
         return h("div", { class: "ayc-state" }, icon("folder", "ayc-state-icon"), h("h3", { text: "Nothing here yet" }),
-            h("p", { text: "Notes, pages, pictures, recordings and files from your agents appear here, along with anything saved by agents you made on your phone." }), actions);
+            h("p", { text: "Notes, pages, pictures, recordings and files from your agents appear here, along with anything saved by agents you made on your phone." }), actions, access);
     }
 
     function shelf(group) {
@@ -684,7 +749,8 @@
             h("p", { text: plural(group.count, "item") + (agent.native ? " · from your phone" : "") })),
             h("div", { class: "ayc-shelf-actions" },
                 group.count > group.items.length ? button("View all " + group.count, { act: "view-agent", id: group.source, small: true, variant: "ghost" }) : null,
-                agent.app ? h("a", { class: "ayu-btn ayu-btn-secondary ayu-btn-sm", href: agent.app, target: "_blank", rel: "noopener noreferrer", "aria-label": "Open " + agent.name }, icon("external"), h("span", { text: "Open" })) : null));
+                agent.native ? button("View collection", { act: "view-agent", id: group.source, small: true, label: "View " + agent.name }) :
+                    agent.app ? h("a", { class: "ayu-btn ayu-btn-secondary ayu-btn-sm", href: agent.app, target: "_blank", rel: "noopener noreferrer", "aria-label": "Open " + agent.name }, icon("external"), h("span", { text: "Open" })) : null));
         var cards = h("div", { class: "ayc-cards", role: "list", "aria-label": agent.name + " items" });
         group.items.forEach(function (row) { cards.appendChild(card(row)); });
         return h("section", { class: "ayc-shelf", "aria-label": agent.name }, head, cards);
@@ -806,17 +872,22 @@
             schedule();
         });
         if (!quiet) { S.previewReturn = document.activeElement; }
+        if (!quiet) { writeRoute(false); }
     }
     function closePreview(silent) {
         if (!S.active && !silent) { return; }
+        var closingId = S.active;
         S.active = "";
         S.preview = null;
         S.previewState = "idle";
         S.editing = false;
+        S.expandOrganization = "";
+        if (!silent) { writeRoute(true); }
         ++S.previewToken;
         S.sigs.preview = "";
         if (!silent) {
             var back = S.previewReturn;
+            if (!back || !document.body.contains(back)) { back = S.results.querySelector('[data-nav][data-id="' + cssEscape(closingId) + '"]') || S.search; }
             S.previewReturn = null;
             schedule();
             window.setTimeout(function () { if (back && document.body.contains(back)) { back.focus({ preventScroll: true }); } }, 0);
@@ -835,9 +906,13 @@
         document.documentElement.classList.toggle("ayc-lock", sheet);
         s.main.classList.toggle("has-preview", open && !sheet);
         s.preview_el.hidden = !open;
+        s.preview_el.setAttribute("aria-busy", String(s.previewState === "loading"));
         if (!open) { s.previewShown = false; return; }
+        // Background deltas must not replace a form or advance the revision it
+        // was opened against. A concurrent change is handled by the save's 409.
+        if (s.editing && s.previewBody.querySelector(".ayc-edit")) { return; }
         var row = s.store.get(s.active);
-        var signature = [s.active, s.previewState, s.preview ? s.preview.item.revision : 0, s.store.revision, s.editing, s.previewState === "error" ? s.previewError : "", can("delete"), can("edit"), sheet].join("~");
+        var signature = [s.active, s.previewState, s.preview ? s.preview.item.revision : 0, s.store.revision, s.editing, s.previewState === "error" ? s.previewError : "", can("delete"), can("edit"), s.store.summary && s.store.summary.settings.auto_organize, sheet].join("~");
         once("preview", signature, function () {
             var held = heldFocus(s.previewBody);
             clear(s.previewBody);
@@ -849,18 +924,48 @@
                 iconButton("close", "Close details", "close-preview", "", "ayc-close")));
             s.preview_el.setAttribute("aria-labelledby", "ayc-preview-title");
             s.previewBody.appendChild(mediaFor(row, data));
-            if (s.previewState === "loading") { s.previewBody.appendChild(h("div", { class: "ayc-skeleton", "aria-hidden": "true" }, h("span", { class: "ayc-line" }), h("span", { class: "ayc-line med" }), h("span", { class: "ayc-line short" }))); }
+            if (s.previewState === "loading") { s.previewBody.appendChild(h("p", { class: "ayc-hint", role: "status", text: "Loading preview..." })); }
             if (s.previewState === "error") { s.previewBody.appendChild(h("div", { class: "ayu-note ayu-note-red ayc-note", role: "alert" }, icon("alert"), h("span", { text: s.previewError || "Details are unavailable." }), button("Try again", { act: "reload-preview", small: true }))); }
             if (data) { s.previewBody.appendChild(details(row, data, agent)); }
             restoreHeld(s.previewBody, held);
+            if (s.focusOrganize && data && !s.editing) {
+                var organize = s.previewBody.querySelector('[data-act="toggle-edit"]');
+                if (organize) { organize.focus({ preventScroll: true }); s.focusOrganize = false; }
+            }
+            if (s.focusEditor && data && s.editing) {
+                var field = s.previewBody.querySelector("#ayc-edit-collection");
+                if (field) { field.focus({ preventScroll: true }); s.focusEditor = false; }
+            }
+            if (s.focusOrganization && data) {
+                var organization = s.previewBody.querySelector(".ayc-organization");
+                if (organization) { organization.setAttribute("tabindex", "-1"); organization.focus({ preventScroll: true }); s.focusOrganization = false; }
+            }
         });
-        if (open && !s.previewShown) { s.previewShown = true; window.setTimeout(function () { var close = s.preview_el.querySelector(".ayc-close"); if (close && (sheetMode() || s.previewFocus)) { close.focus({ preventScroll: true }); } }, 0); }
+        if (open && !s.previewShown) {
+            s.previewShown = true;
+            window.setTimeout(function () {
+                if (!s.active || s.preview_el.hidden) { return; }
+                var rect = s.preview_el.getBoundingClientRect();
+                if (!sheetMode() && (rect.top < 0 || rect.top > window.innerHeight - 100)) {
+                    s.preview_el.scrollIntoView({ block: "nearest", behavior: "auto" });
+                }
+                var close = s.preview_el.querySelector(".ayc-close");
+                if (close && (sheetMode() || s.previewFocus)) { close.focus({ preventScroll: true }); }
+            }, 0);
+        }
     }
     function mediaFor(row, data) {
         var box = h("div", { class: "ayc-media kind-" + row.kind });
         var url = row.has_file ? S.ctx.url("/items/" + encodeURIComponent(row.id) + "/content") : "";
         var type = data && data.media ? data.media.type : "";
-        if (row.kind === "image" && row.has_file) {
+        function unavailable(message) {
+            clear(box);
+            box.appendChild(h("div", { class: "ayc-media-fallback" }, icon(kindIcon(row.kind)), h("span", { text: message })));
+        }
+        if (data && data.media && data.media.available === false) {
+            unavailable("The original file is unavailable. Reconnect its source folder, then try again.");
+            box.appendChild(button("Check again", { act: "reload-preview", small: true, icon: "refresh" }));
+        } else if (row.kind === "image" && row.has_file) {
             var img = h("img", { alt: "Preview of " + row.title, class: "ayc-media-image", decoding: "async" });
             var key = thumbKey(row.id, row.revision, 640);
             if (S.thumbs.get(key)) { img.src = S.thumbs.get(key); }
@@ -873,27 +978,27 @@
             }
             box.appendChild(img);
         } else if (row.kind === "video" && url) {
-            box.appendChild(h("video", { class: "ayc-media-player", controls: true, preload: "metadata", src: url, "aria-label": "Video: " + row.title }));
+            box.appendChild(h("video", { class: "ayc-media-player", controls: true, preload: "metadata", src: url, "aria-label": "Video: " + row.title, onerror: function () { unavailable("This video cannot be previewed here. Open or download the file to watch it."); } }));
         } else if ((row.kind === "audio" || row.kind === "voice") && url) {
-            box.appendChild(h("div", { class: "ayc-media-audio" }, icon(kindIcon(row.kind)), h("audio", { controls: true, preload: "metadata", src: url, "aria-label": "Audio: " + row.title })));
-        } else if (type === "application/pdf" && url) {
-            box.appendChild(h("iframe", { class: "ayc-document", src: url + "?preview=true", sandbox: "", title: row.title }));
+            box.appendChild(h("div", { class: "ayc-media-audio" }, icon(kindIcon(row.kind)), h("audio", { controls: true, preload: "metadata", src: url, "aria-label": "Audio: " + row.title, onerror: function () { unavailable("This audio cannot be previewed here. Open or download the file to listen."); } })));
         } else if (data && data.text) {
             box.classList.add("is-text");
             box.appendChild(h("pre", { class: "ayc-text", tabindex: "0", "aria-label": "Text preview" }, data.text));
             if (data.truncated) { box.appendChild(h("p", { class: "ayc-text-more", text: "Showing the first part. Open it to read everything." })); }
         } else {
-            box.appendChild(h("div", { class: "ayc-media-fallback" }, icon(kindIcon(row.kind)), h("span", { text: type && row.has_file ? type : singular(row.kind) })));
+            box.appendChild(h("div", { class: "ayc-media-fallback" }, icon(kindIcon(row.kind)),
+                h("span", { text: type === "application/pdf" ? "PDF document" : type && row.has_file ? type : singular(row.kind) }),
+                type === "application/pdf" ? h("p", { class: "ayc-hint", text: "Download the PDF to view its pages. An inline preview is not available here." }) : null));
         }
         return box;
     }
     function details(row, data, agent) {
         var wrap = h("div", { class: "ayc-details" });
         var item = data.item;
+        if (S.editing && can("edit")) { wrap.appendChild(editor(row, item)); return wrap; }
         var facts = [["Agent", agent.name + (agent.native ? " (from your phone)" : "")], ["Type", singular(row.kind)], ["Collection", Store.collectionOf(row) || "None"],
             ["Updated", new Date(row.updated * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })]];
         if (row.byte_size) { facts.push(["Size", Store.formatBytes(row.byte_size)]); }
-        if (stateText(row)) { facts.push(["Status", stateText(row)]); }
         var dl = h("dl", { class: "ayc-facts" });
         facts.forEach(function (pair) { dl.appendChild(h("div", null, h("dt", { text: pair[0] }), h("dd", { text: pair[1] }))); });
         wrap.appendChild(dl);
@@ -912,17 +1017,38 @@
         var parent = item.parent_id && S.store.get(item.parent_id);
         if (parent) { wrap.appendChild(button("Back to " + parent.title, { act: "open-preview", id: parent.id, variant: "ghost" })); }
         if (item.annotation) { wrap.appendChild(h("p", { class: "ayc-annotation", text: item.annotation })); }
+        var organization = h("details", { class: "ayc-organization", open: S.expandOrganization === row.id },
+            h("summary", { class: "ayc-organization-heading" }, icon("spark"), h("span", { text: "About labels and suggestions" }), icon("down", "ayc-organization-chevron")),
+            h("p", { text: item.organization_basis || "Title, file type and agent metadata. Content analysis has not been completed." }));
+        organization.addEventListener("toggle", function () {
+            if (!organization.isConnected) { return; }
+            if (organization.open) { S.expandOrganization = row.id; }
+            else if (S.expandOrganization === row.id) { S.expandOrganization = ""; }
+        });
+        var preferences = S.store.summary && S.store.summary.settings;
+        var paused = preferences && !preferences.auto_organize;
+        if (item.user_edited) { organization.appendChild(h("p", { class: "ayc-hint", text: "Your edits are kept when automatic suggestions update." })); }
+        if (paused) {
+            organization.appendChild(h("p", { text: "Automatic organization is paused. Enable it in library settings to process this item." }));
+            organization.appendChild(button("Library settings", { act: can("manage") ? "storage" : "library-access", small: true, icon: "sliders" }));
+        } else if (["waiting_model", "failed", "missing"].indexOf(item.organization_state) !== -1) {
+            organization.appendChild(h("p", { text: item.organization_state === "missing" ? "Make the original file available again, then retry suggestions." : item.organization_state === "waiting_model" ? "Choose or start a local Ollama model in Admin to generate suggestions. You can organize this item yourself." : "Automatic suggestions are unavailable. You can still use and organize this item." }));
+            var recovery = h("div", { class: "ayu-inline-actions" });
+            if (item.organization_state === "waiting_model") { recovery.appendChild(button("AI settings", { act: "ai-settings", icon: "spark", small: true })); }
+            if (can("edit")) { recovery.appendChild(button(S.retrying === row.id ? "Queuing..." : "Try again", { act: "retry-organization", id: row.id, icon: "refresh", small: true, disabled: S.retrying === row.id })); }
+            organization.appendChild(recovery);
+        }
+        wrap.appendChild(organization);
         var actions = h("div", { class: "ayu-inline-actions ayc-preview-actions" });
-        var url = itemUrl(row);
-        if (url) { actions.appendChild(h("a", { class: "ayu-btn ayu-btn-primary", href: url, target: "_blank", rel: "noopener noreferrer" }, icon("external"), h("span", { text: row.has_file ? "Open file" : "Open in " + agent.name }))); }
-        if (row.has_file) { actions.appendChild(h("a", { class: "ayu-btn ayu-btn-secondary", href: S.ctx.url("/items/" + encodeURIComponent(row.id) + "/content?download=1"), download: "" }, icon("download"), h("span", { text: "Download" }))); }
+        var url = itemUrl(row), available = !data.media || data.media.available !== false, pdf = data.media && data.media.type === "application/pdf";
+        if (url && available && !pdf) { actions.appendChild(h("a", { class: "ayu-btn ayu-btn-primary", href: url, target: "_blank", rel: "noopener noreferrer" }, icon("external"), h("span", { text: row.has_file ? "Open file" : "Open in " + agent.name }))); }
+        if (row.has_file && available) { actions.appendChild(h("a", { class: "ayu-btn ayu-btn-" + (pdf ? "primary" : "secondary"), href: S.ctx.url("/items/" + encodeURIComponent(row.id) + "/content?download=1"), download: "" }, icon("download"), h("span", { text: pdf ? "Download PDF" : "Download" }))); }
         if (can("edit")) { actions.appendChild(button(S.editing ? "Cancel editing" : "Organize", { act: "toggle-edit", icon: "tag", variant: "secondary" })); }
         var mode = data.removal ? data.removal.mode : "catalog";
         if (mode === "open" && can("delete")) { actions.appendChild(h("a", { class: "ayu-btn ayu-btn-danger", href: agent.app || "#", target: "_blank", rel: "noopener noreferrer" }, icon("trash"), h("span", { text: "Delete in " + agent.name }))); }
         else if (can("delete")) { actions.appendChild(button("Delete", { act: "delete-one", id: row.id, icon: "trash", variant: "danger" })); }
         wrap.appendChild(actions);
         if (mode === "open") { wrap.appendChild(h("p", { class: "ayc-hint", text: agent.name + " keeps this item, so it is removed there." })); }
-        if (S.editing && can("edit")) { wrap.appendChild(editor(row, item)); }
         return wrap;
     }
     function editor(row, item) {
@@ -945,6 +1071,7 @@
             var body = { expected_revision: row.revision, collection: collection.value.trim(), annotation: note.value, labels: labels.value.split(",").map(function (x) { return x.trim(); }).filter(Boolean) };
             api("/items/" + encodeURIComponent(row.id), json("PATCH", body)).then(function (result) {
                 S.editing = false;
+                S.focusOrganize = true;
                 notify("success", "Saved changes to “" + row.title + "”.");
                 return catchUp().then(function () { return loadSummary(true); }).then(function () { openPreview(row.id, true); }).then(function () { return result; });
             }).catch(function (error) {
@@ -975,6 +1102,45 @@
     }
 
     // ---- dialogs ---------------------------------------------------------------------------------------------------------------------
+    function openLibraryAccess() {
+        var summary = S.store.summary || {}, access = summary.access || {}, dlg = S.storage;
+        clear(dlg);
+        dlg.appendChild(h("div", { class: "ayc-dialog-body" },
+            h("div", { class: "ayc-dialog-head" }, h("h2", { id: "ayc-storage-title", text: "Library access and settings" }), iconButton("close", "Close", "cancel-dialog")),
+            h("div", { class: "ayc-access-step" }, icon("lock"), h("div", null,
+                h("h3", { text: "Sign in to the source app" }), h("p", { text: "Some apps use their own sign-in. Open an app and sign in to make its permitted content available here. The computer's privacy settings still apply." }),
+                h("a", { class: "ayu-btn ayu-btn-secondary ayu-btn-sm", href: access.apps_url || "/websites", target: "_blank", rel: "noopener noreferrer", text: "Open agent apps" }))),
+            h("div", { class: "ayc-access-step" }, icon("refresh"), h("div", null,
+                h("h3", { text: "Refresh after signing in" }), h("p", { text: "Return here after signing in. Refresh access to load the content you can now use." }),
+                button("Refresh access", { act: "refresh-access", icon: "refresh", small: true }))),
+            h("div", { class: "ayc-access-step" }, icon("sliders"), h("div", null,
+                h("h3", { text: "Manage this computer in Admin" }), h("p", { text: "The computer owner manages storage, local AI, automatic organization and private content settings in Admin." }),
+                h("a", { class: "ayu-btn ayu-btn-secondary ayu-btn-sm", href: access.admin_url || "/agent/admin_agent/#content", target: "_blank", rel: "noopener noreferrer", text: "Open My Content in Admin" }))),
+            h("p", { class: "ayc-access-status", role: "status" }),
+            h("div", { class: "ayu-inline-actions ayc-dialog-actions" },
+                summary.attention && (summary.attention.needs_attention || summary.attention.waiting_model) ? button("Review suggestions", { act: "review-attention", small: true, icon: "spark" }) : null,
+                button("Done", { act: "cancel-dialog" }))));
+        openDialog(dlg);
+    }
+    function refreshAccess(target) {
+        var status = S.storage.querySelector(".ayc-access-status");
+        target.disabled = true;
+        if (status) { status.textContent = "Checking your sign-ins..."; }
+        loadSummary(true).then(function () { return walk(); }).then(function () {
+            if (status) { status.textContent = "Access refreshed. The library now reflects your current permissions."; }
+            say("Library access refreshed.");
+        }).catch(function (error) { if (status) { status.textContent = error.message; } })
+            .finally(function () { target.disabled = false; if (S.storage.open && document.activeElement === document.body) { target.focus({ preventScroll: true }); } });
+    }
+    function retryOrganization(id) {
+        if (S.retrying) { return; }
+        S.retrying = id; S.sigs.preview = ""; schedule();
+        api("/retry?item_id=" + encodeURIComponent(id), { method: "POST" }).then(function (result) {
+            S.focusOrganization = true;
+            notify("success", result.body.queued ? "Queued for organization. Your saved edits will be kept." : "This item no longer needs a retry.");
+            return catchUp().then(function () { return loadSummary(true); }).then(function () { if (S.active === id) { openPreview(id, true); } });
+        }).catch(function (error) { notify("error", error.message); }).finally(function () { S.retrying = ""; S.sigs.preview = ""; schedule(); });
+    }
     function openDialog(dialog, origin) {
         S.dialogOrigin = origin || document.activeElement;
         if (!dialog.open) { dialog.showModal(); }
@@ -1223,6 +1389,7 @@
         S.limit = PAGE;
         window.clearTimeout(S.searchTimer);
         S.searchTimer = window.setTimeout(askServer, 300);
+        writeRoute(true);
         schedule();
     }
     function onSelect(event) {
@@ -1231,6 +1398,7 @@
         if (key === "sort") { S.filter.sort = event.target.value || "updated"; }
         S.limit = PAGE;
         S.selected.clear();
+        writeRoute(false);
         askServer();
         schedule();
     }
@@ -1244,20 +1412,33 @@
         switch (act) {
             case "open-preview": S.previewFocus = false; openPreview(id); break;
             case "close-preview": closePreview(); break;
-            case "reload-preview": catchUp().then(function () { return loadSummary(true); }).then(function () { if (S.active) { S.editing = false; openPreview(S.active, true); } }); break;
+            case "reload-preview": catchUp().then(function () { return loadSummary(true); }).then(function () { if (S.active) { S.editing = false; S.focusOrganize = true; openPreview(S.active, true); } }); break;
             case "chip": {
                 var group = target.getAttribute("data-group");
                 S.filter[group] = S.filter[group] === id ? "" : id;
                 S.limit = PAGE; S.selected.clear(); askServer(); schedule(); break;
             }
             case "view": S.view = id; if (id === "agents") { clearFilters(true); } else { askServer(); } schedule(); break;
-            case "view-agent": S.filter.source = id; S.view = "list"; S.limit = PAGE; askServer(); schedule(); break;
+            case "view-agent": S.filter.source = id; S.view = "list"; S.limit = PAGE; S.focusResults = true; askServer(); schedule(); break;
             case "clear-search": S.filter.text = ""; S.search.value = ""; S.search.focus(); askServer(); schedule(); break;
-            case "clear-filters": clearFilters(); break;
+            case "clear-filters": S.focusResults = true; clearFilters(); break;
+            case "clear-filter": S.filter[id] = ""; S.search.value = S.filter.text; S.limit = PAGE; S.selected.clear(); askServer(); schedule(); break;
+            case "toggle-filters": S.filtersOpen = !S.filtersOpen; schedule(); break;
+            case "close-filters": S.filtersOpen = false; schedule(); S.filterToggle.focus(); break;
             case "more": S.limit += PAGE; schedule(); break;
             case "retry": S.error = ""; S.walkError = ""; S.offline = false; S.load = S.store.size() ? "ready" : "loading"; schedule(); start(); break;
             case "sync": runSync(); break;
             case "storage": openStorage(); break;
+            case "library-access": openLibraryAccess(); break;
+            case "refresh-access": refreshAccess(target); break;
+            case "ai-settings": if (S.ctx.navigate) { S.ctx.navigate("ai", "models"); } break;
+            case "retry-organization": retryOrganization(id); break;
+            case "review-attention": {
+                if (S.storage.open) { S.storage.close(); }
+                var attention = S.store.all().find(function (row) { return ["failed", "missing", "waiting_model"].indexOf(row.organization_state) !== -1; });
+                if (attention) { S.expandOrganization = attention.id; openPreview(attention.id); } else { notify("info", "The library is updating. Try reviewing again in a moment."); }
+                break;
+            }
             case "go-agents": if (S.ctx.navigate) { S.ctx.navigate("agents"); } break;
             case "toggle-add": {
                 S.addMenu.hidden = !S.addMenu.hidden;
@@ -1268,7 +1449,7 @@
             case "pick-files": S.addMenu.hidden = true; S.fileInput.click(); break;
             case "pick-folder": S.addMenu.hidden = true; S.folderInput.click(); break;
             case "dismiss-uploads": S.uploads = S.uploads.filter(function (u) { return u.state === "sending" || u.state === "waiting"; }); S.sigs.uploads = ""; schedule(); break;
-            case "toggle-edit": S.editing = !S.editing; S.sigs.preview = ""; schedule(); break;
+            case "toggle-edit": S.editing = !S.editing; S.focusEditor = S.editing; S.focusOrganize = !S.editing; S.sigs.preview = ""; schedule(); break;
             case "pick": pickRow(id, event); return;
             case "bulk-clear": S.selected.clear(); S.sigs = {}; schedule(); break;
             case "bulk-delete": askDelete(Array.from(S.selected), target); break;
@@ -1279,6 +1460,7 @@
             case "cancel-dialog": { var dialog = target.closest("dialog"); if (dialog) { dialog.close(); } break; }
             default: break;
         }
+        if (["chip", "view", "view-agent", "clear-search", "clear-filters", "clear-filter"].indexOf(act) !== -1) { writeRoute(false); }
     }
     function pickRow(id, event) {
         var rows = results().slice(0, S.limit).map(function (r) { return r.id; });
@@ -1315,8 +1497,9 @@
         var typing = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable);
         if (key === "Escape") {
             if (!S.addMenu.hidden) { S.addMenu.hidden = true; var trigger = S.actions.querySelector('[data-act="toggle-add"]'); if (trigger) { trigger.setAttribute("aria-expanded", "false"); trigger.focus(); } event.stopPropagation(); return; }
-            if (target === S.search && S.search.value) { S.filter.text = ""; S.search.value = ""; askServer(); schedule(); event.preventDefault(); return; }
+            if (target === S.search && S.search.value) { S.filter.text = ""; S.search.value = ""; writeRoute(true); askServer(); schedule(); event.preventDefault(); return; }
             if (S.active && !S.confirm.open && !S.storage.open) { closePreview(); event.preventDefault(); }
+            else if (S.filtersOpen && !S.confirm.open && !S.storage.open) { S.filtersOpen = false; schedule(); S.filterToggle.focus(); event.preventDefault(); }
             return;
         }
         if (sheetMode() && S.active && key === "Tab" && S.preview_el.contains(target)) { trapFocus(event); return; }

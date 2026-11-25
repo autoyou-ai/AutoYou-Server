@@ -13,6 +13,7 @@ __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 
 from typing import Any
+import ipaddress
 
 from shared.assistant_device_access import ASSISTANT_ASK_PATHS
 
@@ -51,6 +52,48 @@ REMOTE_BROWSER_IDENTITY_HEADERS = frozenset({
     "x-autoyou-agent-frontend",
     "x-autoyou-tunnel-client-ip",
 })
+
+_FORWARDING_HEADERS = frozenset({
+    "x-forwarded-for", "x-forwarded-host", "forwarded", "x-real-ip", "cf-connecting-ip",
+})
+
+
+def _request_has_loopback_peer(request: Any) -> bool:
+    host = str(getattr(getattr(request, "client", None), "host", "") or "").strip().lower()
+    if host in {"localhost", "testclient"}:
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+        if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped:
+            address = address.ipv4_mapped
+        return address.is_loopback
+    except ValueError:
+        return False
+
+
+def request_is_direct_loopback(request: Any) -> bool:
+    """A local operator has a loopback socket with no proxy identity markers."""
+    headers = getattr(request, "headers", None) or {}
+    return _request_has_loopback_peer(request) and not any(
+        str(headers.get(name) or "").strip()
+        for name in REMOTE_BROWSER_IDENTITY_HEADERS | _FORWARDING_HEADERS
+    )
+
+
+def request_remote_access_role(request: Any) -> str:
+    """Resolve the transport role after the endpoint authenticates the caller.
+
+    Remote role headers are accepted only from the local proxy. A network
+    caller cannot elevate itself by supplying the same headers.
+    """
+    if request_is_direct_loopback(request):
+        return REMOTE_ACCESS_ADMIN
+    headers = getattr(request, "headers", None) or {}
+    if _request_has_loopback_peer(request) and (
+        headers.get(REMOTE_BROWSER_HEADER) or headers.get("X-AutoYou-Agent-Frontend")
+    ):
+        return normalize_remote_access_role(headers.get("X-AutoYou-Remote-Access-Role"))
+    return REMOTE_ACCESS_VIEWER
 
 
 def normalize_device_ownership(value: Any) -> str:
@@ -116,6 +159,15 @@ def server_cloud_action_requires_admin(method: Any, path: Any = "") -> bool:
     return (effective_method, normalized_path) in _SERVER_CLOUD_ADMIN_ACTIONS
 
 
+def skill_action_requires_admin(method: Any, path: Any = "") -> bool:
+    normalized_path = ("/" + str(path or "").split("?", 1)[0].lstrip("/")).rstrip("/")
+    if normalized_path.startswith("/agent/skills_agent/"):
+        normalized_path = normalized_path[len("/agent/skills_agent"):]
+    return (normalized_path == "/api/skills" or normalized_path.startswith("/api/skills/")) and (
+        str(method or "GET").upper() not in _READ_METHODS
+    )
+
+
 def remote_http_request_allowed(
     role: Any,
     method: Any,
@@ -128,6 +180,8 @@ def remote_http_request_allowed(
         return True
     if server_cloud_action_requires_admin(method, path):
         return False
+    if skill_action_requires_admin(method, path):
+        return False
     if websocket:
         return False
     effective_method = effective_remote_access_method(method, path)
@@ -138,6 +192,8 @@ def remote_http_request_allowed(
 
 def remote_access_denial_message(role: Any, method: Any, path: Any = "", *, websocket: bool = False) -> str:
     normalized_role = normalize_remote_access_role(role)
+    if skill_action_requires_admin(method, path):
+        return "Changing skills or running scripts requires admin access."
     if server_cloud_action_requires_admin(method, path):
         return f"Remote access is set to {normalized_role}; changing this server's Cloud Pair requires admin access."
     if websocket:

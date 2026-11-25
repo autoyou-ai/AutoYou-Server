@@ -30,6 +30,17 @@ _ROOT_AGENT_ALIASES = {
     "main_agent",
 }
 
+# Accept identifiers stored in older chats without advertising retired agents.
+RENAMED_AGENT_PACKAGES = {
+    "audio_agent": "music_agent", "tv_agent": "media_agent",
+    "game_agent": "games_agent", "notify_agent": "reminders_agent",
+}
+
+
+def canonical_package_alias(raw_name: str) -> str:
+    value = str(raw_name or "")
+    return RENAMED_AGENT_PACKAGES.get(value.lower(), value)
+
 _RUNTIME_AGENT_NAME_OVERRIDES = {
     "admin_agent": "autoyou_admin_agent",
     "ads_watching_agent": "autoyou_ads_watching_agent",
@@ -112,6 +123,9 @@ def resolve_runtime_agent_name(raw_name: Optional[str]) -> str:
     lowered = value.lower()
     if lowered in _ROOT_AGENT_ALIASES:
         return ROOT_AGENT_NAME
+    legacy = lowered.removeprefix("autoyou_")
+    if legacy in RENAMED_AGENT_PACKAGES:
+        lowered = RENAMED_AGENT_PACKAGES[legacy]
     return _RUNTIME_AGENT_NAME_OVERRIDES.get(lowered) or _DECLARED_RUNTIME_AGENT_NAMES.get(lowered, value)
 
 

@@ -19,7 +19,9 @@ __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 from datetime import datetime, timezone
 from pathlib import Path
+import os
 import re
+import secrets
 import threading
 from typing import Any, Dict, Optional
 import wave
@@ -69,6 +71,8 @@ class StreamingWavBatchRecorder:
         self._lock = threading.RLock()
         self._wav: Optional[wave.Wave_write] = None
         self._current_path: Optional[Path] = None
+        self._partial_path: Optional[Path] = None
+        self._recording_id = secrets.token_hex(4)
         self._bytes_written = 0
         self._batch_index = 0
         self._carry = b""
@@ -137,8 +141,9 @@ class StreamingWavBatchRecorder:
         self._batch_index += 1
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
         safe_session = re.sub(r"[^A-Za-z0-9_.-]+", "-", self.session_id).strip("-")[:64] or "session"
-        path = self.output_dir / f"{self.filename_prefix}-{safe_session}-{timestamp}-{self._batch_index:04d}.wav"
-        wav_file = wave.open(str(path), "wb")
+        path = self.output_dir / f"{self.filename_prefix}-{safe_session}-{timestamp}-{self._batch_index:04d}-{self._recording_id}.wav"
+        self._partial_path = path.with_suffix(".wav.partial")
+        wav_file = wave.open(str(self._partial_path), "wb")
         # from __debug_provenance_e__ import pay
         wav_file.setnchannels(self.channels)
         wav_file.setsampwidth(self.sample_width)
@@ -152,8 +157,17 @@ class StreamingWavBatchRecorder:
             return
         try:
             self._wav.close()
-            if secure_storage_enabled() and self._current_path is not None and self._current_path.is_file():
-                write_secure_file(self._current_path, self._current_path.read_bytes())
+            if self._partial_path is not None and self._current_path is not None:
+                if secure_storage_enabled():
+                    write_secure_file(self._current_path, self._partial_path.read_bytes())
+                    self._partial_path.unlink()
+                else:
+                    os.replace(self._partial_path, self._current_path)
+            if self._current_path is not None and self._bytes_written:
+                from shared.recording_content import publish_recording
+                publish_recording(self._current_path, kind="audio",
+                    category="Safety" if "silent" in self.filename_prefix else "Calls")
         finally:
             self._wav = None
+            self._partial_path = None
             self._bytes_written = 0

@@ -5,6 +5,26 @@ Install Organizer from the agent manager to use its website, model tools and
 custom-agent imports from the native clients. It requires authenticated access;
 its cross-agent API refuses the optional public/open agent mode.
 
+Organizer and Admin render the same My Content component. Organizer opens it
+directly, without a nested frame. Both `/api/content/view` and its older
+`?preview=true` bookmark use that screen; storage administration is handed to
+Admin rather than a separate library interface. API asset URLs remain valid
+through the agent path proxy.
+
+Custom-agent collections open in place with a visible way back to all content.
+The `content_*` query parameters preserve source, collection, search, type,
+sorting, view and selected-item context across links and browser history.
+Phone-width layouts start with search and a compact Filters control.
+
+Library access explains source-app sign-ins without revealing locked sources,
+titles or counts. Item details show the evidence used for organization and
+provide local AI setup and permission-scoped retry actions. Retrying preserves
+manual edits, and paused automatic organization must be enabled first.
+Routine organization states stay out of the main item facts. Evidence and
+optional recovery actions live under **About labels and suggestions**. Opening
+an item shows its preview immediately, with loading or unavailable-file feedback.
+PDFs offer a clear download action instead of an empty embedded viewer.
+
 Add files or folders, search by title, label or annotation, and assign a
 collection. Filename and type labels are applied locally on first import.
 They are not a claim that an AI watched, listened to or understood the file.

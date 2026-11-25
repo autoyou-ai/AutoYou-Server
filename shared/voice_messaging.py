@@ -278,7 +278,10 @@ def resolve_audio_to_path(attachment: Dict[str, Any]) -> Optional[str]:
 
     existing = str(attachment.get("path") or "").strip()
     if existing and os.path.isfile(existing):
-        return existing
+        from shared.openclaw_gateway import is_allowed_attachment_path
+
+        if is_allowed_attachment_path(existing):
+            return existing
 
     payload = _decode_base64_payload(attachment.get("data"))
     if payload is None:
@@ -306,7 +309,9 @@ def resolve_audio_to_path(attachment: Dict[str, Any]) -> Optional[str]:
             suffix = ".webm"
 
     try:
-        fd, path = tempfile.mkstemp(prefix=_TMP_PREFIX, suffix=suffix)
+        from shared.media_paths import temp_media_root
+
+        fd, path = tempfile.mkstemp(prefix=_TMP_PREFIX, suffix=suffix, dir=temp_media_root(create=True))
         with os.fdopen(fd, "wb") as handle:
             handle.write(payload)
         return path
@@ -499,11 +504,12 @@ def to_voice_note_ogg(source_path: Optional[str]) -> Optional[str]:
     if source_path.lower().endswith((".ogg", ".oga", ".opus")):
         return source_path
 
-    out_path = source_path.rsplit(".", 1)[0] + ".ogg"
-    if not out_path.startswith(tempfile.gettempdir()) and _TMP_PREFIX not in os.path.basename(out_path):
-        # Keep transcodes in temp space so cleanup_paths can reclaim them.
-        fd, out_path = tempfile.mkstemp(prefix=_TMP_PREFIX, suffix=".ogg")
-        os.close(fd)
+    from shared.media_paths import temp_media_root
+
+    # Always create the conversion in our own directory, including when the
+    # source is a managed recording that must not be overwritten or deleted.
+    fd, out_path = tempfile.mkstemp(prefix=_TMP_PREFIX, suffix=".ogg", dir=temp_media_root(create=True))
+    os.close(fd)
 
     in_container = None
     out_container = None
@@ -648,7 +654,9 @@ def attachment_from_audio_file(
 
 def cleanup_paths(*paths: Optional[str]) -> None:
     """Best-effort removal of temp files this module created."""
-    owned_media_root = (Path(tempfile.gettempdir()) / "autoyou_media").resolve()
+    from shared.media_paths import temp_media_root
+
+    owned_media_root = temp_media_root()
     candidates: List[str] = []
     for path in paths:
         if not path:
@@ -675,9 +683,7 @@ def cleanup_paths(*paths: Optional[str]) -> None:
                 is_owned_media = True
             except ValueError:
                 pass
-            if os.path.isfile(path) and (
-                os.path.basename(path).startswith(_TMP_PREFIX) or is_owned_media
-            ):
+            if os.path.isfile(path) and is_owned_media:
                 os.remove(path)
         except OSError:
             pass

@@ -33,6 +33,7 @@ __debug_trace_p__ = "AUTOYOU-PROVENANCE-P-2068756d616e20617574686f-1faecfa3281fb
 
 @pytest.fixture
 def isolated_media(tmp_path, monkeypatch):
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path))
     media_dir = tmp_path / "conversation_media"
     monkeypatch.setenv(media_store.CONVERSATION_MEDIA_DIR_ENV, str(media_dir))
     return media_dir

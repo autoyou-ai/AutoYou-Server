@@ -787,6 +787,13 @@ class WebRTCManager:
 
         if total_fragments <= 1:
             return payload
+        if total_fragments > 65536:
+            _runtime.LOGGER.warning(
+                "Ignoring WS fragment with excessive total_fragments=%s for request_id=%s",
+                total_fragments,
+                payload.get("request_id") or "",
+            )
+            return None
         if fragment_index < 0 or fragment_index >= total_fragments:
             _runtime.LOGGER.warning(
                 "Ignoring WS fragment with out-of-range index request_id=%s fragment_id=%s index=%s total=%s",
@@ -813,12 +820,20 @@ class WebRTCManager:
 
         entry = self._ws_fragment_buffers.get(fragment_id)
         if entry is None:
+            if len(self._ws_fragment_buffers) >= 256:
+                _runtime.LOGGER.warning(
+                    "Dropping WS fragment buffer request_id=%s fragment_id=%s: max concurrent buffers reached",
+                    payload.get("request_id") or "",
+                    fragment_id,
+                )
+                return None
             entry = {
                 "request_id": payload.get("request_id") or "",
                 "opcode": "binary" if is_binary else "text",
                 "binary": is_binary,
                 "total_fragments": total_fragments,
                 "parts": {},
+                "accumulated_bytes": 0,
                 "updated_at": _runtime.time.monotonic(),
             }
             self._ws_fragment_buffers[fragment_id] = entry
@@ -833,8 +848,20 @@ class WebRTCManager:
             return None
 
         parts = entry.get("parts") or {}
+        previous_len = len(parts.get(fragment_index, "")) if fragment_index in parts else 0
+        next_bytes = int(entry.get("accumulated_bytes") or 0) - previous_len + len(part_data)
+        if next_bytes > 64 * 1024 * 1024:
+            _runtime.LOGGER.warning(
+                "Dropping oversized WS fragment buffer request_id=%s fragment_id=%s (%s bytes)",
+                payload.get("request_id") or "",
+                fragment_id,
+                next_bytes,
+            )
+            self._ws_fragment_buffers.pop(fragment_id, None)
+            return None
         parts[fragment_index] = part_data
         entry["parts"] = parts
+        entry["accumulated_bytes"] = next_bytes
         entry["updated_at"] = _runtime.time.monotonic()
 
         if len(parts) < total_fragments:
@@ -6463,7 +6490,10 @@ class WebRTCManager:
                             )
                             return
 
-                    if client_session_id and client_session_id != identifier:
+                    if not client_session_id and identifier:
+                        client_session_id = str(identifier)
+                        message.header.session_id = client_session_id
+                    elif client_session_id and client_session_id != identifier:
                         if not bind_client_session_id(client_session_id):
                             _runtime.LOGGER.warning(
                                 "Ignoring message with unbound or conflicting session ID %s from %s",
@@ -10027,6 +10057,8 @@ class WebRTCManager:
         the agent proxy path (e.g. /agent/admin_agent), making the admin UI work
         correctly when served through the WebRTC DataChannel."""
         import re as _re
+        if not _re.fullmatch(r"/agent/[A-Za-z0-9_-]+", str(prefix or "")):
+            return html_bytes
         prefix_b = prefix.encode("utf-8")
         page_service_paths = (
             b"/websites",
@@ -10900,7 +10932,7 @@ class WebRTCManager:
                     # the admin UI JS routes absolute-path API calls through
                     # /agent/<name>/ instead of directly to the page service.
                     import re as _re_ah
-                    _agent_html_m = _re_ah.match(r'^/agent/([^/?#]+)', url or '/')
+                    _agent_html_m = _re_ah.match(r'^/agent/([A-Za-z0-9_-]+)(?:/|$|[?#])', url or '/')
                     _is_agent_html = bool(
                         _agent_html_m and 'text/html' in ct and method.upper() == 'GET'
                     )
@@ -11417,7 +11449,18 @@ class WebRTCManager:
 
         ws_conn = None
         try:
+            from urllib.parse import urlsplit
+            parsed_ws_url = urlsplit(ws_url)
+            ws_request_path = parsed_ws_url.path or "/"
             sanitized_headers = self._sanitize_forward_headers(headers, ws_url, websocket=True)
+            sanitized_headers.update(
+                self._agent_frontend_context_headers(
+                    ws_request_path,
+                    ws_url,
+                    str(session_id or ""),
+                    source_headers=headers,
+                )
+            )
             ws_headers = {
                 k: v for k, v in sanitized_headers.items()
                 if k.lower() not in (
@@ -11443,8 +11486,6 @@ class WebRTCManager:
                 connect_kwargs: Dict[str, Any] = {"extra_headers": ws_headers}
             if subprotocols:
                 connect_kwargs["subprotocols"] = subprotocols
-            from urllib.parse import urlsplit
-            parsed_ws_url = urlsplit(ws_url)
             if not self._is_loopback_host(parsed_ws_url.hostname):
                 connect_kwargs["host"] = _runtime.resolve_safe_http_ip(parsed_ws_url.hostname or "")
                 connect_kwargs["proxy"] = None
@@ -11527,9 +11568,29 @@ class WebRTCManager:
             except Exception:
                 pass
 
+    def _ws_request_allowed_for_session(self, request_id: Any, session_id: Any) -> bool:
+        req_id = str(request_id or "").strip()
+        if not req_id:
+            return False
+        sess_map = getattr(self, "_ws_session_requests", None)
+        if not isinstance(sess_map, dict) or not sess_map:
+            return True
+        tracked_owners = [sid for sid, reqs in sess_map.items() if isinstance(reqs, set) and req_id in reqs]
+        if not tracked_owners:
+            return True
+        norm_session = str(session_id or "").strip()
+        return bool(norm_session and norm_session in tracked_owners)
+
     async def _handle_ws_data_from_client(self, message: 'DataChannelMessage') -> None:
         """Handle WebSocket data sent by client to relay through to the upstream WS."""
         request_id = message.payload.get("request_id")
+        if not self._ws_request_allowed_for_session(request_id, getattr(message.header, "session_id", None)):
+            _runtime.LOGGER.warning(
+                "Rejected cross-session WS data for request_id=%s from session=%s",
+                request_id,
+                _redact_session_id(getattr(message.header, "session_id", None)),
+            )
+            return
         if hasattr(self, '_ws_connections') and request_id in self._ws_connections:
             try:
                 payload = self._consume_ws_fragment_payload(message.payload) or {}
@@ -11543,6 +11604,13 @@ class WebRTCManager:
     async def _handle_ws_close_from_client(self, message: 'DataChannelMessage') -> None:
         """Handle WebSocket close request from client."""
         request_id = message.payload.get("request_id")
+        if not self._ws_request_allowed_for_session(request_id, getattr(message.header, "session_id", None)):
+            _runtime.LOGGER.warning(
+                "Rejected cross-session WS close for request_id=%s from session=%s",
+                request_id,
+                _redact_session_id(getattr(message.header, "session_id", None)),
+            )
+            return
         self._cleanup_stale_ws_fragments(request_id=request_id)
         if hasattr(self, '_ws_connections') and request_id in self._ws_connections:
             try:

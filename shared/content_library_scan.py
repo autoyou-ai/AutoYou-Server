@@ -5,8 +5,9 @@ import json
 import os
 import sqlite3
 
-from shared.content_library import ContentLibrary, managed_roots, infer_kind
+from shared.content_library import ContentLibrary, managed_roots, output_roots, infer_kind
 from shared.platform_runtime import get_mutable_data_dir, get_service_data_dir
+from shared.media_paths import page_database_path
 
 
 def refresh_existing(cancelled=lambda: False):
@@ -16,12 +17,13 @@ def refresh_existing(cancelled=lambda: False):
     from autoyou_agents.music_agent.website.backend.uploads import import_root, legacy_import_root
 
     root = get_mutable_data_dir("AutoYou", anchor=__file__)
+    generation_anchor = Path(__file__).resolve().parents[1] / "autoyou_agents/media_generation_agent/media_generation_tool.py"
     catalog = ContentLibrary()
     specs = [
         ("notes_agent", NotesTool._resolve_default_storage_dir() / "autoyou_notes.db", "SELECT id,title,'note' AS kind,'' AS path FROM notes"),
-        ("page_agent", root / "page_feed.db", "SELECT id,title,'page' AS kind,'' AS path FROM feed_items"),
+        ("page_agent", page_database_path(), "SELECT id,title,'page' AS kind,'' AS path FROM feed_items"),
         ("media_agent", data_root() / "library.sqlite3", "SELECT id,title,CASE kind WHEN 'movie' THEN 'video' WHEN 'episode' THEN 'video' WHEN 'photo' THEN 'image' WHEN 'document' THEN 'file' ELSE kind END AS kind,COALESCE(file_path,'') AS path FROM items WHERE status!='deleted'"),
-        ("media_generation_agent", get_service_data_dir("media_generation_agent", anchor=__file__) / "media_history.db", "SELECT id,COALESCE(file_name,original_prompt) AS title,media_type AS kind,file_path AS path FROM media_history WHERE status='completed'"),
+        ("media_generation_agent", get_service_data_dir("media_generation_agent", anchor=generation_anchor) / "media_history.db", "SELECT id,COALESCE(file_name,original_prompt) AS title,media_type AS kind,file_path AS path FROM media_history WHERE status='completed'"),
         ("location_agent", _database_path(), "SELECT substr(timestamp,1,10) AS id,'Locations on ' || substr(timestamp,1,10) AS title,'location' AS kind,'' AS path FROM locations GROUP BY substr(timestamp,1,10)"),
     ]
     result = {"indexed": 0, "sources": [], "errors": []}
@@ -45,7 +47,8 @@ def refresh_existing(cancelled=lambda: False):
         except Exception:
             # Do not return file paths or database exception details to clients.
             result["errors"].append(source + ": unable to read its catalog")
-    for source, scan in (("attachments", scan_attachments), ("voice_training_agent", scan_voice), ("audio_folders", scan_audio_folders),
+    from shared.recording_content import scan_recordings
+    for source, scan in (("attachments", scan_attachments), ("voice_training_agent", scan_voice), ("audio_folders", scan_audio_folders), ("recordings", scan_recordings),
                          ("diary_agent", scan_private), ("games_agent", scan_games), ("reminders_agent", scan_reminders)):
         if cancelled():
             break
@@ -54,7 +57,7 @@ def refresh_existing(cancelled=lambda: False):
             result["sources"].append(source)
         except Exception:
             result["errors"].append(source + ": unable to read its content")
-    for folder in {import_root(), legacy_import_root(), *(root / "music_agent" for root in managed_roots())}:
+    for folder in {import_root(), legacy_import_root(), *output_roots("music_agent")}:
         path = folder / ".pending" / "uploads.sqlite"
         if not path.is_file():
             continue
@@ -83,7 +86,7 @@ def scan_attachments(catalog=None, cancelled=lambda: False):
     catalog = catalog or ContentLibrary()
     count = 0
     databases = [
-        ("page_agent", get_mutable_data_dir("AutoYou", anchor=__file__) / "page_feed.db"),
+        ("page_agent", page_database_path()),
         ("notes_agent", NotesTool._resolve_default_storage_dir() / "autoyou_notes.db"),
     ]
     for source, path in databases:

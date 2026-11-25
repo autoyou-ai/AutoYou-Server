@@ -1,6 +1,6 @@
 {
   "agent_name": "organizer_agent",
-  "title": "Your Content",
+  "title": "My Content",
   "description": "Private collections, labels, annotations and shared agent outputs.",
   "entry_path": "/",
   "recommended_port": 8119,

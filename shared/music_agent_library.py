@@ -180,11 +180,13 @@ def save_music_agent_library_settings(
 
 
 def _page_feed_upload_dir(anchor: Optional[str | Path] = None) -> Path:
-    return get_config_dir("AutoYou", anchor=_runtime_anchor(anchor)) / "uploads"
+    from shared.content_library import settings
+    return Path(settings()["output_root"]) / "page_agent"
 
 
 def _notes_media_dir(anchor: Optional[str | Path] = None) -> Path:
-    return get_mutable_data_dir("AutoYou", anchor=_runtime_anchor(anchor)) / "autoyou_notes_agent" / "media"
+    from shared.content_library import settings
+    return Path(settings()["output_root"]) / "notes_agent" / "media"
 
 
 def _configured_server_paths(
@@ -247,6 +249,14 @@ def resolve_audio_library_path_details(
         except Exception:
             continue
         candidates.append((key, AUDIO_SOURCE_LABELS[key], source_path))
+
+    legacy_sources = {
+        "page_feed_audio": get_config_dir("AutoYou", anchor=_runtime_anchor(anchor)) / "uploads",
+        "notes_media_audio": get_mutable_data_dir("AutoYou", anchor=_runtime_anchor(anchor)) / "autoyou_notes_agent" / "media",
+    }
+    for key, legacy in legacy_sources.items():
+        if source_flags.get(key) and legacy.is_dir():
+            candidates.append((key, AUDIO_SOURCE_LABELS[key] + " (previous storage)", legacy))
 
     for key, value in _configured_server_paths(normalized, anchor=anchor):
         candidates.append((key, "Server ad-hoc path", Path(value)))

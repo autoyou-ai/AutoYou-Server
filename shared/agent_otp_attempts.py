@@ -38,19 +38,24 @@ def _connect():
         connection.close()
 
 
-def reserve_attempt(caller: str) -> str | None:
+def reserve_attempt(caller: str, *, local: bool = False) -> str | None:
     """Reserve before verification; failures and in-flight attempts share a cap.
 
     One database covers factory, bespoke and publishing logins, even when
     agents run in separate processes or share an authenticator profile.
     """
     now = _clock()
-    caller_hash = hashlib.sha256(caller.encode("utf-8")).hexdigest()
+    caller_hash = ("local:" if local else "") + hashlib.sha256(caller.encode("utf-8")).hexdigest()
     with _connect() as connection:
         connection.execute("BEGIN IMMEDIATE")
         connection.execute("DELETE FROM attempts WHERE created <= ?", (now - WINDOW_SECONDS,))
+        # Preserve pre-existing remote reservations (bare hashes). Every remote
+        # caller and agent still shares GLOBAL_ATTEMPTS, while failed remote
+        # logins cannot consume the operator's reserved local budget.
+        partition = "caller LIKE 'local:%'" if local else "caller NOT LIKE 'local:%'"
         total, own = connection.execute(
-            "SELECT COUNT(*), COALESCE(SUM(caller = ?), 0) FROM attempts", (caller_hash,)
+            "SELECT COUNT(*), COALESCE(SUM(caller = ?), 0) FROM attempts WHERE " + partition,
+            (caller_hash,),
         ).fetchone()
         if total >= GLOBAL_ATTEMPTS or own >= CLIENT_ATTEMPTS:
             return None

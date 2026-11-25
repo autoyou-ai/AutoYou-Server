@@ -72,6 +72,8 @@ def _request_uses_ai_agent_internal_token(request: Request) -> bool:
     client_host = getattr(getattr(request, "client", None), "host", None)
     if not _runtime._is_loopback_client_host(client_host):
         return False
+    if _runtime._request_via_remote_browser_proxy(request) or _runtime._request_forwarded_from_elsewhere(request):
+        return False
     auth_header = str(request.headers.get("Authorization", "") or "").strip()
     if not auth_header.lower().startswith("bearer "):
         return False

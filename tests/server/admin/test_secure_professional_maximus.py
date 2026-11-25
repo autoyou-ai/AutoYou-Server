@@ -51,10 +51,11 @@ from shared.secure_storage import (
 
 
 @pytest.fixture(autouse=True)
-def isolated_storage(monkeypatch: pytest.MonkeyPatch):
+def isolated_storage(monkeypatch: pytest.MonkeyPatch, tmp_path):
     """Keep the process-wide SQLite adapter and key fallback test-local."""
 
     disable_secure_storage()
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path))
     monkeypatch.setattr(secure_storage, "keyring_available", lambda: False)
     yield
     disable_secure_storage()
@@ -187,6 +188,7 @@ def test_webrtc_temp_media_is_encrypted_and_cleaned_after_use(tmp_path, monkeypa
     from shared import openclaw_gateway, voice_messaging
 
     media_root = tmp_path / "autoyou_media"
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path))
     monkeypatch.setattr(openclaw_gateway, "_get_temp_media_dir", lambda: str(media_root))
     monkeypatch.setattr(voice_messaging.tempfile, "gettempdir", lambda: str(tmp_path))
     _enable(tmp_path / "storage")

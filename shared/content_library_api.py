@@ -149,20 +149,43 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
         return json_response({"success": True})
 
     @app.post(prefix + "/retry")
-    async def retry_organization(request: Request):
+    async def retry_organization(request: Request, item_id: str = ""):
         denied = authorize(request)
         if denied is not None:
             return denied
         denied = content_access.deny(request, "edit")
         if denied is not None:
             return denied
+        if not (await asyncio.to_thread(settings))["auto_organize"]:
+            return json_response({"error": "Automatic organization is paused. Enable it in My Content's library settings before retrying."}, 409)
+        library = ContentLibrary()
+        if item_id:
+            with library.connect() as db:
+                row = db.execute("SELECT source FROM content WHERE id=? AND deleted=0", (item_id,)).fetchone()
+            if not row:
+                raise HTTPException(404, "Content not found")
+            denied = content_access.deny_source(request, row["source"])
+            if denied is not None:
+                return denied
+        allowed = content_access.allowed_sources_filter(request)
+
         def retry():
-            with ContentLibrary().connect() as db:
-                db.execute("UPDATE content SET retry_at=0,processed_version=0 WHERE deleted=0 AND organization_state IN ('waiting_model','failed','missing')")
-        await asyncio.to_thread(retry)
+            with library.connect() as db:
+                db.execute("BEGIN IMMEDIATE")
+                rows = db.execute("SELECT id,source FROM content WHERE deleted=0 AND organization_state IN ('waiting_model','failed','missing')" +
+                                  (" AND id=?" if item_id else ""), (item_id,) if item_id else ()).fetchall()
+                queued = 0
+                for row in rows:
+                    if not library.source_enabled(row["source"], db=db) or (allowed is not None and row["source"] not in allowed):
+                        continue
+                    db.execute("UPDATE content SET retry_at=0,processed_version=0,organization_state='pending',revision=? WHERE id=?",
+                               (library.tick(db), row["id"]))
+                    queued += 1
+                return queued
+        queued = await asyncio.to_thread(retry)
         if worker:
             worker.wake.set()
-        return json_response({"success": True})
+        return json_response({"success": True, "queued": queued})
 
     @app.post(prefix + "/upload-sessions")
     async def begin_transfer(request: Request, payload: TransferInput):
@@ -281,7 +304,8 @@ def register_content_routes(app, authorize, prefix="/api/admin/content", worker=
         if denied is not None:
             return denied
         from fastapi.responses import HTMLResponse
-        template = (assets / ("content-workspace.html" if preview else "content-library.html")).read_text(encoding="utf-8")
+        # Keep old /view and ?preview=true bookmarks on the same screen.
+        template = (assets / "content-workspace.html").read_text(encoding="utf-8")
         return HTMLResponse(template.replace("__CONTENT_API__", prefix), headers={"Cache-Control": "no-store"})
 
     @app.post(prefix + "/refresh-existing")

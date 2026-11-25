@@ -5,8 +5,10 @@ All identities, credentials, records and files are synthetic and sandboxed.
 import json
 import time
 import uuid
+from html.parser import HTMLParser
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import urljoin, urlsplit
 
 import pytest
 from fastapi.testclient import TestClient
@@ -88,6 +90,87 @@ def test_agent_admin_cannot_change_global_storage_or_inspect_other_sources_opera
     assert summary["settings"]["output_root"] == ""
     assert client.get("/api/content/activity").json()["operations"] == []
     assert client.post("/api/content/migration/preview", json={"output_root": str(sandbox / "another-destination")}).status_code == 403
+
+
+@pytest.mark.parametrize("path", ["/", "/api/content/view", "/api/content/view?preview=true"])
+def test_organizer_root_and_old_bookmarks_load_one_screen_through_the_real_proxy_rewriter(organizer_client, path):
+    from autoyou_page_service import AutoYouPageService
+
+    class Assets(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.base = ""
+            self.assets = []
+            self.hosts = 0
+
+        def handle_starttag(self, tag, attrs):
+            values = dict(attrs)
+            if tag == "base":
+                self.base = values["href"]
+            if tag == "script" and values.get("src"):
+                self.assets.append(values["src"])
+            if tag == "link" and values.get("rel") == "stylesheet":
+                self.assets.append(values["href"])
+            if values.get("id") == "content-host":
+                self.hosts += 1
+
+    client, _ = organizer_client
+    page = client.get(path)
+    assert page.status_code == 200
+    html = AutoYouPageService._inject_agent_proxy_shim(page.content, "organizer_agent").decode()
+    parser = Assets()
+    parser.feed(html)
+    assert parser.hosts == 1
+    assert "content-library.js" not in html
+    assert "File storage and imports" not in html
+    assert len(parser.assets) == 5
+    for asset in parser.assets:
+        address = urlsplit(urljoin("https://example.test" + parser.base, asset))
+        assert address.path.startswith("/agent/organizer_agent/api/content/assets/"), address.path
+        response = client.get(address.path.removeprefix("/agent/organizer_agent") + "?" + address.query)
+        assert response.status_code == 200
+        assert "text/html" not in response.headers["content-type"]
+
+
+def test_access_guidance_does_not_disclose_locked_sources_or_their_content(organizer_client):
+    client, _ = organizer_client
+    before = client.get("/api/content/summary").json()
+    library = ContentLibrary()
+    hidden = library.publish("notes_agent", "synthetic-locked-id", "Synthetic hidden title", "note", source_text="Synthetic private body")
+    after = client.get("/api/content/summary").json()
+    assert after["access"] == before["access"]
+    assert after["access"]["agent_scoped"] is True
+    assert after["access"]["admin_url"] == "/agent/admin_agent/#content"
+    assert after["total"] == 0 and after["agents"] == []
+    assert not any(value in json.dumps(after) for value in (hidden["id"], "notes_agent", "Synthetic hidden title", "Synthetic private body"))
+
+
+def test_retry_is_scoped_and_revisioned_and_keeps_saved_organization(organizer_client):
+    client, mission = organizer_client
+    library = ContentLibrary()
+    visible = library.publish("custom_garden_a1b2c3", "synthetic-visible", "Synthetic garden", "note")
+    hidden = library.publish("notes_agent", "synthetic-hidden", "Synthetic locked note", "note")
+    with library.connect() as db:
+        db.execute("UPDATE content SET organization_state='waiting_model',retry_at=9999999999,processed_version=1,annotation='Synthetic saved annotation',user_edited=1")
+    assert client.post("/api/content/retry", params={"item_id": hidden["id"]}).status_code == 403
+    assert client.post("/api/content/retry").json()["queued"] == 1
+    with library.connect() as db:
+        first = dict(db.execute("SELECT * FROM content WHERE id=?", (visible["id"],)).fetchone())
+        other = dict(db.execute("SELECT * FROM content WHERE id=?", (hidden["id"],)).fetchone())
+    assert first["organization_state"] == "pending" and first["retry_at"] == 0 and first["processed_version"] == 0
+    assert first["revision"] > visible["revision"] and first["annotation"] == "Synthetic saved annotation" and first["user_edited"] == 1
+    assert other["organization_state"] == "waiting_model" and other["revision"] == hidden["revision"]
+    client.cookies.set(mission._agent_cookie_name("notes_agent"), "synthetic-notes")
+    assert client.post("/api/content/retry", params={"item_id": hidden["id"]}).json()["queued"] == 1
+    client.headers["X-AutoYou-Remote-Access-Role"] = "viewer"
+    assert client.post("/api/content/retry", params={"item_id": visible["id"]}).status_code == 403
+
+
+def test_retry_explains_paused_automatic_organization(organizer_client):
+    client, _ = organizer_client
+    configure_organization(auto_organize=False, semantic_labels=False)
+    response = client.post("/api/content/retry")
+    assert response.status_code == 409 and "paused" in response.json()["error"]
 
 
 @pytest.mark.parametrize("encrypted", [False, True])

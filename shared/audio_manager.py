@@ -2458,6 +2458,13 @@ class AudioManager:
                 transcripts.append(entry)
                 save_secure_json(metadata_file, transcripts)
                 
+            from shared.content_library import publish_content
+            parent = publish_content("voice_training_agent", "transcript:" + rec_id,
+                normalized_transcript[:90] or "Voice transcript", "note", href="/agent/voice_training_agent/",
+                source_text=normalized_transcript, source_labels=["transcript"], source_collection="Voice / Transcripts")
+            publish_content("voice_training_agent", "recording:" + rec_id, wav_filename, "voice", path=str(wav_path),
+                parent_id=parent["id"] if parent else "", source_text=normalized_transcript,
+                source_labels=["recording"], source_collection="Voice / Recordings")
             LOGGER.info("Saved call recording call_%s.wav with transcript for voice training", rec_id)
         except Exception as exc:
             LOGGER.error("Failed to save captured voice training recording: %s", exc)
@@ -3110,7 +3117,9 @@ class AudioManager:
             suffix = ".wav"
             if provider == "system" and sys.platform == "darwin":
                 suffix = ".aiff"
-            fd, temp_path = tempfile.mkstemp(prefix="autoyou_voicenote_", suffix=suffix)
+            from shared.media_paths import temp_media_root
+
+            fd, temp_path = tempfile.mkstemp(prefix="autoyou_voicenote_", suffix=suffix, dir=temp_media_root(create=True))
             os.close(fd)
             try:
                 os.remove(temp_path)

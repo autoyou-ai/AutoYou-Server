@@ -29,7 +29,7 @@ def owned(path):
 def resolve_path(row) -> Path:
     """Resolve the readable path for a catalog row, recovering across migrated or restored managed roots."""
     import re
-    from shared.content_agent_upgrade import storage_path
+    from shared.content_library import output_roots
     keys = set(row.keys()) if hasattr(row, "keys") else set()
     managed = str(row["managed_path"] or "") if "managed_path" in keys else ""
     primary = str(row["path"] or "") if "path" in keys else ""
@@ -56,8 +56,8 @@ def resolve_path(row) -> Path:
     source = str(row["source"] or "") if "source" in keys else ""
     if primary and source:
         name = Path(primary).name
-        for root in managed_roots():
-            relocated = storage_path(root, source) / name
+        for root in output_roots(source):
+            relocated = root / name
             if relocated.is_file() and not relocated.is_symlink() and relocated.resolve().is_relative_to(root.resolve()):
                 # A common basename is not enough to identify restored media.
                 if digest and content_files.fingerprint(relocated)[0] == digest:

@@ -162,10 +162,24 @@ def configure_output_root(value: str) -> dict:
 def output_dir(source: str) -> Path:
     if not SOURCE.fullmatch(source):
         raise ValueError("Invalid content source")
-    from shared.content_agent_upgrade import storage_path
-    path = storage_path(Path(settings()["output_root"]), source)
+    from autoyou_agents.shared_tools.agent_identity import canonical_package_alias
+
+    # Old folders remain read sources. New writes always use current names.
+    path = Path(settings()["output_root"]) / canonical_package_alias(source)
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def output_roots(source: str) -> list[Path]:
+    """Read current and previous destinations without changing or moving files."""
+    if not SOURCE.fullmatch(source):
+        raise ValueError("Invalid content source")
+    from shared.content_agent_upgrade import PREVIOUS_NAMES
+    from autoyou_agents.shared_tools.agent_identity import canonical_package_alias
+
+    name = canonical_package_alias(source)
+    names = [name, *([PREVIOUS_NAMES[name]] if name in PREVIOUS_NAMES else [])]
+    return list(dict.fromkeys(root / candidate for root in managed_roots() for candidate in names))
 
 
 def managed_roots():
@@ -396,6 +410,11 @@ class ContentLibrary:
 
     def publish(self, source: str, source_id: str, title: str, kind: str = "file", *, path: str = "", href: str = "", force_revision=False, _db=None,
                 parent_id=None, source_labels=None, source_collection=None, source_text=None, base_kind: str = "") -> dict:
+        from autoyou_agents.shared_tools.agent_identity import canonical_package_alias
+        canonical_source = canonical_package_alias(source)
+        if canonical_source != source and href.startswith("/agent/" + source + "/"):
+            href = "/agent/" + canonical_source + "/" + href[len("/agent/" + source + "/"):]
+        source = canonical_source
         if not SOURCE.fullmatch(source) or not str(source_id) or len(str(source_id)) > 256:
             raise ValueError("Invalid content source or identifier")
         if kind not in KINDS:
@@ -549,6 +568,8 @@ class ContentLibrary:
             return self.public(db.execute("SELECT * FROM content WHERE id=?", (identifier,)).fetchone())
 
     def forget(self, source, source_id):
+        from autoyou_agents.shared_tools.agent_identity import canonical_package_alias
+        source = canonical_package_alias(source)
         with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             parent = db.execute("SELECT id FROM content WHERE source=? AND source_id=? AND deleted=0", (source, str(source_id))).fetchone()

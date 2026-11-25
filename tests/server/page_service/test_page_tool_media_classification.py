@@ -142,9 +142,11 @@ def test_page_tool_http_blob_upload_links_to_page_feed_for_user_display(monkeypa
 
 
 def test_page_tool_updates_server_photo_through_avatar_api(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path))
+    from shared.media_paths import temp_media_root
     captured = {}
     image_bytes = b"\x89PNG\r\n\x1a\n" + b"synthetic-avatar"
-    image_path = tmp_path / "synthetic-avatar.png"
+    image_path = temp_media_root(create=True) / "synthetic-avatar.png"
     image_path.write_bytes(image_bytes)
     tool = PageTool(base_url="http://127.0.0.1:8067")
 

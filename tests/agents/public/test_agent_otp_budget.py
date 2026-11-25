@@ -29,6 +29,30 @@ def test_global_budget_is_not_divided_by_caller_or_agent():
     assert sum(value is not None for value in results) == attempts.GLOBAL_ATTEMPTS
 
 
+def test_remote_global_budget_cannot_consume_reserved_local_attempts():
+    results = [attempts.reserve_attempt(f"remote-synthetic-{index}") for index in range(50)]
+    assert sum(value is not None for value in results) == attempts.GLOBAL_ATTEMPTS
+    assert attempts.reserve_attempt("remote-new-session") is None
+    assert attempts.reserve_attempt("local-synthetic", local=True) is not None
+
+
+def test_remote_proxy_otp_failures_leave_local_login_available(monkeypatch):
+    app = FastAPI()
+    app.middleware("http")(security._agent_app_csrf_guard())
+
+    @app.post("/api/auth/login")
+    async def login():
+        return JSONResponse({"success": False}, status_code=401)
+
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
+        for _ in range(attempts.CLIENT_ATTEMPTS):
+            assert client.post("/api/auth/login", json={"code": "000000"},
+                headers={"X-AutoYou-Remote-Browser": "webrtc"}).status_code == 401
+        assert client.post("/api/auth/login", json={"code": "000000"},
+            headers={"X-AutoYou-Remote-Browser": "webrtc"}).status_code == 429
+        assert client.post("/api/auth/login", json={"code": "000000"}).status_code == 401
+
+
 def test_success_releases_only_its_own_attempt_and_windows_expire(monkeypatch):
     monkeypatch.setattr(attempts, "_clock", lambda: 1000.0)
     failed = [attempts.reserve_attempt("synthetic") for _ in range(4)]

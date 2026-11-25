@@ -142,8 +142,8 @@ def test_content_view_resolves_assets_from_packaged_resources(sandbox, monkeypat
 
     assets = sandbox / "bundle" / "assets"
     assets.mkdir(parents=True)
-    (assets / "content-library.html").write_text('<script src="__CONTENT_API__/assets/content-library.js"></script>')
-    (assets / "content-library.js").write_text("// packager test")
+    (assets / "content-workspace.html").write_text('<script src="__CONTENT_API__/assets/content-store.js"></script>')
+    (assets / "content-store.js").write_text("// packager test")
     module = sandbox / "bundle" / "runtime_modules" / "shared" / "content_library_api.py"
     monkeypatch.setattr(content_library_api, "__file__", str(module))
     monkeypatch.setattr(content_library_api, "get_resources_root", lambda anchor: assets.parent)
@@ -152,8 +152,8 @@ def test_content_view_resolves_assets_from_packaged_resources(sandbox, monkeypat
     with TestClient(app) as client:
         response = client.get("/api/admin/content/view")
         assert response.status_code == 200
-        assert "/api/admin/content/assets/content-library.js" in response.text
-        assert client.get("/api/admin/content/assets/content-library.js").text == "// packager test"
+        assert "/api/admin/content/assets/content-store.js" in response.text
+        assert client.get("/api/admin/content/assets/content-store.js").text == "// packager test"
 
 
 def test_owner_api_auth_ranges_and_untrusted_download(sandbox):

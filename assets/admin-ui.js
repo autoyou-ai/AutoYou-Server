@@ -11135,7 +11135,7 @@
     // My Content lives in its own modules (content-store.js, content-screen.js, content-screen.css),
     // loaded the first time the screen opens. The module keeps its own state and DOM, so the shell
     // only hands it a place to sit and re-attaches it after each render instead of rebuilding it.
-    var CONTENT_SCREEN_VERSION = "20261124";
+    var CONTENT_SCREEN_VERSION = "20261125b";
     var contentScreenLoad = null;
 
     function contentApiBase() {
@@ -11186,7 +11186,8 @@
                 return fetch(contentApiBase() + path, Object.assign({ credentials: "same-origin" }, options || {}));
             },
             notice: function (kind, message) { setNotice(kind, message); },
-            navigate: function (screen) {
+            navigate: function (screen, section) {
+                if (section) { setScreen(screen, { section: section }); return; }
                 var target = root && root.querySelector("[data-action=\"nav:" + screen + "\"]");
                 if (target) { target.click(); }
             }

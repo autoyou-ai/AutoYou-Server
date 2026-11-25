@@ -78,6 +78,11 @@ class NotesTool:
             self._storage_dir = self._resolve_default_storage_dir()
             os.makedirs(self._storage_dir, exist_ok=True)
             self._db_path = str(self._storage_dir / "autoyou_notes.db")
+        if db_path:
+            self._media_root = self._storage_dir / self._MEDIA_SUBDIR
+        else:
+            from shared.content_library import output_dir
+            self._media_root = output_dir("notes_agent") / self._MEDIA_SUBDIR
         self._init_database()
         if not db_path:
             self._migrate_legacy_databases()
@@ -617,10 +622,10 @@ class NotesTool:
     def _ensure_media_dir(self, source: Optional[str], session_id: Optional[str]) -> str:
         """Ensure media directory exists and return the target directory path.
 
-        Directory structure: <module_dir>/media/<source>/<session_id>
+        Directory structure: <content>/notes_agent/media/<source>/<session_id>
         Missing parts are skipped when not provided.
         """
-        media_root = self._storage_dir / self._MEDIA_SUBDIR
+        media_root = getattr(self, "_media_root", self._storage_dir / self._MEDIA_SUBDIR)
         current_path = media_root
         if source:
             current_path = current_path / self._sanitize_path_component(source, "unknown_source")

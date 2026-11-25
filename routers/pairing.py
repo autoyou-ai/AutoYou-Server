@@ -60,6 +60,9 @@ def register_routes(
     @admin_app.post("/v1/unlock/setup")
     @auth_app.post("/v1/unlock/setup")
     async def post_unlock_setup(request: Request):
+        transport_error = server._require_loopback_or_https_request(request)
+        if transport_error:
+            return transport_error
         try:
             payload = await request.json()
         except Exception:
@@ -150,6 +153,15 @@ def register_routes(
         if state == "SetupPending":
             return JSONResponse(status_code=400, content={"success": False, "error": "Setup is pending. Use /v1/unlock/setup instead."})
 
+        client_ip = server._rate_limit_client_key(request)
+        rate_key = server._credential_rate_limit_key(request)
+        if not server.LOGIN_RATE_LIMITER.is_allowed(rate_key):
+            server.LOGGER.warning("Rate limit exceeded for /v1/unlock/verify from %s", client_ip)
+            return JSONResponse(
+                status_code=429,
+                content={"success": False, "error": "Too many unlock attempts. Please wait a minute before trying again."},
+            )
+
         meta = server._load_unlock_metadata()
         salt_hex = meta.get("salt_hex")
         hash_hex = meta.get("hash_hex")
@@ -173,6 +185,9 @@ def register_routes(
                 return JSONResponse(status_code=401, content={"success": False, "error": "Incorrect password"})
         elif not server._verify_password(password, salt_hex, hash_hex):
             return JSONResponse(status_code=401, content={"success": False, "error": "Incorrect password"})
+
+        if server.LOGIN_RATE_LIMITER._requests.get(rate_key):
+            server.LOGIN_RATE_LIMITER._requests[rate_key].pop()
 
         if agreement_required and not bool(payload.get("terms_accepted")):
             return JSONResponse(
@@ -1145,11 +1160,22 @@ def register_routes(
         Body: {"totp_code": str}
         Returns: {"valid": bool, "client_id": str?, "error": str?}
         """
+        loopback_error = server._require_loopback_request(request)
+        if loopback_error is not None:
+            return loopback_error
         try:
             payload = await request.json()
             totp_code = str(payload.get("totp_code", "")).strip()
             if not totp_code:
                 return JSONResponse({"valid": False, "error": "totp_code required"}, status_code=400)
+            client_ip = server._rate_limit_client_key(request)
+            rate_key = f"admin_totp:{server._credential_rate_limit_key(request)}"
+            if not server.AUTOPAIR_TOTP_RATE_LIMITER.is_allowed(rate_key):
+                server.LOGGER.warning("Rate limit exceeded for /api/admin/session/verify from %s", client_ip)
+                return JSONResponse(
+                    {"valid": False, "error": "Too many TOTP attempts. Please wait a minute before trying again."},
+                    status_code=429,
+                )
             cfg = server.STATE.config or server._default_config()
             capabilities = server._describe_totp_capabilities(cfg)
             if not capabilities.get("totp_configured"):
@@ -1162,6 +1188,8 @@ def register_routes(
             pairing_secret = server._get_pairing_totp_secret(cfg)
             if not server._verify_totp_secret(pairing_secret, totp_code, valid_window=1):
                 return JSONResponse({"valid": False, "error": "Invalid TOTP code. Please check your authenticator app."})
+            if server.AUTOPAIR_TOTP_RATE_LIMITER._requests.get(rate_key):
+                server.AUTOPAIR_TOTP_RATE_LIMITER._requests[rate_key].pop()
             server.LOGGER.info("Admin session TOTP verified")
             token = server.secrets.token_hex(32)
             server.ADMIN_API_TOKENS[token] = server.time.time() + 3600

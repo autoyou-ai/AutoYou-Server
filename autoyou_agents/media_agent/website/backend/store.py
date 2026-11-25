@@ -14,14 +14,24 @@ from typing import Any
 
 
 def data_root() -> Path:
-    # Test isolation must win over even an explicitly configured live TV root.
-    if os.getenv("AUTOYOU_TEST_ROOT"):
-        return Path(os.environ["AUTOYOU_TEST_ROOT"]).resolve() / "media_agent"
-    if os.getenv("AUTOYOU_TV_DATA_DIR"):
-        return Path(os.environ["AUTOYOU_TV_DATA_DIR"]).expanduser().resolve()
+    # Preserve released catalogs at their original paths, including the old
+    # package directory, while every new media file uses the shared output root.
     from shared.platform_runtime import get_mutable_data_dir
-    from shared.content_agent_upgrade import storage_path
-    return storage_path(get_mutable_data_dir("AutoYou", anchor=__file__), "media_agent", suffix="_data")
+    test_root = os.getenv("AUTOYOU_TEST_ROOT")
+    if test_root:
+        base = Path(test_root).resolve()
+        current = base / "media_agent"
+    else:
+        explicit = os.getenv("AUTOYOU_MEDIA_DATA_DIR") or os.getenv("AUTOYOU_TV_DATA_DIR")
+        if explicit:
+            return Path(explicit).expanduser().resolve()
+        base = get_mutable_data_dir("AutoYou", anchor=Path(__file__).resolve().parents[4] / "server.py")
+        current = base / "media_agent_data"
+    candidates = [current, base / "tv_agent_data",
+        base / "autoyou_agents/media_agent/website/backend/media_agent_data",
+        base / "autoyou_agents/media_agent/website/backend/tv_agent_data",
+        base / "autoyou_agents/tv_agent/website/backend/tv_agent_data"]
+    return next((path for path in candidates if (path / "library.sqlite3").is_file()), current)
 
 
 def uid() -> str:
@@ -104,7 +114,8 @@ class Store:
         ``media_dir``. Files made before that stay in ``<data>/media`` and remain the
         catalog's own, so a browser version made there is still a valid browser version.
         """
-        return list(dict.fromkeys((self.media_dir.resolve(), (self.root / "media").resolve())))
+        from shared.content_library import output_roots
+        return list(dict.fromkeys((self.media_dir.resolve(), (self.root / "media").resolve(), *output_roots("media_agent"))))
 
     def owns_media(self, path: Path) -> bool:
         resolved = Path(path).resolve()
