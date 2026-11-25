@@ -60,6 +60,11 @@ from .keystore import (
     macos_keychain_bootstrap_timeout_seconds,
     replace_key,
 )
+from .vault_crypto import (
+    derive_spm_argon2_key,
+    is_argon2_salt_blob,
+    make_argon2_salt_blob,
+)
 
 __debug_provenance_i__ = "AUTOYOU-PROVENANCE-I-or-87b9805ed3d1e70cd3c77d36"
 
@@ -123,6 +128,8 @@ class SecureStorageError(RuntimeError):
 def _derive_password_key(password: str, salt: bytes) -> bytes:
     if not password:
         raise SecureStorageError("Secure Professional Maximus needs a storage password")
+    if is_argon2_salt_blob(salt):
+        return derive_spm_argon2_key(password, salt)
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
         length=32,
@@ -130,6 +137,15 @@ def _derive_password_key(password: str, salt: bytes) -> bytes:
         iterations=PBKDF2_ITERATIONS,
     )
     return base64.urlsafe_b64encode(kdf.derive(password.encode("utf-8")))
+
+
+def _prefer_local_vault() -> bool:
+    return str(os.environ.get("AUTOYOU_PREFER_LOCAL_VAULT") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 def _fernet_key(raw_key: bytes) -> bytes:
@@ -302,7 +318,7 @@ def _load_or_create_key(
         )
 
     key: Optional[bytes] = None
-    if keyring_available():
+    if keyring_available() and not _prefer_local_vault():
         key_kwargs = {"create": allow_key_creation}
         if operation_timeout_seconds is not None:
             key_kwargs["operation_timeout_seconds"] = operation_timeout_seconds
@@ -316,7 +332,7 @@ def _load_or_create_key(
         raise SecureStorageError(
             "Secure Professional Maximus needs an available OS credential store or server password"
         )
-    salt = os.urandom(16)
+    salt = make_argon2_salt_blob()
     _atomic_write(salt_path, salt)
     _atomic_write(marker_path, b"password\n")
     return _derive_password_key(resolved_password, salt), "password_fallback", service_name, "none"
@@ -702,7 +718,7 @@ def rotate_secure_storage(
                     old_salt = salt_path.read_bytes()
                 except OSError as exc:
                     raise SecureStorageError("The protected-storage password salt is missing") from exc
-                new_salt = secrets.token_bytes(16)
+                new_salt = make_argon2_salt_blob()
                 new_key = _derive_password_key(resolved_password, new_salt)
             else:
                 old_salt = None

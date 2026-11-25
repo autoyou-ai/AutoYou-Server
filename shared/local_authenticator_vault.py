@@ -157,6 +157,62 @@ class KeyringAuthenticatorCredentials:
         return delete_keyring_password(self.service, account)
 
 
+class VaultAuthenticatorCredentials:
+    """Device-local AES-256-GCM encrypted TOTP secrets backed by LocalMasterVault."""
+
+    def __init__(self, path: Path, cipher_provider: Any):
+        self.path = Path(path)
+        self._cipher_provider = cipher_provider
+
+    def _cipher(self) -> Any:
+        provider = self._cipher_provider
+        return provider() if callable(provider) else provider
+
+    @property
+    def available(self) -> bool:
+        try:
+            return self._cipher() is not None
+        except Exception:
+            return False
+
+    def _load_map(self) -> Dict[str, str]:
+        cipher = self._cipher()
+        if cipher is None:
+            raise KeyringAccessError("Unlock AutoYou's local vault to access saved authenticators.")
+        if not self.path.is_file():
+            return {}
+        data = cipher.load_json_file(self.path)
+        if not isinstance(data, dict):
+            return {}
+        return {
+            str(k): str(v)
+            for k, v in data.items()
+            if isinstance(k, str) and isinstance(v, str) and v
+        }
+
+    def _save_map(self, entries: Dict[str, str]) -> None:
+        cipher = self._cipher()
+        if cipher is None:
+            raise KeyringAccessError("Unlock AutoYou's local vault before saving authenticators.")
+        cipher.save_json_file(self.path, entries)
+
+    def read(self, account: str) -> Optional[str]:
+        return self._load_map().get(account)
+
+    def write(self, account: str, value: str) -> None:
+        entries = self._load_map()
+        entries[account] = value
+        self._save_map(entries)
+
+    def delete(self, account: str) -> bool:
+        entries = self._load_map()
+        if account not in entries:
+            return False
+        entries.pop(account, None)
+        self._save_map(entries)
+        return True
+
+
 class LocalAuthenticatorVault:
     """Names and settings are local metadata; each secret stays in OS key storage."""
 

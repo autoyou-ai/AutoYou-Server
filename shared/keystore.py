@@ -33,6 +33,8 @@ __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 
 
 import base64
+from contextlib import contextmanager
+import ctypes
 import hashlib
 import json
 import logging
@@ -179,6 +181,7 @@ def _uses_synchronous_macos_keychain(timeout_seconds: Optional[float] = None) ->
 # unlock attempt after it expires asks again, and every write or delete here updates or drops
 # the entry so a changed credential is never served stale.
 _MEMO_LOCK = threading.RLock()
+_MEMO_BACKEND: Any = None
 _MEMO: Dict[Tuple[int, str, str], str] = {}
 _DENIED_UNTIL: Dict[Tuple[int, str, str], float] = {}
 _DENIAL_MEMO_SECONDS = 20.0
@@ -186,12 +189,18 @@ _now = time.monotonic
 
 
 def _memo_key(service_name: str, username: str) -> Tuple[int, str, str]:
-    # A different backend (a test double, a switched keyring) must never share entries.
+    global _MEMO_BACKEND
     try:
-        backend_id = id(_keyring_mod.get_keyring()) if _keyring_mod is not None else 0
+        backend = _keyring_mod.get_keyring() if _keyring_mod is not None else None
     except Exception:
-        backend_id = 0
-    return (backend_id, service_name, username)
+        backend = None
+    with _MEMO_LOCK:
+        # Retain the backend itself: Python can reuse a discarded backend's id.
+        if backend is not _MEMO_BACKEND:
+            _MEMO.clear()
+            _DENIED_UNTIL.clear()
+            _MEMO_BACKEND = backend
+        return (id(backend) if backend is not None else 0, service_name, username)
 
 
 def remember_credential(service_name: str, username: str, value: str) -> None:
@@ -312,6 +321,62 @@ def _macos_keychain_api() -> Any:
     return macos_api
 
 
+_MACOS_KEYCHAIN_INTERACTION_LOCK = threading.Lock()
+_MACOS_SECURITY_FRAMEWORK: Any = None
+
+
+def _macos_security_framework() -> Any:
+    """Return a cached handle to macOS Security.framework for silent-read guards."""
+    global _MACOS_SECURITY_FRAMEWORK
+    if sys.platform != "darwin":
+        return None
+    if _MACOS_SECURITY_FRAMEWORK is not None:
+        return _MACOS_SECURITY_FRAMEWORK
+    try:
+        sec = ctypes.CDLL("/System/Library/Frameworks/Security.framework/Security")
+        sec.SecKeychainGetUserInteractionAllowed.argtypes = [ctypes.POINTER(ctypes.c_uint8)]
+        sec.SecKeychainGetUserInteractionAllowed.restype = ctypes.c_int32
+        sec.SecKeychainSetUserInteractionAllowed.argtypes = [ctypes.c_uint8]
+        sec.SecKeychainSetUserInteractionAllowed.restype = ctypes.c_int32
+        _MACOS_SECURITY_FRAMEWORK = sec
+    except Exception:
+        _MACOS_SECURITY_FRAMEWORK = False
+    return _MACOS_SECURITY_FRAMEWORK
+
+
+@contextmanager
+def _macos_suppress_keychain_ui():
+    """Suppress legacy macOS login-Keychain ACL sheets during silent reads.
+
+    ``kSecUseAuthenticationUISkip`` is honored by the Data Protection keychain
+    but ignored by legacy file-based login Keychain ACL checks, where
+    ``SecKeychainItemCopyContent`` can block waiting on an authorization sheet.
+    Disabling user interaction via ``SecKeychainSetUserInteractionAllowed(0)``
+    guarantees an immediate ``errSecAuthFailed`` / ``errSecInteractionNotAllowed``
+    return instead of hanging headless startup workers.
+    """
+    sec = _macos_security_framework()
+    if not sec:
+        yield
+        return
+    with _MACOS_KEYCHAIN_INTERACTION_LOCK:
+        previous = ctypes.c_uint8(1)
+        got_prev = False
+        try:
+            got_prev = sec.SecKeychainGetUserInteractionAllowed(ctypes.byref(previous)) == 0
+            sec.SecKeychainSetUserInteractionAllowed(0)
+        except Exception:
+            got_prev = False
+        try:
+            yield
+        finally:
+            if got_prev:
+                try:
+                    sec.SecKeychainSetUserInteractionAllowed(previous.value)
+                except Exception:
+                    pass
+
+
 def _read_macos_keyring_password_without_ui(
     service_name: str,
     username: str,
@@ -321,9 +386,10 @@ def _read_macos_keyring_password_without_ui(
     The normal Keyring backend allows Security.framework to create an
     authorization sheet. That is correct for an explicit user action, but it
     is fundamentally unsafe during automatic startup: a child process can be
-    terminated while the operator is completing the sheet. ``UISkip`` makes
-    this an all-or-nothing probe instead, so the recovery UI can ask for a
-    deliberate foreground unlock when consent is still needed.
+    terminated while the operator is completing the sheet. Combining
+    ``SecKeychainSetUserInteractionAllowed(0)`` with ``UISkip`` makes this a
+    fast, non-blocking all-or-nothing probe on both legacy login and Data
+    Protection keychains.
     """
     macos_api = _macos_keychain_api()
     if macos_api is None:
@@ -338,7 +404,8 @@ def _read_macos_keyring_password_without_ui(
             kSecUseAuthenticationUI=macos_api.k_("kSecUseAuthenticationUISkip"),
         )
         data = macos_api.c_void_p()
-        status = macos_api.SecItemCopyMatching(query, macos_api.byref(data))
+        with _macos_suppress_keychain_ui():
+            status = macos_api.SecItemCopyMatching(query, macos_api.byref(data))
         if status != 0:
             return None
         value = macos_api.cfstr_to_str(data)

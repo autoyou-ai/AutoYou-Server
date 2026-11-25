@@ -761,7 +761,7 @@ def _arm_shutdown_watchdog() -> None:
 
 # Crypto for config encryption
 def _get_key_from_password(password: str, salt: bytes) -> bytes:
-    """Derive a key from the password using PBKDF2."""
+    """Derive a legacy V1 key from the password using PBKDF2-HMAC-SHA256."""
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
         length=32,
@@ -771,21 +771,31 @@ def _get_key_from_password(password: str, salt: bytes) -> bytes:
     return base64.urlsafe_b64encode(kdf.derive(password.encode('utf-8')))
 
 def aead_encrypt(plaintext: str, password: str) -> str:
-    """Encrypt plaintext using Fernet (AES-128-CBC with HMAC-SHA256)."""
-    salt = os.urandom(16)
-    key = _get_key_from_password(password, salt)
-    f = Fernet(key)
-    ciphertext = f.encrypt(plaintext.encode('utf-8'))
-    # Fernet already returns base64url ASCII, so the salt is prepended to the
-    # token's *bytes*. Concatenating the text and encoding again would encode
-    # the payload twice and cost about a quarter of the envelope for nothing.
-    return base64.urlsafe_b64encode(
-        salt + base64.urlsafe_b64decode(ciphertext)
-    ).decode('ascii').rstrip('=')
+    """Encrypt plaintext using V2 Argon2id (memory-hard) + AES-256-GCM.
+
+    Falls back to V1 PBKDF2+Fernet only if ``shared.vault_crypto`` is unavailable.
+    """
+    try:
+        from shared.vault_crypto import aead_encrypt_v2
+        return aead_encrypt_v2(plaintext, password, purpose="config")
+    except Exception:
+        salt = os.urandom(16)
+        key = _get_key_from_password(password, salt)
+        f = Fernet(key)
+        ciphertext = f.encrypt(plaintext.encode('utf-8'))
+        return base64.urlsafe_b64encode(
+            salt + base64.urlsafe_b64decode(ciphertext)
+        ).decode('ascii').rstrip('=')
 
 def aead_decrypt(envelope: str, password: str) -> str:
-    """Decrypt an envelope using Fernet."""
+    """Decrypt a V2 Argon2id+AES-256-GCM or legacy V1 PBKDF2+Fernet envelope."""
     normalized = envelope.strip()
+    try:
+        from shared.vault_crypto import aead_decrypt_v2, is_v2_aead_envelope
+        if is_v2_aead_envelope(normalized):
+            return aead_decrypt_v2(normalized, password, purpose="config").decode("utf-8")
+    except ImportError:
+        pass
     decoded_envelope = base64.urlsafe_b64decode(normalized + '=' * (-len(normalized) % 4))
     salt = decoded_envelope[:16]
     ciphertext = base64.urlsafe_b64encode(decoded_envelope[16:])
@@ -6215,6 +6225,38 @@ def try_decrypt_config_with(password: str) -> Optional[Dict[str, Any]]:
         LOGGER.warning(f"Config decryption failed with provided password: {e}")
         return None
 
+def _prefer_local_vault() -> bool:
+    """When set by the macOS native desktop host, prefer V2 Argon2id+AES-256-GCM
+    ``config.encrypted`` over legacy macOS Keychain ACLs without affecting
+    Windows, WSL, Linux, Docker, or standalone server runs.
+    """
+    return str(os.getenv("AUTOYOU_PREFER_LOCAL_VAULT") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+def _preserve_legacy_keystore_backup() -> Optional[Path]:
+    """Preserve an unreadable legacy ``config.keystore.enc`` without deleting it."""
+    ks_path = Path(CONFIG_KEYSTORE_PATH)
+    if not ks_path.is_file():
+        return None
+    backup_path = ks_path.with_name("config.keystore.enc.keychain-backup")
+    try:
+        if not backup_path.exists():
+            os.replace(ks_path, backup_path)
+            if os.name != "nt":
+                os.chmod(backup_path, 0o600)
+            LOGGER.warning(
+                "Preserved unreadable legacy Keychain config at %s before initializing V2 local vault config.",
+                backup_path,
+            )
+        return backup_path
+    except OSError as exc:
+        LOGGER.warning("Could not move legacy Keychain config to backup: %s", exc)
+        return None
+
 def save_encrypted_config(cfg: Dict[str, Any], password: str) -> None:
     if aead_encrypt is None:
         raise RuntimeError("cryptography/aead module not available for encrypt")
@@ -6226,7 +6268,17 @@ def save_encrypted_config(cfg: Dict[str, Any], password: str) -> None:
             f.write(envelope)
             f.flush()
             os.fsync(f.fileno())
+        if os.name != "nt":
+            try:
+                os.chmod(temp_path, 0o600)
+            except OSError:
+                pass
         os.replace(temp_path, CONFIG_FILE_PATH)
+        if os.name != "nt":
+            try:
+                os.chmod(CONFIG_FILE_PATH, 0o600)
+            except OSError:
+                pass
 
 def _load_config_from_store(
     config_store: str,
@@ -6251,6 +6303,12 @@ def _resolve_config_for_password(password: str) -> Tuple[Optional[Dict[str, Any]
     """Load the saved config and identify its store when ``password`` is valid."""
     normalized_password = str(password or "").strip()
     if not normalized_password:
+        return None, CONFIG_STORE_NONE
+
+    if _prefer_local_vault() and _encrypted_config_exists():
+        cfg = try_decrypt_config_with(normalized_password)
+        if cfg is not None:
+            return cfg, CONFIG_STORE_ENCRYPTED
         return None, CONFIG_STORE_NONE
 
     ks = _get_server_keystore()
@@ -6314,9 +6372,14 @@ def _persist_state_config(
                 password=resolved_server_password,
                 scan_roots=_secure_storage_scan_roots(),
             )
-    desired_store = _normalize_config_store(preferred_store or STATE.config_store)
+    prefer_local_vault = _prefer_local_vault()
+    desired_store = (
+        CONFIG_STORE_ENCRYPTED
+        if prefer_local_vault
+        else _normalize_config_store(preferred_store or STATE.config_store)
+    )
     ks = _get_server_keystore()
-    keystore_available = ks is not None and ks.is_available()
+    keystore_available = (not prefer_local_vault) and ks is not None and ks.is_available()
 
     if desired_store == CONFIG_STORE_NONE:
         desired_store = CONFIG_STORE_KEYSTORE if keystore_available else CONFIG_STORE_ENCRYPTED
@@ -6390,13 +6453,20 @@ def _persist_state_config(
         raise RuntimeError("Server password is required to save encrypted configuration")
 
     save_encrypted_config(cfg, resolved_server_password)
-    _clear_main_keystore_config()
+    if prefer_local_vault:
+        _preserve_legacy_keystore_backup()
+    else:
+        _clear_main_keystore_config()
     _set_config_session(
         config_store=CONFIG_STORE_ENCRYPTED,
         server_password=resolved_server_password,
         config_unlock_password=resolved_server_password,
     )
-    if _keystore_server_password_available() and allow_key_creation:
+    if prefer_local_vault:
+        # Local vault mode holds credentials strictly in memory and inside the
+        # Argon2id+AES-256-GCM config/vault files without triggering OS Keychain prompts.
+        STATE.server_password = resolved_server_password
+    elif _keystore_server_password_available() and allow_key_creation:
         if operation_timeout_seconds is None and allow_key_creation:
             _persist_server_password(resolved_server_password)
         else:
@@ -6469,9 +6539,38 @@ async def bootstrap_password_and_config() -> None:
       3) autoyou123 default bootstrap password
       4) Awaiting admin login
     """
+    prefer_local_vault = _prefer_local_vault()
     ks = _get_server_keystore()
     keystore_available = ks is not None and ks.is_available()
-    preferred_store = CONFIG_STORE_KEYSTORE if keystore_available else CONFIG_STORE_ENCRYPTED
+    preferred_store = (
+        CONFIG_STORE_ENCRYPTED
+        if prefer_local_vault
+        else (CONFIG_STORE_KEYSTORE if keystore_available else CONFIG_STORE_ENCRYPTED)
+    )
+
+    if prefer_local_vault and not _encrypted_config_exists() and ks is not None and ks.exists():
+        migrated_cfg = _load_keystore_config_during_bootstrap(ks) if keystore_available else None
+        initial_password, initial_via_env = _bootstrap_password_candidates()[0]
+        if migrated_cfg is not None:
+            try:
+                cfg = _save_and_reload_state_config(
+                    migrated_cfg,
+                    server_password=initial_password,
+                    preferred_store=CONFIG_STORE_ENCRYPTED,
+                )
+                _preserve_legacy_keystore_backup()
+                STATE.config = cfg
+                STATE.used_default_password = initial_password == DEFAULT_SERVER_PASSWORD
+                STATE.decrypted_via_env = initial_via_env
+                LOGGER.info("Migrated readable legacy Keychain config to V2 Argon2id+AES-256-GCM config.encrypted.")
+                STATE._unlock_state_mem = "Ready"
+                return
+            except Exception as exc:
+                LOGGER.warning("Legacy Keychain config migration failed: %s", exc)
+        else:
+            # Non-destructively preserve the unreadable Keychain file so localhost
+            # startup with the local Argon2id vault can proceed without Keychain prompts.
+            _preserve_legacy_keystore_backup()
 
     if not _saved_config_exists():
         initial_password, initial_via_env = _bootstrap_password_candidates()[0]
@@ -6500,7 +6599,7 @@ async def bootstrap_password_and_config() -> None:
             LOGGER.info("Awaiting admin login to create the initial configuration.")
             return
 
-    if keystore_available and ks.exists():
+    if not prefer_local_vault and keystore_available and ks.exists():
         cfg = _load_keystore_config_during_bootstrap(ks)
         if cfg is not None:
             defaults_changed = (

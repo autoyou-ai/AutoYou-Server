@@ -3127,7 +3127,7 @@
         },
         secure_professional_maximus: {
             label: "Secure Professional Maximus",
-            description: "Adds encryption to saved sessions, agent data, websites, notes, and settings on this computer. Secure pairing and your existing remote viewer/editor/admin controls continue to work."
+            description: "Adds Argon2id + AES-256-GCM at-rest encryption to saved sessions, agent data, websites, notes, and settings on this computer while keeping keys strictly in memory. Secure pairing and your existing remote viewer/editor/admin controls continue to work."
         }
     };
 
