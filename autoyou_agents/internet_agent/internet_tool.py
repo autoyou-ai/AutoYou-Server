@@ -1230,7 +1230,21 @@ class InternetTool:
     """Internet tool for web browsing and searching."""
     
     def __init__(self):
-        self.session = requests.Session()
+        if _internet_ssrf_guard_disabled():
+            self.session = requests.Session()
+        else:
+            from shared.url_safety import build_safe_requests_session
+            # SearXNG may be hosted on the operator's private network. Only
+            # this configured host is exempt; page fetches validate URLs too.
+            searxng_url = (os.getenv("SEARXNG_BASE_URL") or os.getenv("AUTOYOU_SEARXNG_URL") or "").strip()
+            try:
+                searxng_host = urlsplit(searxng_url).hostname
+            except ValueError:
+                searxng_host = None
+            self.session = build_safe_requests_session(
+                allow_loopback=True,
+                allow_private_hosts=(searxng_host,) if searxng_host else (),
+            )
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         })
@@ -1448,7 +1462,7 @@ class InternetTool:
             return self._build_search_error(query, describe_exception(e), 'wikipedia')
     
     def internet_search_with_requests(self, query: str, max_results: int = 10) -> Dict[str, Any]:
-        """Perform Internet search using requests only (no fallback)."""
+        """Perform Internet search using sanctioned APIs/feeds first, then DDG Lite / Bing RSS."""
         if not is_internet_access_enabled():
             logger.info("Internet search blocked: internet access disabled")
             return {
@@ -1460,6 +1474,28 @@ class InternetTool:
                 'results_count': 0,
                 'query': query,
             }
+
+        # Tier 1 & 2: Operator-configured search APIs + zero-config sanctioned public
+        # APIs & RSS/Atom feeds (all routed through self.session, zero CAPTCHA bypass).
+        try:
+            sp = _import_search_providers()
+            sanctioned = sp.search_sanctioned_providers(
+                self.session,
+                query,
+                max_results,
+                vet_fn=vet_search_results,
+            )
+            if sanctioned.get("status") == "success" and sanctioned.get("results_count", 0) > 0:
+                sanctioned["retrieved_at"] = _retrieved_at()
+                logger.info(
+                    "Found %s vetted search results via sanctioned providers (%s)",
+                    sanctioned["results_count"],
+                    ",".join(sanctioned.get("providers_used") or [sanctioned.get("provider", "sanctioned")]),
+                )
+                return sanctioned
+        except Exception as sp_exc:
+            logger.debug("Sanctioned multi-provider search skipped: %s", describe_exception(sp_exc))
+
         try:
             from bs4 import BeautifulSoup
             import urllib.parse
@@ -1957,7 +1993,9 @@ class InternetTool:
             requested_headless = _resolve_headless_override(headless, headed)
             
             async with get_playwright_browser(requested_headless) as page:
-                await _goto_page_ready(page, url)
+                if not extract_media:
+                    await _install_fast_resource_blocker(page)
+                await asyncio.wait_for(_goto_page_ready(page, url), timeout=20.0)
                 
                 # Get page source and parse with BeautifulSoup
                 page_source = await page.content()
@@ -2053,12 +2091,27 @@ class InternetTool:
                 }
                 
                 trimmed_text = text_content[:_MAX_SCRAPED_TEXT_CHARS]
+                rag_info: Dict[str, Any] = {}
+                if len(text_content.strip()) >= _MIN_READABLE_TEXT_CHARS:
+                    try:
+                        rag_info = _import_research_rag().get_research_rag_store().index_document(
+                            str(url),
+                            title,
+                            text_content,
+                            headlines=headlines,
+                            metadata=metadata,
+                        )
+                    except Exception:
+                        rag_info = {}
                 result: Dict[str, Any] = {
                     "url": str(url),
                     "retrieved_at": _retrieved_at(),
                     "title": title,
                     "text_content": trimmed_text,
                     "text_truncated": len(text_content) > len(trimmed_text),
+                    "total_text_chars": len(text_content),
+                    "rag_indexed": bool(rag_info.get("indexed")),
+                    "rag_chunks": int(rag_info.get("chunks") or 0),
                     "headlines": headlines,
                     "links": links,
                     "media": media if extract_media else [],
@@ -2082,7 +2135,30 @@ class InternetTool:
                 return result
                 
         except Exception as e:
-            logger.error(f"Error scraping website {url}: {describe_exception(e)}")
+            err_msg = describe_exception(e)
+            logger.error(f"Error scraping website {url}: {err_msg}")
+            # When Playwright is installed but timed out or failed to render a live
+            # page, degrade cleanly to our SSRF-safe fast HTTP extractor instead of
+            # returning an empty failure. Keep the explicit missing-Playwright error
+            # intact when async_playwright is None.
+            if (
+                async_playwright is not None
+                and "playwright is not installed" not in err_msg.lower()
+                and "ssrf" not in err_msg.lower()
+                and "disallowed" not in err_msg.lower()
+            ):
+                try:
+                    http_fallback = await self.fetch_webpage(
+                        url,
+                        max_chars=_MAX_SCRAPED_TEXT_CHARS,
+                        allow_browser_fallback=False,
+                    )
+                    if http_fallback.get("status") == "success":
+                        http_fallback.setdefault("text_content", http_fallback.get("text", ""))
+                        http_fallback["browser_fallback_reason"] = err_msg
+                        return http_fallback
+                except Exception:
+                    pass
             return {
                 "url": str(url),
                 "title": "",
@@ -2091,8 +2167,371 @@ class InternetTool:
                 "media": [],
                 "metadata": {},
                 "status": "error",
-                "error": describe_exception(e)
+                "error": err_msg
             }
+
+    def _http_get_safe(self, url: str, *, timeout: float = 10.0, max_redirects: int = 5) -> Dict[str, Any]:
+        """SSRF-safe HTTP GET following only validated public redirects."""
+        current = str(url or "").strip()
+        if not current:
+            return {"ok": False, "error": "URL is empty"}
+        if not re.match(r"^https?://", current, re.IGNORECASE):
+            current = "https://" + current
+
+        allow_private = _internet_ssrf_guard_disabled()
+        is_safe_fn = None
+        if not allow_private:
+            try:
+                from shared.url_safety import is_safe_http_url
+                is_safe_fn = is_safe_http_url
+            except Exception:
+                return {"ok": False, "status_code": 403, "error": "URL safety validation is unavailable"}
+
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+            ),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,application/json;q=0.8,*/*;q=0.5",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+        if "wikipedia.org" in (urlsplit(current).hostname or "").lower():
+            headers["User-Agent"] = _WIKIPEDIA_USER_AGENT
+
+        for _ in range(max_redirects + 1):
+            if is_safe_fn is not None and not is_safe_fn(current):
+                return {"ok": False, "status_code": 403, "error": f"Blocked disallowed or private URL: {current}"}
+            resp = self.session.get(current, headers=headers, timeout=timeout, allow_redirects=False)
+            code = int(getattr(resp, "status_code", 200) or 200)
+            if code in {301, 302, 303, 307, 308}:
+                loc = (getattr(resp, "headers", None) or {}).get("Location") or (getattr(resp, "headers", None) or {}).get("location")
+                if not loc:
+                    break
+                current = urljoin(current, str(loc).strip())
+                continue
+            content_type = str((getattr(resp, "headers", None) or {}).get("Content-Type") or "")
+            raw_text = getattr(resp, "text", "") or ""
+            return {
+                "ok": 200 <= code < 400,
+                "status_code": code,
+                "final_url": current,
+                "content_type": content_type,
+                "text": raw_text[:1_500_000],
+                "error": "" if 200 <= code < 400 else f"HTTP {code}",
+            }
+
+        return {"ok": False, "status_code": 310, "error": "Too many redirects"}
+
+    async def fetch_webpage(
+        self,
+        url: str,
+        query: str = "",
+        max_chars: int = _MAX_SCRAPED_TEXT_CHARS,
+        allow_browser_fallback: bool = True,
+    ) -> Dict[str, Any]:
+        """Fast HTTP-first webpage/feed/JSON reader with SSRF guard and Research RAG indexing."""
+        if not is_internet_access_enabled():
+            return {
+                'status': 'disabled',
+                'enabled': False,
+                'message': 'Internet access is disabled by admin. Transfer to autoyou_agent.',
+                'transfer_to': 'autoyou_agent',
+                'url': url,
+                'title': '',
+                'text': '',
+                'text_content': '',
+            }
+
+        try:
+            fetched = await asyncio.to_thread(self._http_get_safe, url, timeout=10.0)
+        except Exception as exc:
+            return {
+                "status": "error",
+                "url": str(url),
+                "title": "",
+                "text": "",
+                "text_content": "",
+                "error": describe_exception(exc),
+            }
+
+        final_url = str(fetched.get("final_url") or url)
+        status_code = int(fetched.get("status_code") or 0)
+        raw_body = str(fetched.get("text") or "")
+        content_type = str(fetched.get("content_type") or "")
+
+        if not fetched.get("ok"):
+            return {
+                "status": "error",
+                "url": final_url,
+                "status_code": status_code,
+                "title": "",
+                "text": "",
+                "text_content": "",
+                "error": fetched.get("error") or f"HTTP {status_code}",
+            }
+
+        rag_mod = _import_research_rag()
+        parsed = rag_mod.extract_structured_page(raw_body, final_url, content_type=content_type)
+        full_text = str(parsed.get("text") or "")
+        title = str(parsed.get("title") or "No title")
+        headlines = list(parsed.get("headlines") or [])
+        links = list(parsed.get("links") or [])
+        feeds = list(parsed.get("feeds") or [])
+        metadata = dict(parsed.get("metadata") or {})
+
+        lowered_body = raw_body[:8000].lower()
+        looks_like_challenge = any(
+            marker in lowered_body
+            for marker in (
+                "cf-browser-verification",
+                "just a moment...",
+                "verify you are human",
+                "enable javascript and cookies to continue",
+                "captcha",
+                "bots use duckduckgo too",
+            )
+        )
+
+        # Escalate to Playwright only for JS-only SPA pages that aren't explicit anti-bot walls.
+        if (
+            len(full_text.strip()) < _MIN_READABLE_TEXT_CHARS
+            and not looks_like_challenge
+            and allow_browser_fallback
+            and is_playwright_available()
+        ):
+            scraped = await self.scrape_website(final_url, extract_media=False)
+            if scraped.get("status") == "success":
+                scraped.setdefault("text", scraped.get("text_content", ""))
+                scraped["fetch_method"] = "playwright_escalation"
+                return scraped
+
+        rag_info = rag_mod.get_research_rag_store().index_document(
+            final_url,
+            title,
+            full_text,
+            headlines=headlines,
+            metadata=metadata,
+        )
+        rag_matches = (
+            rag_mod.get_research_rag_store().query(query, max_chunks=4, url_filter=final_url)
+            if str(query or "").strip()
+            else []
+        )
+
+        bounded = max(400, min(int(max_chars or _MAX_SCRAPED_TEXT_CHARS), 12000))
+        trimmed = full_text[:bounded]
+        result: Dict[str, Any] = {
+            "status": "success",
+            "fetch_method": "http_fast",
+            "url": final_url,
+            "retrieved_at": _retrieved_at(),
+            "title": title,
+            "text": trimmed,
+            "text_content": trimmed,
+            "text_truncated": len(full_text) > len(trimmed),
+            "total_text_chars": len(full_text),
+            "rag_indexed": bool(rag_info.get("indexed")),
+            "rag_chunks": int(rag_info.get("chunks") or 0),
+            "rag_truncated": bool(rag_info.get("truncated")),
+            "rag_matches": rag_matches,
+            "headlines": headlines[:20],
+            "links": links[:30],
+            "feeds": feeds[:5],
+            "metadata": metadata,
+        }
+        if len(trimmed.strip()) < _MIN_READABLE_TEXT_CHARS:
+            result["status"] = "partial"
+            result["message"] = (
+                f"{final_url} returned limited readable text ({len(trimmed.strip())} chars)"
+                + (" (site presented an access/bot check)." if looks_like_challenge else ".")
+            )
+        return result
+
+    async def fetch_webpages_batch(
+        self,
+        urls: List[str],
+        query: str = "",
+        max_chars_per_page: int = 3000,
+    ) -> Dict[str, Any]:
+        """Fetch multiple web pages concurrently via fast HTTP and index all into Research RAG."""
+        if not is_internet_access_enabled():
+            return {
+                'status': 'disabled',
+                'enabled': False,
+                'message': 'Internet access is disabled by admin. Transfer to autoyou_agent.',
+                'transfer_to': 'autoyou_agent',
+                'pages': [],
+            }
+
+        clean_urls: List[str] = []
+        seen = set()
+        for raw in (urls or []):
+            u = str(raw or "").strip()
+            if u and u not in seen:
+                seen.add(u)
+                clean_urls.append(u)
+            if len(clean_urls) >= 6:
+                break
+        if not clean_urls:
+            return {"status": "error", "error": "Provide at least one URL.", "pages": []}
+
+        sem = asyncio.Semaphore(4)
+
+        async def _one(u: str) -> Dict[str, Any]:
+            async with sem:
+                return await self.fetch_webpage(
+                    u,
+                    query=query,
+                    max_chars=max_chars_per_page,
+                    allow_browser_fallback=False,
+                )
+
+        outcomes = await asyncio.gather(*(_one(u) for u in clean_urls), return_exceptions=True)
+        pages = [
+            {"status": "error", "url": u, "error": describe_exception(outcome)}
+            if isinstance(outcome, Exception) else outcome
+            for u, outcome in zip(clean_urls, outcomes)
+        ]
+        succeeded = [p for p in pages if p.get("status") == "success"]
+        rag_matches = (
+            _import_research_rag().get_research_rag_store().query(query, max_chunks=6)
+            if str(query or "").strip() and succeeded
+            else []
+        )
+        return {
+            "status": "success" if succeeded else "error",
+            "pages_requested": len(clean_urls),
+            "pages_fetched": len(succeeded),
+            "pages": pages,
+            "rag_matches": rag_matches,
+            "retrieved_at": _retrieved_at(),
+        }
+
+    async def research_web(
+        self,
+        query: str,
+        max_results: int = 6,
+        fetch_top: int = 3,
+    ) -> Dict[str, Any]:
+        """Search across sanctioned providers, fetch top diverse sources in parallel, and RAG-index them."""
+        clean_query = _normalize_search_query_input(query)
+        invalid_reason = _invalid_search_query_reason(clean_query)
+        if invalid_reason:
+            return self._build_search_error(clean_query[:_SEARCH_QUERY_MAX_LENGTH], invalid_reason, "query_validation")
+        if not is_internet_access_enabled():
+            return {
+                'status': 'disabled',
+                'enabled': False,
+                'message': 'Internet access is disabled by admin. Transfer to autoyou_agent.',
+                'transfer_to': 'autoyou_agent',
+                'results': [],
+                'results_count': 0,
+                'query': clean_query,
+            }
+
+        search_res = await self.internet_search(clean_query, max_results=max(3, min(int(max_results or 6), 12)))
+        sources = list(search_res.get("results") or [])
+        if search_res.get("status") != "success" or not sources:
+            return {
+                "status": search_res.get("status", "error"),
+                "query": clean_query,
+                "error": search_res.get("error") or "No relevant search results found.",
+                "sources": [],
+                "pages_fetched": 0,
+                "pages": [],
+                "top_excerpts": [],
+                "provider": search_res.get("provider", "web"),
+                "retrieved_at": _retrieved_at(),
+            }
+
+        # Select top diverse direct article URLs first; only fall back to publisher homepages if needed.
+        fetch_limit = max(0, min(int(fetch_top if fetch_top is not None else 3), 5))
+        selected_urls: List[str] = []
+        seen_hosts = set()
+        for pass_idx in (0, 1):
+            for src in sources:
+                if len(selected_urls) >= fetch_limit:
+                    break
+                candidate = str(src.get("url") or "").strip()
+                host = (urlsplit(candidate).hostname or "").lower().removeprefix("www.")
+                if host == "news.google.com":
+                    if pass_idx == 0:
+                        continue
+                    pub_url = str(src.get("publisher_url") or "").strip()
+                    if pub_url:
+                        candidate = pub_url
+                        host = (urlsplit(candidate).hostname or "").lower().removeprefix("www.")
+                    else:
+                        continue
+                if not candidate or candidate in selected_urls:
+                    continue
+                if host and host in seen_hosts and pass_idx == 0:
+                    continue
+                seen_hosts.add(host)
+                selected_urls.append(candidate)
+
+        pages: List[Dict[str, Any]] = []
+        fetched_urls: List[str] = []
+        if selected_urls:
+            batch = await self.fetch_webpages_batch(selected_urls, query=clean_query, max_chars_per_page=2400)
+            for p in (batch.get("pages") or []):
+                p_url = str(p.get("url") or "")
+                if p.get("status") == "success" and p_url:
+                    fetched_urls.append(p_url)
+                pages.append(
+                    {
+                        "url": p_url,
+                        "title": p.get("title", ""),
+                        "status": p.get("status", ""),
+                        "text_excerpt": str(p.get("text") or "")[:1800],
+                        "headlines": (p.get("headlines") or [])[:8],
+                        "rag_chunks": int(p.get("rag_chunks") or 0),
+                    }
+                )
+
+        rag_store = _import_research_rag().get_research_rag_store()
+        top_excerpts: List[Dict[str, Any]] = []
+        if fetched_urls:
+            for fu in fetched_urls:
+                top_excerpts.extend(rag_store.query(clean_query, max_chunks=2, url_filter=fu))
+            top_excerpts.sort(key=lambda item: float(item.get("score") or 0.0), reverse=True)
+            top_excerpts = top_excerpts[:6]
+        else:
+            top_excerpts = rag_store.query(clean_query, max_chunks=4)
+        fetched_ok = len(fetched_urls)
+
+        return {
+            "status": "success",
+            "query": clean_query,
+            "provider": search_res.get("provider", "sanctioned_multi"),
+            "providers_used": search_res.get("providers_used") or [search_res.get("provider", "web")],
+            "notice": search_res.get("notice", ""),
+            "sources": sources,
+            "results": sources,
+            "results_count": len(sources),
+            "pages_fetched": fetched_ok,
+            "pages": pages,
+            "top_excerpts": top_excerpts,
+            "rag_stats": rag_store.stats(),
+            "retrieved_at": _retrieved_at(),
+        }
+
+    def query_research_memory(
+        self,
+        query: str,
+        max_chunks: int = 6,
+        url_filter: str = "",
+    ) -> Dict[str, Any]:
+        """Search the full text of all web pages already fetched in this session (zero network calls)."""
+        rag_store = _import_research_rag().get_research_rag_store()
+        matches = rag_store.query(query, max_chunks=max_chunks, url_filter=url_filter)
+        return {
+            "status": "success",
+            "query": str(query or "").strip(),
+            "matches_count": len(matches),
+            "matches": matches,
+            "rag_stats": rag_store.stats(),
+        }
     
     async def take_screenshot(
         self,
@@ -2140,7 +2579,7 @@ class InternetTool:
                 filename += '.png'
             
             async with get_playwright_browser(requested_headless) as page:
-                await _goto_page_ready(page, url)
+                await asyncio.wait_for(_goto_page_ready(page, url), timeout=20.0)
                 
                 # Take screenshot
                 screenshot_path = filename
@@ -2218,7 +2657,7 @@ class InternetTool:
             requested_headless = _resolve_headless_override(headless, headed)
             
             async with get_playwright_browser(requested_headless) as page:
-                await _goto_page_ready(page, url)
+                await asyncio.wait_for(_goto_page_ready(page, url), timeout=20.0)
                 
                 results = []
                 
@@ -2384,6 +2823,72 @@ class InternetTool:
                 "error": describe_exception(e)
             }
 
+def _import_search_providers():
+    try:
+        from . import search_providers
+        return search_providers
+    except ImportError:
+        import search_providers
+        return search_providers
+
+
+def _import_research_rag():
+    try:
+        from . import research_rag
+        return research_rag
+    except ImportError:
+        import research_rag
+        return research_rag
+
+
+_BLOCKED_AD_TRACKER_DOMAINS = (
+    "doubleclick.net",
+    "googlesyndication.com",
+    "googletagmanager.com",
+    "google-analytics.com",
+    "adservice.google.com",
+    "connect.facebook.net",
+    "hotjar.com",
+    "scorecardresearch.com",
+    "quantserve.com",
+    "taboola.com",
+    "outbrain.com",
+    "criteo.com",
+    "amazon-adsystem.com",
+    "pubmatic.com",
+)
+_BLOCKED_RESOURCE_TYPES = frozenset({"image", "media", "font"})
+
+
+async def _install_fast_resource_blocker(page: Any) -> None:
+    """Abort heavy non-text assets & ad/analytics trackers to prevent page timeouts."""
+    route_fn = getattr(page, "route", None)
+    if not callable(route_fn):
+        return
+
+    async def _filter(route, request):
+        try:
+            rtype = str(getattr(request, "resource_type", "") or "").lower()
+            if rtype in _BLOCKED_RESOURCE_TYPES:
+                await route.abort()
+                return
+            host = (urlsplit(str(getattr(request, "url", "") or "")).hostname or "").lower()
+            if host and any(host == d or host.endswith(f".{d}") for d in _BLOCKED_AD_TRACKER_DOMAINS):
+                await route.abort()
+                return
+            await route.continue_()
+        except Exception:
+            try:
+                await route.continue_()
+            except Exception:
+                pass
+
+    try:
+        await route_fn("**/*", _filter)
+    except Exception:
+        pass
+
+
 # Global internet tool instance
 _internet_tool = InternetTool()
 
@@ -2412,6 +2917,7 @@ async def scrape_website(
     extract_media: bool = False,
     headless: Optional[bool] = None,
     headed: Optional[bool] = None,
+    tool_context: Any = None,
 ) -> Dict[str, Any]:
     """Read a web page and return its text, links and metadata (async).
 
@@ -2435,7 +2941,8 @@ async def scrape_website(
             'media': [],
             'metadata': {}
         }
-    return await _get_internet_tool().scrape_website(url, extract_media, headless=headless, headed=headed)
+    with _import_research_rag().research_scope(tool_context):
+        return await _get_internet_tool().scrape_website(url, extract_media, headless=headless, headed=headed)
 
 async def take_screenshot(
     url: str,
@@ -2606,9 +3113,81 @@ class _LazyFunctionTool:
     def __call__(self, *args, **kwargs):
         return self._resolve()(*args, **kwargs)
 
+async def research_web(query: str, max_results: int = 6, fetch_top: int = 3, tool_context: Any = None) -> Dict[str, Any]:
+    """Deep single-call web research: searches multiple sanctioned providers, fetches top diverse pages in parallel, and indexes them into Research RAG."""
+    if not is_internet_access_enabled():
+        return {
+            'status': 'disabled',
+            'enabled': False,
+            'message': 'Internet access is disabled by admin. Transfer to autoyou_agent.',
+            'transfer_to': 'autoyou_agent',
+            'results': [],
+            'results_count': 0,
+            'query': query,
+        }
+    with _import_research_rag().research_scope(tool_context):
+        return await _get_internet_tool().research_web(query, max_results=max_results, fetch_top=fetch_top)
+
+
+async def fetch_webpage(
+    url: str,
+    query: str = "",
+    max_chars: int = _MAX_SCRAPED_TEXT_CHARS,
+    tool_context: Any = None,
+) -> Dict[str, Any]:
+    """Fast HTTP-first webpage, RSS/Atom feed, or JSON reader with automatic Research RAG indexing and optional SPA fallback."""
+    if not is_internet_access_enabled():
+        return {
+            'status': 'disabled',
+            'enabled': False,
+            'message': 'Internet access is disabled by admin. Transfer to autoyou_agent.',
+            'transfer_to': 'autoyou_agent',
+            'url': url,
+            'title': '',
+            'text': '',
+            'text_content': '',
+        }
+    with _import_research_rag().research_scope(tool_context):
+        return await _get_internet_tool().fetch_webpage(url, query=query, max_chars=max_chars)
+
+
+async def fetch_webpages_batch(
+    urls: List[str],
+    query: str = "",
+    max_chars_per_page: int = 3000,
+    tool_context: Any = None,
+) -> Dict[str, Any]:
+    """Fetch up to 6 URLs concurrently via fast HTTP and index their full text into Research RAG."""
+    if not is_internet_access_enabled():
+        return {
+            'status': 'disabled',
+            'enabled': False,
+            'message': 'Internet access is disabled by admin. Transfer to autoyou_agent.',
+            'transfer_to': 'autoyou_agent',
+            'pages': [],
+        }
+    with _import_research_rag().research_scope(tool_context):
+        return await _get_internet_tool().fetch_webpages_batch(urls, query=query, max_chars_per_page=max_chars_per_page)
+
+
+def query_research_memory(
+    query: str,
+    max_chunks: int = 6,
+    url_filter: str = "",
+    tool_context: Any = None,
+) -> Dict[str, Any]:
+    """Query the full indexed text of web pages already fetched in this session using BM25/FTS5 RAG (zero network calls)."""
+    with _import_research_rag().research_scope(tool_context):
+        return _get_internet_tool().query_research_memory(query, max_chunks=max_chunks, url_filter=url_filter)
+
+
 # ADK Function Tools. Keep these lazy so importing register_fastapi_cleanup
 # during server startup does not pull the full ADK graph into local pairing.
 internet_search_tool = _LazyFunctionTool(internet_search)
+research_web_tool = _LazyFunctionTool(research_web)
+fetch_webpage_tool = _LazyFunctionTool(fetch_webpage)
+fetch_webpages_batch_tool = _LazyFunctionTool(fetch_webpages_batch)
+query_research_memory_tool = _LazyFunctionTool(query_research_memory)
 scrape_website_tool = _LazyFunctionTool(scrape_website)
 take_screenshot_tool = _LazyFunctionTool(take_screenshot)
 navigate_page_tool = _LazyFunctionTool(navigate_page)

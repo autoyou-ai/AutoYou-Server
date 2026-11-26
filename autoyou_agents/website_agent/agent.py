@@ -30,6 +30,9 @@ from autoyou_agents.shared_tools.agent_web_proxy import (
 from autoyou_agents.shared_tools.coding_handoff import (
     CODING_HANDOFF_STATE_KEY,
     build_coding_handoff_payload,
+    dispatch_agent_handoff,
+    load_coding_handoff,
+    store_coding_handoff,
 )
 from autoyou_agents.shared_tools.builder_suite import (
     DEFAULT_BUILDER_SUITE_OLLAMA_MODEL,
@@ -49,6 +52,9 @@ from autoyou_agents.shared_tools.website_handoff import (
     ACTIVE_WEBSITE_CONTEXT_STATE_KEY,
     DEFAULT_WEBSITE_LOCAL_PORT,
     WEBSITE_HANDOFF_STATE_KEY,
+    load_active_website_context,
+    load_website_handoff,
+    store_active_website_context,
 )
 from autoyou_agents.shared_tools.website_scaffold import (
     DEFAULT_BACKEND_STACK,
@@ -183,12 +189,11 @@ def _resolve_agent_dir(agent_name: str) -> Path:
 
 def get_pending_website_handoff(tool_context: ToolContext) -> Dict[str, Any]:
     """Return and activate any prepared builder -> website handoff."""
-    payload = tool_context.state.get(WEBSITE_HANDOFF_STATE_KEY)
+    payload = load_website_handoff(tool_context.state, clear=True)
     if not payload:
         return {"status": "success", "handoff_present": False}
 
-    tool_context.state[WEBSITE_HANDOFF_STATE_KEY] = None
-    tool_context.state[ACTIVE_WEBSITE_CONTEXT_STATE_KEY] = payload
+    store_active_website_context(tool_context.state, payload)
     return {
         "status": "success",
         "handoff_present": True,
@@ -355,7 +360,7 @@ def prepare_coding_handoff_from_website(
             return {"status": "error", "message": "tool_context is required"}
 
         normalized_name = normalize_agent_name(agent_name)
-        active_context = tool_context.state.get(ACTIVE_WEBSITE_CONTEXT_STATE_KEY) or {}
+        active_context = load_active_website_context(tool_context.state) or {}
         if active_context and active_context.get("agent_name") != normalized_name:
             active_context = {}
 
@@ -393,7 +398,7 @@ def prepare_coding_handoff_from_website(
         payload["proxy_path"] = proxy_path
         payload["dynamic_proxy_phase"] = "Phase 3"
 
-        tool_context.state[CODING_HANDOFF_STATE_KEY] = payload
+        store_coding_handoff(tool_context.state, payload)
         return {
             "status": "success",
             "target_agent": "autoyou_coding_agent",
@@ -413,21 +418,19 @@ def handoff_to_coding_agent(tool_context: Optional[ToolContext] = None) -> Dict[
         if tool_context is None:
             return {"status": "error", "message": "tool_context is required"}
 
-        payload = tool_context.state.get(CODING_HANDOFF_STATE_KEY)
+        payload = load_coding_handoff(tool_context.state, clear=False)
         if not payload:
             return {
                 "status": "error",
                 "message": "No prepared coding handoff exists in session state.",
             }
 
-        tool_context.actions.skip_summarization = True
-        _transfer_to_agent("autoyou_coding_agent", tool_context)
-        return {
-            "status": "success",
-            "target_agent": "autoyou_coding_agent",
-            "agent_name": payload.get("agent_name"),
-            "message": "Transferred to autoyou_coding_agent.",
-        }
+        return dispatch_agent_handoff(
+            target_agent="autoyou_coding_agent",
+            payload=payload,
+            tool_context=tool_context,
+            transfer_fn=_transfer_to_agent,
+        )
     except Exception as exc:
         return {"status": "error", "message": str(exc)}
 

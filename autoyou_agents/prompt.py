@@ -77,6 +77,7 @@ Agent-routing tools (use these exact tool names when they are available):
 - Agent Builder: `autoyou_agent_builder_agent`
 - Website Agent: `autoyou_website_agent`
 - Coding Agent: `autoyou_coding_agent`
+- Games Agent: `autoyou_games_agent`
 - Donation Agent: `autoyou_donation_agent`
 - Earnings Agent: `autoyou_earnings_agent`
 - Reminders: `autoyou_reminders_agent`
@@ -131,6 +132,7 @@ Routing rules (call the agent tool, do not just talk about it):
 - Build, create, scaffold, or design a new AI agent or tool: call `autoyou_agent_builder_agent`.
 - Actions the user's local OpenClaw Gateway handles (smart-home devices, Spotify/Sonos, Apple Notes or Reminders, Things 3, Notion, Obsidian, its local browser, Gmail, weather, cron/webhook automations, or other OpenClaw capabilities): call `autoyou_openclaw_agent`.
 - Scaffold a browser UI, frontend/backend split, or register an agent website port: call `autoyou_website_agent`.
+- Build, scaffold, validate, package, or publish offline AutoYou HTML5/WASM games (`.aygame`) or configure host-streamed games: call `autoyou_games_agent`.
 - Fix bugs, edit files, implement code, refactor, add tests, review repo changes: call `autoyou_coding_agent`.
 - Donations, supporter routes, Buy Me a Coffee, Thanks.dev, hosted donation links, or voice-safe donation guidance: call `autoyou_donation_agent`.
 - Earnings, AutoYou credits, rewarded-ad credit status, payout method setup, payout request planning, provider setup links, or approved contributor funding requests: call `autoyou_earnings_agent`.
@@ -225,6 +227,7 @@ Agent-routing tools (use these exact tool names when they are available):
 - Agent Builder: `autoyou_agent_builder_agent`
 - Website Agent: `autoyou_website_agent`
 - Coding Agent: `autoyou_coding_agent`
+- Games Agent: `autoyou_games_agent`
 - Donation Agent: `autoyou_donation_agent`
 - Earnings Agent: `autoyou_earnings_agent`
 - Reminders: `autoyou_reminders_agent`
@@ -276,6 +279,7 @@ Routing rules (call the agent tool, do not just talk about it):
 - Build, create, scaffold, or design a new AI agent or tool: call `autoyou_agent_builder_agent`.
 - Actions the user's local OpenClaw Gateway handles (smart-home devices, Spotify/Sonos, Apple Notes or Reminders, Things 3, Notion, Obsidian, its local browser, Gmail, weather, cron/webhook automations, or other OpenClaw capabilities): call `autoyou_openclaw_agent`.
 - Scaffold a browser UI, frontend/backend split, or register an agent website port: call `autoyou_website_agent`.
+- Build, scaffold, validate, package, or publish offline AutoYou HTML5/WASM games (`.aygame`) or configure host-streamed games: call `autoyou_games_agent`.
 - Fix bugs, edit files, implement code, refactor, add tests, review repo changes: call `autoyou_coding_agent`.
 - Donations, supporter routes, Buy Me a Coffee, Thanks.dev, hosted donation links, or voice-safe donation guidance: call `autoyou_donation_agent`.
 - Earnings, AutoYou credits, rewarded-ad credit status, payout method setup, payout request planning, provider setup links, or approved contributor funding requests: call `autoyou_earnings_agent`.
@@ -339,6 +343,7 @@ Agent-routing tools (use these exact tool names when they are available):
 - Agent Builder: `autoyou_agent_builder_agent`
 - Website Agent: `autoyou_website_agent`
 - Coding Agent: `autoyou_coding_agent`
+- Games Agent: `autoyou_games_agent`
 - Donation Agent: `autoyou_donation_agent`
 - Earnings Agent: `autoyou_earnings_agent`
 - Reminders: `autoyou_reminders_agent`
@@ -390,6 +395,7 @@ Routing rules (call the agent tool, do not just talk about it):
 - Build, create, scaffold, or design a new AI agent or tool: call `autoyou_agent_builder_agent`.
 - Actions the user's local OpenClaw Gateway handles (smart-home devices, Spotify/Sonos, Apple Notes or Reminders, Things 3, Notion, Obsidian, its local browser, Gmail, weather, cron/webhook automations, or other OpenClaw capabilities): call `autoyou_openclaw_agent`.
 - Scaffold a browser UI, frontend/backend split, or register an agent website port: call `autoyou_website_agent`.
+- Build, scaffold, validate, package, or publish offline AutoYou HTML5/WASM games (`.aygame`) or configure host-streamed games: call `autoyou_games_agent`.
 - Fix bugs, edit files, implement code, refactor, add tests, review repo changes: call `autoyou_coding_agent`.
 - Donations, supporter routes, Buy Me a Coffee, Thanks.dev, hosted donation links, or voice-safe donation guidance: call `autoyou_donation_agent`.
 - Earnings, AutoYou credits, rewarded-ad credit status, payout method setup, payout request planning, provider setup links, or approved contributor funding requests: call `autoyou_earnings_agent`.

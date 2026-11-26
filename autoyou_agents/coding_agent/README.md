@@ -7,28 +7,57 @@ Compare task outcomes before claiming equivalent capability.
 
 ## Current execution path
 
-- `agent.py` owns the built-in workspace tools and session-budget callbacks.
+- `agent.py` and `harness.py` own the built-in workspace tools, durable session
+  planning (`manage_coding_plan` in `_autoyou_coding_harness`), anti-thrash
+  duplicate-call guards, deterministic context compaction, and session-budget
+  callbacks.
+- `../shared_tools/workspace_rag.py` provides zero-dependency incremental
+  SQLite FTS5 BM25 search and AST/multi-language symbol indexing
+  (`rag_search_workspace`, `find_symbol`, `get_file_outline`) cached through
+  `get_service_data_dir("coding_workspace_rag")` (honoring `AUTOYOU_TEST_ROOT`).
+  Source runs follow the development data-root policy; packaged runs use user data.
+- `../shared_tools/workspace_tools.py` adds `find_files`, `read_files_batch`,
+  `append_file`, `multi_edit_file`, atomic `apply_patch` (Codex `*** Begin Patch`
+  and unified diff, `allow_delete=False` default), nearest-match `replace_text`
+  hints, middle-elision `keep_tail=True` command output, shell-free
+  `verify_workspace_files`, and compiled-safe writable roots (`game_projects`,
+  `mobile_games`, dynamic agents) for Nuitka v2 macOS/Windows bundles.
 - `../pi_agent/agent.py` is an existing optional execution backend, selected by
   `AUTOYOU_CODING_BACKEND=auto|pi|builtin`. Auto selects Pi only when readiness
   succeeds. A started Pi request is never replayed automatically in the built-in
   backend, since that could duplicate edits.
 - Pi inherits `OLLAMA_MODEL` when `AI_PROVIDER=ollama` and `PI_MODEL` is empty,
   `default`, or `pi-agent`. Otherwise its explicit model/profile selection wins.
-  Check the resolved model for the chosen backend; installing a Qwen model or
-  having a builder-suite default does not by itself select it for every backend.
-- Pi readiness checks installation, Node >= 22.19, Pi >= 1.2, and model
-  availability. Its tools remain AutoYou's registered workspace tools.
-- Pi carries recent conversation turns in existing AutoYou session state,
-  trimming older turns toward a 24,000-character JSON budget. This is not a durable implementation plan or a
-  complete record of intermediate edits and verification.
-- The coding defaults are 32 tool calls and 600 seconds per turn. Pi has its own
-  180-second default, also bounded by the remaining parent turn budget.
-  Increasing limits alone does not make a run more effective.
+  Its `WorkspaceBridge` exposes the upgraded safe RAG, outline, batch-read,
+  patch, and verification tools while keeping destructive tools excluded.
+- Coding, Internet, dynamic agents, ADK model calls, Pi, and the outer chat
+  request have no default lifetime/count limit (`0` means unlimited). Operators
+  can set positive limits with `AUTOYOU_CODING_AGENT_MAX_TOOL_CALLS`,
+  `AUTOYOU_CODING_AGENT_MAX_TURN_SECONDS`, `AUTOYOU_MAX_LLM_CALLS` (or
+  `ADK_MAX_LLM_CALLS`), `AUTOYOU_INTERNET_MAX_TOOL_CALLS`,
+  `AUTOYOU_INTERNET_MAX_CALLS_PER_DOMAIN`, `AUTOYOU_DYNAMIC_AGENT_MAX_TOOL_CALLS`,
+  `AUTOYOU_PI_TIMEOUT_SECONDS`, `AUTOYOU_SESSION_TURN_TIMEOUT_SECONDS`, and
+  `AI_AGENT_RUN_SSE_TIMEOUT_SECONDS`. Individual network/command timeouts still
+  detect stuck operations; `run_command(timeout_seconds=0)` permits a long command.
+- `CheckpointedAgentTool` saves specialist state to the parent conversation's
+  existing session service during execution. Coding records mutation intent
+  before running a tool and its result afterwards, retains consumed handoff
+  constraints, and verifies pending files before accepting a final response.
+  The working event cache keeps the current request and recent complete tool
+  groups; persisted parent history stays in the conversation store. Repeated
+  failures without progress pause at a resumable checkpoint rather than claiming
+  success. There is no count ceiling on productive work.
+- Builder handoffs (`agent_builder_agent`, `website_agent`, `games_agent`) store
+  payloads in persistent session state and automatically dispatch through the
+  root coordinator inside local-model `AgentTool` runners, without a two-hop cutoff.
+- Pi retains `maxTokens=8192`; built-in coding enforces a
+  `max_output_tokens >= 4096` floor promoted into Ollama `num_predict`.
 - Command execution remains opt-in through `AUTOYOU_ENABLE_AGENT_RUN_COMMAND`.
   Model tuning must not silently broaden execution permissions.
 
-See `../../shared/session_execution.py`, `../pi_agent/readiness.py`, and
-`../shared_tools/builder_suite.py` for the authoritative defaults.
+See `../../shared/session_execution.py`, `harness.py`, `../pi_agent/readiness.py`,
+`../shared_tools/workspace_rag.py`, and `../shared_tools/builder_suite.py` for
+the authoritative defaults.
 
 ## Improvements implemented
 
@@ -50,11 +79,11 @@ Qwen benchmark or a claim of parity with other coding products.
 
 ## Next development priorities
 
-1. **Durable task state.** Keep objective, acceptance checks, completed steps,
-   touched files, verification results, and next action in the existing scoped,
-   protected conversation store. Checkpoint before compaction or interruption.
-   Reconcile that state with the working tree before resuming. Avoid a second
-   plaintext history store.
+1. **Restart orchestration.** Checkpoints persist in the existing conversation
+   store and an interrupted operation must be reconciled against current files
+   before it is replayed. Automatic unattended continuation after a server or
+   machine restart is not implemented. A continuously running task requires a
+   running worker and model; resumption uses the saved conversation checkpoint.
 2. **Context budgeting.** Reserve room for generation and tool output, preserve a
    stable prompt prefix, and use relevant source excerpts. Give large tool
    outputs bounded previews with continuation references. Record token usage
@@ -70,20 +99,40 @@ Qwen benchmark or a claim of parity with other coding products.
    input/output tokens, tool calls, repeated reads, and unsuccessful retries.
    Use independent acceptance tests, not the model's own completion statement.
 
-Local inspection on 2026-11-17 found `qwen3.8:27b` installed with tool calling and
-thinking support. The local model reports Q4_K_M quantization and a 262,144-token
-context ceiling. That ceiling is not a recommended working context size; select
-context and reasoning settings using measured memory, latency, and task success.
-No live model, execution-permission, or budget settings were changed by this work.
-
 ## Evidence and references
 
-The focused coding, Pi, workspace, and Audio test selection passed 81 tests.
-The root `scripts/e2e_validate.py changed` gate passed via its portable fallback.
-The native macOS build still requires macOS; the Windows run checks its runtime
-contracts. These checks validate code behavior, not model-level task success.
+Validation on 2026-11-26 used the manifest-pinned ADK 2.15.0, GenAI 2.34.0,
+and LiteLLM 1.110.1 in a disposable environment:
+
+- The 40-file regression selection passed 682 tests (6 skipped; 7 subtests passed).
+- Four opt-in live checks passed with `ollama_chat/qwen3.5:4b`: coding edits and
+  verification, the production root dispatcher with games-to-coding handoff and
+  an offline playable game, synthetic image input, and HTTPS fetch/research recall.
+- The macOS Swift suite ran 93 tests (1 skipped, no failures). The Windows client
+  .NET suite passed 260 tests on macOS; it does not validate native Windows UI or MSIX.
+- `scripts/e2e_validate.py changed` passed via its portable fallback, and
+  `scripts/validate_llm_docs.py` reported 122 files, OK.
+
+Live probes used isolated state and workspaces without changing the operator's
+server configuration or registries. Packaged binaries were not rebuilt or
+deployed, and these checks are not a months-long endurance run.
 
 - [Anthropic: Effective harnesses for long-running agents](https://www.anthropic.com/research/effective-harnesses-for-long-running-agents)
   describes incremental work, persistent progress artifacts, and verification.
 - [Ollama: Tool calling](https://docs.ollama.com/capabilities/tool-calling)
   documents the model/tool loop on which a local harness can build.
+
+## Reproducible verification
+
+`tests/agents/public/test_builder_harness_resilience.py` covers failed writes,
+patch rollback/newlines, packaged builder roots, session isolation, cancellation,
+persisted child checkpoints, bounded event caches, six-month simulated elapsed
+time, and an actual nested ADK run exceeding 500 model calls.
+
+For real local-model checks, run
+`AUTOYOU_RUN_LIVE_HARNESS_TESTS=1 python -m pytest -q tests/agents/public/test_builder_harness_live.py`.
+These tests use disposable workspaces and state, assert edited-file behavior,
+exercise games-to-coding root handoff and an offline browser game, and send a
+synthetic image through LiteLLM/Ollama. They never change the live server's
+configuration or registries. A short probe is not a months-long endurance test
+or proof of model-independent parity with another harness.

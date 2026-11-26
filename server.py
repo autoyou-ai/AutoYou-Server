@@ -1989,6 +1989,7 @@ def _create_ai_agent_fastapi_app(
       return agent_names
 
   fastapi_storage_kwargs = _get_ai_agent_fastapi_storage_kwargs()
+  from shared.session_execution import resolve_agent_model_call_budget
   if secure_storage_enabled():
     from shared.secure_artifact_service import register_secure_artifact_service
 
@@ -2007,6 +2008,7 @@ def _create_ai_agent_fastapi_app(
       agent_loader=_AutoYouAgentLoader(agent_dir),
       allow_origins=["*"],
       web=True,
+      max_llm_calls=resolve_agent_model_call_budget(),
       **fastapi_storage_kwargs,
     )
 
@@ -6124,7 +6126,7 @@ def _default_config() -> Dict[str, Any]:
             "pi_model": "pi-agent",
             "pi_path": "",
             "coding_backend": "auto",
-            "pi_timeout_seconds": 180,
+            "pi_timeout_seconds": 0,
             # Custom API integration settings (communication software mode)
             "custom_api_base": "http://127.0.0.1:8000",
             "custom_model": "custom",
@@ -6892,7 +6894,7 @@ def _apply_google_api_config_to_env() -> None:
     os.environ['PI_MODEL'] = pi_model
     os.environ['PI_PATH']  = pi_path
     os.environ['AUTOYOU_CODING_BACKEND'] = str(ai_prov_config.get("coding_backend", "auto") or "auto")
-    os.environ['AUTOYOU_PI_TIMEOUT_SECONDS'] = str(ai_prov_config.get("pi_timeout_seconds", 180) or 180)
+    os.environ['AUTOYOU_PI_TIMEOUT_SECONDS'] = str(ai_prov_config.get("pi_timeout_seconds", 0) or 0)
 
     # ── Custom API integration settings (communication software mode) ─────────
     custom_api_base = str(ai_prov_config.get("custom_api_base", "http://127.0.0.1:8000") or "http://127.0.0.1:8000")
@@ -13869,9 +13871,7 @@ def _apply_admin_ui_config_patch(
                 raise ValueError("Coding backend must be auto, pi, or builtin.")
             ai_provider_cfg["coding_backend"] = backend
         if "pi_timeout_seconds" in ai_provider_payload:
-            timeout = _coerce_admin_ui_int(ai_provider_payload.get("pi_timeout_seconds"), "ai_provider.pi_timeout_seconds", minimum=10)
-            if timeout > 3600:
-                raise ValueError("Pi timeout must be between 10 and 3600 seconds.")
+            timeout = _coerce_admin_ui_int(ai_provider_payload.get("pi_timeout_seconds"), "ai_provider.pi_timeout_seconds", minimum=0)
             ai_provider_cfg["pi_timeout_seconds"] = timeout
         touched_sections.add("ai_provider")
 

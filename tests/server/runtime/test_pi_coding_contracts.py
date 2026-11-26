@@ -60,6 +60,21 @@ def test_pi_coding_settings_validate_without_mutating_source_config():
     assert updated["ai_provider"]["pi_timeout_seconds"] == 90
     assert original["ai_provider"]["coding_backend"] == "builtin"
     assert "ai_provider" in touched
-    for payload in [{"coding_backend": "unknown"}, {"pi_timeout_seconds": 0}, {"pi_timeout_seconds": 3601}]:
+    for seconds in (0, 180 * 86400):
+        configured, _, _ = server._apply_admin_ui_config_patch(original, {"ai_provider": {"pi_timeout_seconds": seconds}})
+        assert configured["ai_provider"]["pi_timeout_seconds"] == seconds
+    for payload in [{"coding_backend": "unknown"}, {"pi_timeout_seconds": -1}]:
         with pytest.raises(ValueError):
             server._apply_admin_ui_config_patch(original, {"ai_provider": payload})
+
+
+@pytest.mark.parametrize("seconds", [None, 0, 180 * 86400])
+def test_pi_startup_preserves_unlimited_and_long_deadlines(seconds, monkeypatch):
+    import os
+    import server
+    from unittest.mock import patch
+    provider = {} if seconds is None else {"pi_timeout_seconds": seconds}
+    monkeypatch.setattr(server.STATE, "config", {"ai_provider": provider})
+    with patch.dict(os.environ):
+        server._apply_google_api_config_to_env()
+        assert os.environ["AUTOYOU_PI_TIMEOUT_SECONDS"] == str(seconds or 0)

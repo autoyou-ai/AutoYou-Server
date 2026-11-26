@@ -17,7 +17,17 @@ from urllib.parse import urlsplit, urlunsplit
 
 # Google ADK memory imports omitted; handled by root agent
 
-from .internet_tool import internet_search, scrape_website, take_screenshot, navigate_page, ingest_attachments
+from .internet_tool import (
+    fetch_webpage,
+    fetch_webpages_batch,
+    ingest_attachments,
+    internet_search,
+    navigate_page,
+    query_research_memory,
+    research_web,
+    scrape_website,
+    take_screenshot,
+)
 from .prompt import (
     AGENT_NAME,
     AGENT_DESCRIPTION,
@@ -555,10 +565,10 @@ def _format_verified_internet_tool_result(tool_name: str, args: Dict[str, Any], 
         preview_lines = "\n".join(_format_search_result_preview(result) for result in results[:5])
         return f"{prefix}\n\nTop results:\n{preview_lines}"
 
-    if tool_name in {"scrape_website", "navigate_page"}:
+    if tool_name in {"scrape_website", "fetch_webpage", "navigate_page"}:
         url = str(tool_response.get("final_url") or tool_response.get("url") or args.get("url") or "").strip()
         title = str(tool_response.get("title") or "Untitled page").strip()
-        text = " ".join(str(tool_response.get("text_content") or "").split()).strip()
+        text = " ".join(str(tool_response.get("text_content") or tool_response.get("text") or "").split()).strip()
         headlines = [
             h for h in list(tool_response.get("headlines") or [])
             if isinstance(h, dict) and str(h.get("title") or "").strip()
@@ -576,12 +586,41 @@ def _format_verified_internet_tool_result(tool_name: str, args: Dict[str, Any], 
             lines.append(text[:700])
         return "\n".join(lines)
 
+    if tool_name == "research_web":
+        query = str(tool_response.get("query") or args.get("query") or "").strip()
+        sources = [s for s in list(tool_response.get("sources") or []) if isinstance(s, dict)]
+        pages_fetched = int(tool_response.get("pages_fetched") or 0)
+        lines = [f"Researched '{query}': {len(sources)} source(s), {pages_fetched} page(s) fetched."]
+        for src in sources[:5]:
+            lines.append(_format_search_result_preview(src))
+        return "\n".join(lines)
+
     return str(tool_response.get("message") or f"{tool_name} completed successfully.").strip()
 
 
 async def _internet_datetime_injection_callback(callback_context: Any, llm_request: Any) -> Any:
-    """Inject real datetime so search queries use the correct year."""
+    """Inject real datetime and session Research RAG memory hints."""
     inject_realtime_datetime_into_request(llm_request)
+    try:
+        from .research_rag import get_research_rag_store
+
+        stats = get_research_rag_store(callback_context).stats()
+        if stats.get("documents_indexed", 0) > 0 and llm_request is not None:
+            recent_urls = ", ".join(stats.get("urls", [])[-4:])
+            note = (
+                f"[RESEARCH MEMORY] {stats['documents_indexed']} page(s) ({stats['chunks_indexed']} chunks) "
+                f"already indexed in this session: {recent_urls}. "
+                "Use `query_research_memory` to recall specific details or source URLs without re-fetching."
+            )
+            append_fn = getattr(llm_request, "append_instructions", None)
+            if callable(append_fn):
+                append_fn([note])
+            else:
+                cfg = getattr(llm_request, "config", None)
+                if cfg is not None and isinstance(getattr(cfg, "system_instruction", None), str):
+                    cfg.system_instruction = cfg.system_instruction + "\n\n" + note
+    except Exception:
+        pass
     return None
 
 
@@ -734,7 +773,15 @@ async def _internet_after_tool_callback(
         return None
 
     tool_name = str(getattr(tool, "name", "") or getattr(tool, "__name__", "") or "").strip()
-    if tool_name not in {"internet_search", "scrape_website", "take_screenshot", "navigate_page"}:
+    if tool_name not in {
+        "internet_search",
+        "research_web",
+        "fetch_webpage",
+        "fetch_webpages_batch",
+        "scrape_website",
+        "take_screenshot",
+        "navigate_page",
+    }:
         return None
 
     # Model-issued tools do not pass through the deterministic dispatch branch.
@@ -826,7 +873,11 @@ def create_internet_agent(model_config):
     """Create a model-appropriate Internet agent."""
     tools = [
         ingest_attachments,
+        research_web,
         internet_search,
+        fetch_webpage,
+        fetch_webpages_batch,
+        query_research_memory,
         scrape_website,
         take_screenshot,
         navigate_page,

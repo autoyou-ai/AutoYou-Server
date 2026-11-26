@@ -124,3 +124,57 @@ def test_proxy_relay_refuses_a_host_that_rebinds_to_a_private_address(monkeypatc
             fetch_target(f"http://rebind.example.test:{port}/")
         upstream.shutdown()
     assert _RecordingHandler.hosts == []
+
+
+def test_safe_https_pins_socket_but_preserves_tls_hostname(monkeypatch):
+    from shared import url_safety
+    from urllib3.connection import HTTPSConnection
+    observed = []
+    monkeypatch.setattr(url_safety, "resolve_safe_http_ip", lambda host: "203.0.113.20")
+    def connect(self):
+        observed.append(self._dns_host)
+        return "synthetic-socket"
+    monkeypatch.setattr(HTTPSConnection, "_new_conn", connect)
+    with url_safety.build_safe_requests_session() as session:
+        pool = session.get_adapter("https://public.example").poolmanager.connection_from_host("public.example", port=443, scheme="https")
+        connection = pool._new_conn()
+        assert connection._new_conn() == "synthetic-socket"
+        assert observed == ["203.0.113.20"]
+        assert connection.host == "public.example"
+
+
+def test_private_service_exception_is_explicit_and_keeps_socket_pinning(monkeypatch):
+    import ipaddress
+    from shared import url_safety
+    from urllib3.connection import HTTPConnection
+
+    monkeypatch.setattr(url_safety, "_iter_candidate_ips", lambda host: iter([ipaddress.ip_address("10.20.0.5")]))
+    monkeypatch.setattr(HTTPConnection, "_new_conn", lambda connection: connection._dns_host)
+    with url_safety.build_safe_requests_session(allow_private_hosts=("search.internal.test",)) as session:
+        def connection(host):
+            pool = session.get_adapter("http://").poolmanager.connection_from_host(host, port=8080, scheme="http")
+            return pool._new_conn()
+        trusted = connection("search.internal.test")
+        assert trusted._new_conn() == "10.20.0.5"
+        assert trusted.host == "search.internal.test"
+        with pytest.raises(UnsafeURLError, match="disallowed address"):
+            connection("another.internal.test")._new_conn()
+
+
+def test_configured_private_search_host_does_not_bypass_page_fetch_guard(monkeypatch):
+    import ipaddress
+    from shared import url_safety
+    from autoyou_agents.internet_agent.internet_tool import InternetTool
+    from urllib3.connection import HTTPConnection
+
+    monkeypatch.setenv("AUTOYOU_INTERNET_ALLOW_PRIVATE_IPS", "0")
+    monkeypatch.setenv("SEARXNG_BASE_URL", "http://search.internal.test:8080")
+    monkeypatch.setattr(url_safety, "_iter_candidate_ips", lambda host: iter([ipaddress.ip_address("10.20.0.5")]))
+    monkeypatch.setattr(HTTPConnection, "_new_conn", lambda connection: connection._dns_host)
+    internet = InternetTool()
+    try:
+        pool = internet.session.get_adapter("http://").poolmanager.connection_from_host("search.internal.test", port=8080, scheme="http")
+        assert pool._new_conn()._new_conn() == "10.20.0.5"
+        assert internet._http_get_safe("http://search.internal.test:8080/private")["status_code"] == 403
+    finally:
+        internet.session.close()

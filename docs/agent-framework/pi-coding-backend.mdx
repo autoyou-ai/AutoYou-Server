@@ -22,7 +22,10 @@ provider settings action; saving restarts the AI worker with the updated setting
 
 The equivalent environment variables are `AUTOYOU_CODING_BACKEND`, `PI_PATH`,
 `PI_MODEL` and `AUTOYOU_PI_TIMEOUT_SECONDS`. The timeout is also limited by the
-coding turn's remaining time budget. Both agents remain opt-in installations.
+coding turn's remaining time budget when an explicit deadline is set. Both
+timeouts default to 0 (unlimited). Positive saved operator settings continue to
+apply; set the Pi turn timeout to 0 to remove a previously saved deadline.
+Both agents remain opt-in installations.
 When the main provider is Ollama, an empty Pi model, `default` or `pi-agent`
 shares the current `OLLAMA_MODEL`. A concrete Pi model wins. When Pi itself is
 the whole-chat provider, these sentinel values retain Pi's profile default.

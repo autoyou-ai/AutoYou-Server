@@ -15,7 +15,11 @@ from google.adk.agents import Agent
 from google.genai import types
 
 from autoyou_agents.shared_tools import conversation_context
-from autoyou_agents.shared_tools.coding_handoff import CODING_HANDOFF_STATE_KEY
+from autoyou_agents.shared_tools.coding_handoff import (
+    CODING_HANDOFF_STATE_KEY,
+    PERSISTENT_CODING_HANDOFF_STATE_KEY,
+    load_coding_handoff,
+)
 from shared.pi_gateway import resolve_pi_cli, resolve_pi_path
 from shared.adk_state import AUTOYOU_CONVERSATION_SESSION_STATE_KEY, AUTOYOU_OWNER_KEY_STATE_KEY
 from .prompt import AGENT_DESCRIPTION, AGENT_INSTRUCTION, AGENT_NAME
@@ -75,7 +79,7 @@ async def forward_coding_to_pi(callback_context: Any, *, force: bool = False):
     state = callback_context.state
     ref = state.get(conversation_context.context_ref_state_key(AGENT_NAME if force else "autoyou_coding_agent"))
     context = conversation_context.fetch_context_block(ref)
-    handoff = state.get(CODING_HANDOFF_STATE_KEY)
+    handoff = load_coding_handoff(state, clear=False)
     # AutoYou already governs conversation persistence. Pi never creates a second
     # plaintext session store. Earlier Pi turns travel in existing ADK state.
     history = _conversation_history(callback_context)
@@ -87,15 +91,15 @@ async def forward_coding_to_pi(callback_context: Any, *, force: bool = False):
     if handoff:
         blocks.append("Prepared builder handoff:\n" + json.dumps(handoff, ensure_ascii=True))
     try:
-        timeout = max(10, min(3600, float(os.getenv("AUTOYOU_PI_TIMEOUT_SECONDS", "180"))))
+        timeout = max(0, float(os.getenv("AUTOYOU_PI_TIMEOUT_SECONDS", "0")))
     except ValueError:
-        timeout = 180
+        timeout = 0
     from shared.session_execution import SESSION_CONTROL_STATE_KEY, resolve_coding_turn_budget_seconds
     execution = state.get(SESSION_CONTROL_STATE_KEY) or {}
     turn_budget = float(execution.get("turn_timeout_seconds") or resolve_coding_turn_budget_seconds())
     if turn_budget > 0:
         remaining = turn_budget - max(0, time.time() - float(execution.get("turn_started_at") or time.time()))
-        timeout = min(timeout, max(0.1, remaining))
+        timeout = min(timeout, max(0.1, remaining)) if timeout > 0 else max(0.1, remaining)
     result = await run_pi(
         status["cli"], "\n\n".join(blocks), model=pi_coding_model(), timeout=timeout,
         callback_context=callback_context,
@@ -116,6 +120,7 @@ async def forward_coding_to_pi(callback_context: Any, *, force: bool = False):
     state["pi_coding_history"] = history
     if handoff:
         state[CODING_HANDOFF_STATE_KEY] = None
+        state[PERSISTENT_CODING_HANDOFF_STATE_KEY] = None
     return _text_content(reply)
 
 

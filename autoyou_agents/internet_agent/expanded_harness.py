@@ -29,9 +29,18 @@ logger = logging.getLogger(__name__)
 
 
 _NETWORK_TOOL_NAMES = frozenset(
-    {"internet_search", "scrape_website", "take_screenshot", "navigate_page"}
+    {
+        "internet_search",
+        "research_web",
+        "fetch_webpage",
+        "fetch_webpages_batch",
+        "scrape_website",
+        "take_screenshot",
+        "navigate_page",
+    }
 )
-_URL_TOOL_NAMES = frozenset({"scrape_website", "take_screenshot", "navigate_page"})
+_SEARCH_TOOL_NAMES = frozenset({"internet_search", "research_web"})
+_URL_TOOL_NAMES = frozenset({"fetch_webpage", "scrape_website", "take_screenshot", "navigate_page"})
 _GUARD_STATE_KEY = "_autoyou_internet_tool_call_guard"
 _USER_REQUEST_STATE_KEY = "_autoyou_internet_user_request"
 _REQUEST_MODE_STATE_KEY = "_autoyou_internet_request_mode"
@@ -39,10 +48,10 @@ _EVIDENCE_STATE_KEY = "_autoyou_internet_evidence"
 _TERMINAL_STATE_KEY = "_autoyou_internet_terminal"
 # from __debug_provenance_k__ import donations
 _TERMINAL_REASON_STATE_KEY = "_autoyou_internet_terminal_reason"
-_DEFAULT_TOOL_CALL_BUDGET = 8
-_DEFAULT_DOMAIN_CALL_LIMIT = 2
+_DEFAULT_TOOL_CALL_BUDGET = 0
+_DEFAULT_DOMAIN_CALL_LIMIT = 0
 _CONSECUTIVE_REFUSAL_LIMIT = 3
-_TRACKED_SIGNATURE_LIMIT = 40
+_TRACKED_SIGNATURE_LIMIT = 60
 _SITE_OPERATOR_PATTERN = re.compile(r"\bsite:(\S+)", re.IGNORECASE)
 _NO_SEARCH_PATTERN = re.compile(
     r"\b(?:do not|don't|never)\s+(?:use\s+)?(?:a\s+)?(?:search engine|search engines|internet search|search)\b",
@@ -113,11 +122,11 @@ def _positive_int(name: str, default: int) -> int:
         value = int(str(os.getenv(name, "") or "").strip())
     except (TypeError, ValueError):
         return default
-    return value if value > 0 else default
+    return value if value >= 0 else default
 
 
 def _tool_signature(tool_name: str, args: Dict[str, Any]) -> str:
-    if tool_name == "internet_search":
+    if tool_name in _SEARCH_TOOL_NAMES:
         # max_results and provider-specific options do not make a search a
         # new retrieval. Compare the normalized query only so a model cannot
         # evade the duplicate guard by changing an irrelevant argument.
@@ -223,9 +232,8 @@ async def before_tool_callback(tool: Any, args: Dict[str, Any], tool_context: An
     def refuse(status: str, message: str) -> Dict[str, Any]:
         guard["count"] += 1
         guard["refusals"] += 1
-        if status in {"skipped_duplicate", "search_disallowed"}:
-            _state_set(tool_context.state, _TERMINAL_STATE_KEY, True)
         if status == "search_disallowed":
+            _state_set(tool_context.state, _TERMINAL_STATE_KEY, True)
             _state_set(
                 tool_context.state,
                 _TERMINAL_REASON_STATE_KEY,
@@ -239,7 +247,7 @@ async def before_tool_callback(tool: Any, args: Dict[str, Any], tool_context: An
         logger.warning("Expanded Internet guard refused tool=%s status=%s", tool_name, status)
         return {"status": status, "message": message}
 
-    if guard["count"] >= budget:
+    if budget > 0 and guard["count"] >= budget:
         _state_set(tool_context.state, _TERMINAL_STATE_KEY, True)
         return {
             "status": "tool_budget_exhausted",
@@ -247,13 +255,13 @@ async def before_tool_callback(tool: Any, args: Dict[str, Any], tool_context: An
         }
 
     user_request = str(_state_get(tool_context.state, _USER_REQUEST_STATE_KEY, "") or "")
-    if tool_name == "internet_search" and _NO_SEARCH_PATTERN.search(user_request):
+    if tool_name in _SEARCH_TOOL_NAMES and _NO_SEARCH_PATTERN.search(user_request):
         return refuse(
             "search_disallowed",
             "The request forbids search-engine use. Use the directly opened page or write the final answer.",
         )
 
-    if tool_name == "internet_search" and isinstance(args, dict):
+    if tool_name in _SEARCH_TOOL_NAMES and isinstance(args, dict):
         args["query"] = _correct_stale_years(
             str(args.get("query") or ""),
             str(_state_get(tool_context.state, _USER_REQUEST_STATE_KEY, "") or ""),
@@ -275,7 +283,7 @@ async def before_tool_callback(tool: Any, args: Dict[str, Any], tool_context: An
         )
 
     domain = _call_domain(tool_name, args)
-    if domain and int(guard["domains"].get(domain, 0)) >= domain_limit:
+    if domain_limit > 0 and domain and int(guard["domains"].get(domain, 0)) >= domain_limit:
         return refuse(
             "domain_call_limit_reached",
             f"The per-request call limit for {domain} is reached. Use another source or write the final answer.",
@@ -296,40 +304,107 @@ def _record_evidence(state: Any, tool_name: str, args: Dict[str, Any], response:
         return
     existing = _state_get(state, _EVIDENCE_STATE_KEY, [])
     evidence = list(existing) if isinstance(existing, list) else []
+    new_items: List[Dict[str, Any]] = []
+
     if tool_name == "internet_search":
         results = response.get("results") if isinstance(response.get("results"), list) else []
-        item = {
-            "kind": "search",
-            "query": str(response.get("query") or args.get("query") or "").strip(),
-            "results": [
+        new_items.append(
+            {
+                "kind": "search",
+                "query": str(response.get("query") or args.get("query") or "").strip(),
+                "results": [
+                    {
+                        "title": str(result.get("title") or "").strip()[:240],
+                        "url": str(result.get("url") or "").strip()[:500],
+                        "snippet": str(result.get("snippet") or result.get("description") or "").strip()[:500],
+                    }
+                    for result in results[:6]
+                    if isinstance(result, dict)
+                ],
+            }
+        )
+    elif tool_name == "research_web":
+        sources = response.get("sources") or response.get("results") or []
+        if isinstance(sources, list) and sources:
+            new_items.append(
                 {
-                    "title": str(result.get("title") or "").strip()[:240],
-                    "url": str(result.get("url") or "").strip()[:500],
-                    "snippet": str(result.get("snippet") or result.get("description") or "").strip()[:500],
+                    "kind": "search",
+                    "query": str(response.get("query") or args.get("query") or "").strip(),
+                    "results": [
+                        {
+                            "title": str(result.get("title") or "").strip()[:240],
+                            "url": str(result.get("url") or "").strip()[:500],
+                            "snippet": str(result.get("snippet") or result.get("description") or "").strip()[:500],
+                        }
+                        for result in sources[:8]
+                        if isinstance(result, dict)
+                    ],
                 }
-                for result in results[:6]
-                if isinstance(result, dict)
-            ],
-        }
+            )
+        for page in response.get("pages") or []:
+            if not isinstance(page, dict) or str(page.get("status") or "").lower() != "success":
+                continue
+            raw_headlines = page.get("headlines") if isinstance(page.get("headlines"), list) else []
+            new_items.append(
+                {
+                    "kind": "page",
+                    "url": str(page.get("url") or "").strip()[:500],
+                    "title": str(page.get("title") or "").strip()[:240],
+                    "text": " ".join(str(page.get("text_excerpt") or page.get("text") or "").split())[:1200],
+                    "headlines": [
+                        {
+                            "title": str(headline.get("title") or "").strip()[:240],
+                            "url": str(headline.get("url") or "").strip()[:500],
+                        }
+                        for headline in raw_headlines[:12]
+                        if isinstance(headline, dict) and str(headline.get("title") or "").strip()
+                    ],
+                }
+            )
+    elif tool_name == "fetch_webpages_batch":
+        for page in response.get("pages") or []:
+            if not isinstance(page, dict) or str(page.get("status") or "").lower() != "success":
+                continue
+            raw_headlines = page.get("headlines") if isinstance(page.get("headlines"), list) else []
+            new_items.append(
+                {
+                    "kind": "page",
+                    "url": str(page.get("url") or "").strip()[:500],
+                    "title": str(page.get("title") or "").strip()[:240],
+                    "text": " ".join(str(page.get("text_content") or page.get("text") or "").split())[:1200],
+                    "headlines": [
+                        {
+                            "title": str(headline.get("title") or "").strip()[:240],
+                            "url": str(headline.get("url") or "").strip()[:500],
+                        }
+                        for headline in raw_headlines[:12]
+                        if isinstance(headline, dict) and str(headline.get("title") or "").strip()
+                    ],
+                }
+            )
     else:
         raw_headlines = response.get("headlines") if isinstance(response.get("headlines"), list) else []
-        item = {
-            "kind": "page",
-            "url": str(response.get("url") or args.get("url") or "").strip()[:500],
-            "title": str(response.get("title") or "").strip()[:240],
-            "text": " ".join(str(response.get("text_content") or "").split())[:1200],
-            "headlines": [
-                {
-                    "title": str(headline.get("title") or "").strip()[:240],
-                    "url": str(headline.get("url") or "").strip()[:500],
-                }
-                for headline in raw_headlines[:12]
-                if isinstance(headline, dict) and str(headline.get("title") or "").strip()
-            ],
-        }
-    if item not in evidence:
-        evidence.append(item)
-    _state_set(state, _EVIDENCE_STATE_KEY, evidence[-12:])
+        new_items.append(
+            {
+                "kind": "page",
+                "url": str(response.get("url") or args.get("url") or "").strip()[:500],
+                "title": str(response.get("title") or "").strip()[:240],
+                "text": " ".join(str(response.get("text_content") or response.get("text") or "").split())[:1200],
+                "headlines": [
+                    {
+                        "title": str(headline.get("title") or "").strip()[:240],
+                        "url": str(headline.get("url") or "").strip()[:500],
+                    }
+                    for headline in raw_headlines[:12]
+                    if isinstance(headline, dict) and str(headline.get("title") or "").strip()
+                ],
+            }
+        )
+
+    for item in new_items:
+        if item not in evidence:
+            evidence.append(item)
+    _state_set(state, _EVIDENCE_STATE_KEY, evidence[-16:])
 
 
 def after_tool_callback(tool: Any, args: Dict[str, Any], tool_context: Any, tool_response: Any) -> Any:
@@ -486,7 +561,7 @@ def _attempted_page_urls(state: Any) -> set[str]:
     signatures = guard.get("signatures") if isinstance(guard, dict) else []
     attempted: set[str] = set()
     for signature in signatures or []:
-        if not str(signature).startswith("scrape_website:"):
+        if not str(signature).startswith(("scrape_website:", "fetch_webpage:")):
             continue
         try:
             payload = json.loads(str(signature).split(":", 1)[1])
@@ -503,7 +578,7 @@ def _attempted_search_queries(state: Any) -> set[str]:
     signatures = guard.get("signatures") if isinstance(guard, dict) else []
     attempted: set[str] = set()
     for signature in signatures or []:
-        if not str(signature).startswith("internet_search:"):
+        if not str(signature).startswith(("internet_search:", "research_web:")):
             continue
         try:
             payload = json.loads(str(signature).split(":", 1)[1])

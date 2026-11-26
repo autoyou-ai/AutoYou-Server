@@ -41,6 +41,9 @@ from autoyou_agents.shared_tools.datetime_tool import get_current_datetime
 from autoyou_agents.shared_tools.coding_handoff import (
     CODING_HANDOFF_STATE_KEY,
     build_coding_handoff_payload,
+    dispatch_agent_handoff,
+    load_coding_handoff,
+    store_coding_handoff,
 )
 from autoyou_agents.shared_tools.builder_suite import (
     DEFAULT_BUILDER_SUITE_OLLAMA_MODEL,
@@ -50,6 +53,8 @@ from autoyou_agents.shared_tools.builder_suite import (
 from autoyou_agents.shared_tools.website_handoff import (
     WEBSITE_HANDOFF_STATE_KEY,
     build_website_handoff_payload,
+    load_website_handoff,
+    store_website_handoff,
 )
 from shared.http_errors import internal_error_message
 
@@ -510,7 +515,7 @@ def prepare_website_handoff(
             testing_requirements=testing_requirements,
             agent_dir=agent_dir,
         )
-        tool_context.state[WEBSITE_HANDOFF_STATE_KEY] = payload
+        store_website_handoff(tool_context.state, payload)
         return {
             "status": "success",
             "target_agent": "autoyou_website_agent",
@@ -531,21 +536,19 @@ def handoff_to_website_agent(tool_context: Optional[ToolContext] = None) -> Dict
         if tool_context is None:
             return {"status": "error", "message": "tool_context is required"}
 
-        payload = tool_context.state.get(WEBSITE_HANDOFF_STATE_KEY)
+        payload = load_website_handoff(tool_context.state, clear=False)
         if not payload:
             return {
                 "status": "error",
                 "message": "No prepared website handoff exists in session state.",
             }
 
-        tool_context.actions.skip_summarization = True
-        _transfer_to_agent("autoyou_website_agent", tool_context)
-        return {
-            "status": "success",
-            "target_agent": "autoyou_website_agent",
-            "agent_name": payload.get("agent_name"),
-            "message": "Transferred to autoyou_website_agent.",
-        }
+        return dispatch_agent_handoff(
+            target_agent="autoyou_website_agent",
+            payload=payload,
+            tool_context=tool_context,
+            transfer_fn=_transfer_to_agent,
+        )
     except Exception as exc:
         return {"status": "error", "message": str(exc)}
 
@@ -581,7 +584,7 @@ def prepare_coding_handoff(
             frontend_requirement=frontend_requirement,
             agent_dir=agent_dir,
         )
-        tool_context.state[CODING_HANDOFF_STATE_KEY] = payload
+        store_coding_handoff(tool_context.state, payload)
         return {
             "status": "success",
             "target_agent": "autoyou_coding_agent",
@@ -603,21 +606,19 @@ def handoff_to_coding_agent(tool_context: Optional[ToolContext] = None) -> Dict[
         if tool_context is None:
             return {"status": "error", "message": "tool_context is required"}
 
-        payload = tool_context.state.get(CODING_HANDOFF_STATE_KEY)
+        payload = load_coding_handoff(tool_context.state, clear=False)
         if not payload:
             return {
                 "status": "error",
                 "message": "No prepared coding handoff exists in session state.",
             }
 
-        tool_context.actions.skip_summarization = True
-        _transfer_to_agent("autoyou_coding_agent", tool_context)
-        return {
-            "status": "success",
-            "target_agent": "autoyou_coding_agent",
-            "agent_name": payload.get("agent_name"),
-            "message": "Transferred to autoyou_coding_agent.",
-        }
+        return dispatch_agent_handoff(
+            target_agent="autoyou_coding_agent",
+            payload=payload,
+            tool_context=tool_context,
+            transfer_fn=_transfer_to_agent,
+        )
     except Exception as exc:
         return {"status": "error", "message": str(exc)}
 

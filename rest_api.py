@@ -612,14 +612,14 @@ def _get_run_sse_timeout() -> aiohttp.ClientTimeout:
     repo-scale coding tasks. Use an explicit env-configurable timeout and leave
     `sock_read` unbounded so active SSE streams are not cut off mid-run.
     """
-    raw_total = str(os.environ.get("AI_AGENT_RUN_SSE_TIMEOUT_SECONDS", "1800")).strip()
+    raw_total = str(os.environ.get("AI_AGENT_RUN_SSE_TIMEOUT_SECONDS", "0")).strip()
     total_timeout = None
     try:
         parsed_total = float(raw_total)
         if parsed_total > 0:
             total_timeout = parsed_total
     except Exception:
-        total_timeout = 1800.0
+        total_timeout = None
     return aiohttp.ClientTimeout(
         total=total_timeout,
         connect=30.0,

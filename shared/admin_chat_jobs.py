@@ -32,7 +32,7 @@ class _Job:
 
 class AdminChatJobs:
     def __init__(self, *, limit: int = 64, retention: float = 300,
-                 timeout: float = 600, stop_timeout: float = 10) -> None:
+                 timeout: float = 0, stop_timeout: float = 10) -> None:
         self.limit = limit
         self.retention = retention
         self.timeout = timeout
@@ -78,7 +78,7 @@ class AdminChatJobs:
                     job.status = "stopped"
                     return
                 job.status = "thinking"
-                response = await asyncio.wait_for(handler(), timeout=self.timeout)
+                response = await asyncio.wait_for(handler(), timeout=self.timeout if self.timeout > 0 else None)
                 if job.stop_requested:
                     job.status = "stopped"
                 else:

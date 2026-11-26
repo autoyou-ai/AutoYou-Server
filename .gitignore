@@ -234,3 +234,5 @@ graphify-out/
 *.gpu.lock
 DO_NOT_UPLOAD/
 game_package_cache/
+/game_projects/
+/coding_workspace_rag/

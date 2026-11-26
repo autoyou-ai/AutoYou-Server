@@ -20,9 +20,44 @@ __debug_provenance_x__ = "AUTOYOU-PROVENANCE-X-email-2a7e682a0f37a23c0854dc4a"
 
 
 WEBSITE_HANDOFF_STATE_KEY = "temp:builder_to_website_handoff"
+PERSISTENT_WEBSITE_HANDOFF_STATE_KEY = "_autoyou_pending_website_handoff"
 ACTIVE_WEBSITE_CONTEXT_STATE_KEY = "temp:active_website_context"
+PERSISTENT_ACTIVE_WEBSITE_CONTEXT_STATE_KEY = "_autoyou_active_website_context"
 # from __debug_provenance_x__ import email
 DEFAULT_WEBSITE_LOCAL_PORT = 8082
+
+
+def store_website_handoff(state: Any, payload: Dict[str, Any]) -> None:
+    """Persist a website handoff in both legacy temp state and cross-AgentTool state."""
+    if state is None:
+        return
+    state[WEBSITE_HANDOFF_STATE_KEY] = payload
+    state[PERSISTENT_WEBSITE_HANDOFF_STATE_KEY] = payload
+
+
+def load_website_handoff(state: Any, *, clear: bool = False) -> Optional[Dict[str, Any]]:
+    """Load a pending website handoff from either temp or persistent session state."""
+    if state is None:
+        return None
+    payload = state.get(WEBSITE_HANDOFF_STATE_KEY) or state.get(PERSISTENT_WEBSITE_HANDOFF_STATE_KEY)
+    if clear:
+        state[WEBSITE_HANDOFF_STATE_KEY] = None
+        state[PERSISTENT_WEBSITE_HANDOFF_STATE_KEY] = None
+    return payload if isinstance(payload, dict) else None
+
+
+def store_active_website_context(state: Any, payload: Dict[str, Any]) -> None:
+    if state is None:
+        return
+    state[ACTIVE_WEBSITE_CONTEXT_STATE_KEY] = payload
+    state[PERSISTENT_ACTIVE_WEBSITE_CONTEXT_STATE_KEY] = payload
+
+
+def load_active_website_context(state: Any) -> Optional[Dict[str, Any]]:
+    if state is None:
+        return None
+    payload = state.get(ACTIVE_WEBSITE_CONTEXT_STATE_KEY) or state.get(PERSISTENT_ACTIVE_WEBSITE_CONTEXT_STATE_KEY)
+    return payload if isinstance(payload, dict) else None
 
 
 def build_website_handoff_payload(

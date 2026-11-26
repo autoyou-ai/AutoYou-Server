@@ -116,6 +116,7 @@ class _DummyClient:
 class _DummyRequest:
     def __init__(self, host: str, payload: dict):
         self.client = _DummyClient(host)
+        self.headers = {}
         self._payload = payload
 
     async def json(self):

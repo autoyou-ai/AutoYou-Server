@@ -1530,6 +1530,10 @@ def paraphrase_scenarios() -> list[Scenario]:
 
 REMOTE_DESKTOP_AGENT = "autoyou_remote_desktop_agent"
 MEDIA_AGENT = "autoyou_media_generation_agent"
+CODING_AGENT = "autoyou_coding_agent"
+GAMES_AGENT = "autoyou_games_agent"
+AGENT_BUILDER_AGENT = "autoyou_agent_builder_agent"
+WEBSITE_AGENT = "autoyou_website_agent"
 
 
 def personal_harness_scenarios() -> list[Scenario]:
@@ -1621,12 +1625,119 @@ def media_factory_scenarios() -> list[Scenario]:
     ]
 
 
+def internet_research_scenarios() -> list[Scenario]:
+    """Live multi-provider web research, fast HTTP fetch, and session Research RAG scenarios."""
+    return [
+        Scenario(
+            name="internet_multi_provider_tech_research",
+            description="Multi-provider research_web retrieves current technical sources without timing out or hitting anti-bot walls.",
+            needs_network=True,
+            turns=(
+                ScenarioTurn(
+                    "@internet Research the latest Python 3.13 release features and summarize 3 concrete highlights with source URLs.",
+                    INTERNET_AGENT,
+                    must_match=(r"(?i)(?:python|3\.13|http|source|feature|release)",),
+                    must_not_match=(r"(?i)tool_budget_exhausted|finish_reason=STOP|empty parts|internal error",),
+                ),
+                ScenarioTurn(
+                    "From what you just retrieved, name one source URL you cited.",
+                    must_match=(r"(?i)(?:https?://|python|info|github|stack|news|org|com)",),
+                    must_not_match=(r"(?i)finish_reason=STOP|empty parts|internal error",),
+                ),
+            ),
+        ),
+        Scenario(
+            name="internet_site_news_and_followup",
+            description="Opening bbc.com returns real headlines quickly and follow-up summarizes them.",
+            needs_network=True,
+            turns=(
+                ScenarioTurn(
+                    "@internet Open bbc.com and parse the latest news headlines.",
+                    INTERNET_AGENT,
+                    must_match=(r"(?i)(?:bbc|news|headline|http)",),
+                    must_not_match=(r"(?i)^navigate_page completed successfully\.?$|tool_budget_exhausted|finish_reason=STOP|empty parts",),
+                ),
+                ScenarioTurn(
+                    "Summarize the top two stories from that BBC page.",
+                    must_match=(r"(?:\b[A-Za-z]{4,}\b.*?){8}",),
+                    must_not_match=(r"(?i)finish_reason=STOP|empty parts|internal error",),
+                ),
+            ),
+        ),
+    ]
+
+
+def coding_harness_scenarios() -> list[Scenario]:
+    """Coding Agent RAG, AST symbol navigation, batch read, and non-exhaustion scenarios."""
+    return [
+        Scenario(
+            name="coding_rag_symbol_and_outline",
+            description="Coding Agent locates symbols via RAG/symbol search without exhausting tool calls.",
+            turns=(
+                ScenarioTurn(
+                    "@coding Use find_symbol or rag_search_workspace to locate resolve_coding_tool_call_budget in this repo and report its file path and default return value. Do not edit any files.",
+                    CODING_AGENT,
+                    must_match=(r"(?i)(?:session_execution|unlimited|unbounded|\b0\b)",),
+                    must_not_match=(r"(?i)paused|breaker|cooling down|exhausted|finish_reason=STOP|empty parts|internal error",),
+                ),
+            ),
+        ),
+        Scenario(
+            name="coding_outline_and_multi_file_inspect",
+            description="Coding Agent inspects multiple modules with get_file_outline/read_files_batch cleanly.",
+            turns=(
+                ScenarioTurn(
+                    "@coding Inspect autoyou_agents/coding_agent/harness.py and autoyou_agents/internet_agent/research_rag.py using get_file_outline and list two key functions or classes from each file. Do not edit any files.",
+                    CODING_AGENT,
+                    must_match=(r"(?i)(?:manage_coding_plan|compact_coding_llm_request|WebResearchRAGStore|extract_structured_page|prepare_coding_llm_request)",),
+                    must_not_match=(r"(?i)paused|breaker|cooling down|exhausted|finish_reason=STOP|empty parts|internal error",),
+                ),
+            ),
+        ),
+    ]
+
+
+def world_class_harness_scenarios() -> list[Scenario]:
+    """Live chat smoke checks; artifact and recovery assertions live in the isolated harness tests."""
+    return [
+        *internet_research_scenarios(),
+        *coding_harness_scenarios(),
+        Scenario(
+            name="games_offline_scaffold_validate_package",
+            description="Games agent scaffolds, validates, and packages a real offline .aygame without errors.",
+            turns=(
+                ScenarioTurn(
+                    "@games Scaffold a playable offline arcade game with game_id 'gl-{tok}-orbit' titled 'Orbit Runner', validate it with validate_offline_game, and build its .aygame package with publish_to_library=false.",
+                    GAMES_AGENT,
+                    must_match=(r"(?i)(?:gl-{tok}-orbit|aygame|valid|scaffold|package|built)",),
+                    must_not_match=(r"(?i)not found in the agent tree|finish_reason=STOP|empty parts|internal error",),
+                ),
+            ),
+        ),
+        Scenario(
+            name="builder_workflow_status_check",
+            description="Agent builder reports builder workflow status and existing agents cleanly.",
+            turns=(
+                ScenarioTurn(
+                    "@agent_builder Check the builder workflow status and list existing agents without creating or modifying any files.",
+                    AGENT_BUILDER_AGENT,
+                    must_match=(r"(?i)(?:coding_agent|website_agent|agent_builder|installed|agents?)",),
+                    must_not_match=(r"(?i)not found in the agent tree|finish_reason=STOP|empty parts|internal error",),
+                ),
+            ),
+        ),
+    ]
+
+
 SUITES = {
     "continuity": continuity_scenarios,
     "paraphrase": paraphrase_scenarios,
     "personal_harness": personal_harness_scenarios,
     "qwen35": personal_harness_scenarios,
     "media_factory": media_factory_scenarios,
+    "internet_research": internet_research_scenarios,
+    "coding_harness": coding_harness_scenarios,
+    "world_class_harness": world_class_harness_scenarios,
 }
 
 

@@ -441,9 +441,10 @@ def last_exchange_specialist_turn(
 # ── Follow-up classification ──────────────────────────────────────────────────
 
 _STRONG_REFERENCE_RE = re.compile(
-    r"\b(?:the\s+above|above|previous(?:ly)?|earlier|your\s+(?:last\s+)?(?:answer|response|reply|research|summary|findings|result|results)"
-    r"|what\s+you\s+(?:just\s+)?(?:said|found|wrote|gave|sent|shared|told\s+me|researched|looked\s+up)"
-    r"|th(?:is|at|ese|ose)\s+(?:answer|response|reply|research|result|results|summary|info|information|article|link|links|list|explanation|output|findings|one|ones)"
+    r"\b(?:the\s+above|above|previous(?:ly)?|earlier|your\s+(?:last\s+)?(?:answer|response|reply|research|summary|findings|result|results|sources?|citations?)"
+    r"|what\s+you\s+(?:just\s+)?(?:said|found|wrote|gave|sent|shared|told\s+me|researched|looked\s+up|retrieved|fetched|cited|scraped|opened|read|built|created|edited|changed|checked|verified)"
+    r"|you\s+(?:just\s+)?(?:cited|retrieved|fetched|scraped|built|created|edited|modified)"
+    r"|th(?:is|at|ese|ose)\s+(?:answer|response|reply|research|result|results|summary|info|information|article|link|links|list|explanation|output|findings|one|ones|page|site|file|game|agent)"
     r"|the\s+(?:result|results|answer|response|research|findings|summary|output|same)"
     r"|(?:add|save|store|put|keep|send|share|post|note|bookmark|copy|use|summari[sz]e|translate|shorten|expand|explain)\s+(?:all\s+of\s+)?(?:it|this|that|these|those|them))\b",
     re.IGNORECASE,

@@ -414,7 +414,7 @@ def _learn_from_response_usage(
 
 
 def _with_ollama_runtime_options(model_name: Any, kwargs: Dict[str, Any]) -> Dict[str, Any]:
-    """Apply the model's placement and its measured context limit.
+    """Apply the model's placement, its measured context limit, and per-agent output floor.
 
     Set when Ollama could not allocate the cache or the model spilled onto the
     CPU at start; every call then asks for the same smaller window, so the
@@ -430,6 +430,25 @@ def _with_ollama_runtime_options(model_name: Any, kwargs: Dict[str, Any]) -> Dic
     if limit and requested > limit:
         kwargs = dict(kwargs)
         kwargs["num_ctx"] = limit
+
+    # Promote num_predict when a specialist explicitly requested a higher
+    # max_output_tokens / max_tokens floor (e.g. coding_agent writing full files
+    # or patches), bounded under half the effective context window.
+    try:
+        req_max_tokens = int(kwargs.get("max_tokens") or 0)
+        cur_num_predict = int(kwargs.get("num_predict") or 0)
+    except (TypeError, ValueError):
+        req_max_tokens = 0
+        cur_num_predict = 0
+    if req_max_tokens > cur_num_predict > 0:
+        try:
+            eff_ctx = int(kwargs.get("num_ctx") or 0)
+        except (TypeError, ValueError):
+            eff_ctx = 0
+        promoted = min(req_max_tokens, eff_ctx // 2) if eff_ctx > 0 else req_max_tokens
+        if promoted > cur_num_predict:
+            kwargs = dict(kwargs)
+            kwargs["num_predict"] = promoted
     return kwargs
 
 
@@ -993,7 +1012,7 @@ except Exception as _patch_err:
 from google.adk.agents import Agent
 from google.adk.apps.app import App, EventsCompactionConfig
 try:
-    from google.adk.tools.agent_tool import AgentTool
+    from autoyou_agents.shared_tools.agent_execution import CheckpointedAgentTool as AgentTool
 except Exception as e:
     logging.warning("AgentTool import failed: %s", e)
     AgentTool = None
@@ -3704,12 +3723,12 @@ def _get_invocation_id(context: Any) -> str:
 
 def _resolve_dynamic_agent_tool_call_budget() -> int:
     try:
-        parsed = int(str(os.getenv("AUTOYOU_DYNAMIC_AGENT_MAX_TOOL_CALLS", "50")).strip())
-        if parsed > 0:
+        parsed = int(str(os.getenv("AUTOYOU_DYNAMIC_AGENT_MAX_TOOL_CALLS", "0")).strip())
+        if parsed >= 0:
             return parsed
     except Exception:
         pass
-    return 10
+    return 0
 
 def _dynamic_agent_guard_state_key(agent_name: str) -> str:
     safe_name = re.sub(r"[^a-zA-Z0-9_]", "_", str(agent_name or "agent")).strip("_")
@@ -3774,7 +3793,7 @@ def _make_dynamic_agent_before_tool_callback(agent_name: str):
         budget = _resolve_dynamic_agent_tool_call_budget()
         guard = _load_dynamic_agent_guard_state(tool_context, agent_name)
         current_tool_calls = int(guard.get("tool_calls") or 0)
-        if guard.get("tripped") or current_tool_calls >= budget:
+        if guard.get("tripped") or (budget > 0 and current_tool_calls >= budget):
             guard["tripped"] = True
             guard["budget"] = budget
             guard["tool_calls"] = current_tool_calls
@@ -5000,6 +5019,52 @@ async def _root_router_before_model_callback(callback_context: Any, llm_request:
             _state_set(callback_context.state, _ROOT_INVOCATION_ID_TRACKING_KEY, invocation_id)
             _state_set(callback_context.state, _ROOT_INVOCATION_AGENT_STATE_KEY, root_prompt.AGENT_NAME)
 
+    # Seamless cross-agent handoff dispatch in AgentTool mode:
+    # When agent_builder_agent, website_agent, or games_agent prepares a handoff
+    # inside an isolated AgentTool runner, transfer_to_agent cannot see sibling
+    # agents, so it records the target in persistent session state for root to
+    # dispatch automatically in the same turn without a fixed hop cutoff.
+    from autoyou_agents.shared_tools.coding_handoff import (
+        PENDING_AGENT_HANDOFF_REQUEST_STATE_KEY,
+        PENDING_AGENT_HANDOFF_TARGET_STATE_KEY,
+    )
+    pending_handoff_target = str(
+        _state_get(callback_context.state, PENDING_AGENT_HANDOFF_TARGET_STATE_KEY, "") or ""
+    ).strip()
+    if pending_handoff_target:
+        pending_handoff_request = str(
+            _state_get(callback_context.state, PENDING_AGENT_HANDOFF_REQUEST_STATE_KEY, "") or ""
+        ).strip() or user_text
+        _state_set(callback_context.state, PENDING_AGENT_HANDOFF_TARGET_STATE_KEY, "")
+        _state_set(callback_context.state, PENDING_AGENT_HANDOFF_REQUEST_STATE_KEY, "")
+        hops_key = "_autoyou_root_handoff_hops"
+        hop_inv_key = "_autoyou_root_handoff_hops_invocation_id"
+        if str(_state_get(callback_context.state, hop_inv_key, "") or "") != invocation_id:
+            _state_set(callback_context.state, hop_inv_key, invocation_id)
+            _state_set(callback_context.state, hops_key, 0)
+        hops = int(_state_get(callback_context.state, hops_key, 0) or 0)
+        if _is_runtime_agent_enabled(pending_handoff_target):
+            _state_set(callback_context.state, hops_key, hops + 1)
+            _record_root_tool_result(callback_context.state, invocation_id, "")
+            _mark_tool_dispatched_for_invocation(callback_context.state, invocation_id)
+            _set_root_preferred_agent(callback_context.state, pending_handoff_target)
+            _set_root_last_routed_agent(callback_context.state, pending_handoff_target)
+            _state_set(callback_context.state, _ROOT_INVOCATION_AGENT_STATE_KEY, pending_handoff_target)
+            logger.info(
+                "Root auto-dispatching pending cross-agent handoff -> %s (hop %s)",
+                pending_handoff_target,
+                hops + 1,
+            )
+            return _dispatch_specialist_tool_call(
+                pending_handoff_target,
+                {"request": pending_handoff_request},
+                custom_metadata={
+                    "response_author": root_prompt.AGENT_NAME,
+                    "route_target": pending_handoff_target,
+                    "route_reason": "agent_handoff_dispatch",
+                },
+            )
+
     if _already_dispatched_tool_in_invocation(callback_context.state, invocation_id):
         result_message = _get_recorded_root_tool_result(callback_context.state, invocation_id)
         if result_message:
@@ -5533,6 +5598,8 @@ async def _root_before_model_callback(callback_context: Any, llm_request: Any) -
     direct memory handling, and deterministic specialist routing always run in
     the intended order.
     """
+    from autoyou_agents.shared_tools.agent_execution import checkpoint_agent_state
+    await checkpoint_agent_state(callback_context, llm_request)
     await _root_datetime_injection_callback(callback_context, llm_request)
     response = await _root_preprocess_before_model(callback_context, llm_request)
     if response is None:

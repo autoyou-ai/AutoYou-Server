@@ -1646,6 +1646,12 @@ def _extract_explicit_agent_tool_names(tools: List[Dict[str, Any]] | None) -> se
             ):
                 explicit_agent_tool_names.add(name)
                 continue
+            # Regular FunctionTools whose name happens to end with `_agent`
+            # (e.g. `handoff_to_coding_agent()`, `handoff_to_website_agent()`)
+            # declare a parameter schema without a `request` property; never
+            # misclassify them as ADK AgentTools and inject bogus `request` args.
+            if isinstance(properties, dict) and "request" not in properties:
+                continue
 
         if name == "memory_agent" or name.endswith("_agent"):
             explicit_agent_tool_names.add(name)

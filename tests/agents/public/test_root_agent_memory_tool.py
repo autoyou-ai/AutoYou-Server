@@ -217,7 +217,7 @@ async def test_persona_save_followup_uses_user_fact_and_replays_verified_result(
     result = append_profile(**call.args)
     root_agent_module._root_after_tool_callback(append_profile, call.args, context, result)
     reply = await root_agent_module._root_before_model_callback(context, request)
-    assert reply.content.parts[0].text == "Appended to persona profile."
+    assert reply.content.parts[0].text == result["message"]
     assert read_profile()["content"].count("Example is my name") == 1
     assert "invented" not in read_profile()["content"]
 

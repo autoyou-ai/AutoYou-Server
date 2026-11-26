@@ -1836,7 +1836,7 @@
 
         var codingMarkup = "<div class=\"ayu-soft-divider\"></div><h3>Coding Agent and Pi</h3><div class=\"ayu-grid-2\">" +
             field("Coding backend", select("aiProvider.coding_backend", [{ value: "auto", label: "Auto - prefer installed Pi" }, { value: "pi", label: "Pi required" }, { value: "builtin", label: "Built-in AutoYou" }]), "Auto selects Pi when its local CLI and Node.js are available. Failed Pi turns are never replayed automatically.") +
-            field("Pi turn timeout (seconds)", input("aiProvider.pi_timeout_seconds", { type: "number", min: 10, max: 3600 })) +
+            field("Pi turn timeout (seconds)", input("aiProvider.pi_timeout_seconds", { type: "number", min: 0 }), "0 allows the task to run until completion or Stop. A positive value sets a deadline.") +
             (provider === "pi" ? "" : field("Pi installation directory", input("aiProvider.pi_path", { placeholder: "Auto-detect installed Pi" })) + field("Pi model", input("aiProvider.pi_model", { placeholder: "Inherit current Ollama model" }), "Leave blank, default or pi-agent to share AutoYou's current Ollama model. A concrete model name or provider/model overrides it.")) +
             "</div><div class=\"ayu-note\">Coding Agent and the optional Pi sub-agent share these settings and AutoYou workspace tools. Install Coding Agent from Agents to use automatic routing. Pi keeps the conversation in AutoYou and runs without a separate Pi session file.</div>";
         var bridgeInstalled = getByPath(state.bootstrap, "agents.agent_overview", []).some(function (agent) { return agent.agent_name === "openclaw_agent" && agent.installed; });
@@ -3450,7 +3450,7 @@
                 pi_model: getByPath(cfg, "ai_provider.pi_model", "pi-agent"),
                 pi_path: getByPath(cfg, "ai_provider.pi_path", ""),
                 coding_backend: getByPath(cfg, "ai_provider.coding_backend", "auto"),
-                pi_timeout_seconds: getByPath(cfg, "ai_provider.pi_timeout_seconds", 180),
+                pi_timeout_seconds: getByPath(cfg, "ai_provider.pi_timeout_seconds", 0),
                 custom_api_base: getByPath(cfg, "ai_provider.custom_api_base", "http://127.0.0.1:8000"),
                 custom_model: getByPath(cfg, "ai_provider.custom_model", "custom"),
                 custom_token: "",

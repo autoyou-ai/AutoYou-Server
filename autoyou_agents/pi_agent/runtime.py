@@ -18,32 +18,91 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, get_args, get_type_hints
+from typing import Any, get_args, get_origin, get_type_hints
 
-from autoyou_agents.shared_tools import workspace_tools
+from autoyou_agents.shared_tools import workspace_rag, workspace_tools
 from autoyou_agents.shared_tools._subprocess_env import scrubbed_subprocess_env
 from shared.process_lifecycle import process_spawn_kwargs, force_kill_process_tree
 from shared.pi_gateway import resolve_pi_node
 
 
 TOOL_NAMES = (
-    "get_workspace_root", "list_workspace", "search_workspace", "read_file",
-    "write_file", "replace_text", "insert_before", "insert_after", "create_directory",
-    "run_command", "git_status", "git_diff",
+    "get_workspace_root",
+    "list_workspace",
+    "find_files",
+    "search_workspace",
+    "rag_search_workspace",
+    "find_symbol",
+    "get_file_outline",
+    "read_file",
+    "read_files_batch",
+    "write_file",
+    "append_file",
+    "replace_text",
+    "multi_edit_file",
+    "apply_patch",
+    "insert_before",
+    "insert_after",
+    "create_directory",
+    "verify_workspace_files",
+    "run_command",
+    "git_status",
+    "git_diff",
 )
+
+READ_ONLY_TOOL_NAMES = (
+    "get_workspace_root",
+    "list_workspace",
+    "find_files",
+    "search_workspace",
+    "rag_search_workspace",
+    "find_symbol",
+    "get_file_outline",
+    "read_file",
+    "read_files_batch",
+    "verify_workspace_files",
+    "git_status",
+    "git_diff",
+)
+
+
+def _resolve_tool_callable(name: str):
+    if hasattr(workspace_tools, name):
+        return getattr(workspace_tools, name)
+    if hasattr(workspace_rag, name):
+        return getattr(workspace_rag, name)
+    raise AttributeError(f"Unknown Pi workspace tool: {name}")
+
+
+def _json_schema_for_type(annotation: Any) -> dict[str, Any]:
+    origin = get_origin(annotation)
+    if origin is list:
+        elem_args = get_args(annotation)
+        item_schema = _json_schema_for_type(elem_args[0]) if elem_args else {"type": "string"}
+        return {"type": "array", "items": item_schema}
+    if origin is dict:
+        return {"type": "object"}
+    types = get_args(annotation) or (annotation,)
+    actual = next((item for item in types if item is not type(None)), str)
+    actual_origin = get_origin(actual)
+    if actual_origin is list:
+        elem_args = get_args(actual)
+        item_schema = _json_schema_for_type(elem_args[0]) if elem_args else {"type": "string"}
+        return {"type": "array", "items": item_schema}
+    if actual_origin is dict:
+        return {"type": "object"}
+    return {"type": {int: "integer", float: "number", bool: "boolean", list: "array", dict: "object"}.get(actual, "string")}
 
 
 def tool_definitions() -> list[dict[str, Any]]:
     definitions = []
     for name in TOOL_NAMES:
-        function = getattr(workspace_tools, name)
+        function = _resolve_tool_callable(name)
         hints = get_type_hints(function)
         properties, required = {}, []
         for parameter in inspect.signature(function).parameters.values():
             annotation = hints.get(parameter.name, str)
-            types = get_args(annotation) or (annotation,)
-            actual = next((item for item in types if item is not type(None)), str)
-            schema = {"type": {int: "integer", float: "number", bool: "boolean"}.get(actual, "string")}
+            schema = _json_schema_for_type(annotation)
             if parameter.default is inspect.Parameter.empty:
                 required.append(parameter.name)
             elif parameter.default is not None:
@@ -64,7 +123,7 @@ class WorkspaceBridge:
         self.closed = threading.Event()
         self.call_lock = threading.Lock()
         self.discovered = False
-        self.allowed_tools = frozenset(TOOL_NAMES if not read_only else ("get_workspace_root", "list_workspace", "search_workspace", "read_file", "git_status", "git_diff"))
+        self.allowed_tools = frozenset(TOOL_NAMES if not read_only else READ_ONLY_TOOL_NAMES)
         bridge = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -134,7 +193,7 @@ class WorkspaceBridge:
         if name == "run_command":
             result = workspace_tools._run_command_with_cancel(**args, cancel_event=self.closed)
         else:
-            result = getattr(workspace_tools, name)(**args)
+            result = _resolve_tool_callable(name)(**args)
         if self.context is not None:
             future = asyncio.run_coroutine_threadsafe(_coding_after_tool_callback(tool, args, self.context, result), self.loop)
             result = future.result(timeout=10) or result
@@ -151,7 +210,7 @@ class WorkspaceBridge:
 
 
 async def run_pi(
-    cli_file: Path, prompt: str, *, model: str = "", timeout: float = 180,
+    cli_file: Path, prompt: str, *, model: str = "", timeout: float = 0,
     callback_context: Any = None, instruction: str = "",
     read_only: bool = False,
     local_ollama_base: str = "",
@@ -199,7 +258,7 @@ async def run_pi(
                 endpoint += "/v1"
             (profile / "models.json").write_text(json.dumps({"providers": {"ollama": {
                 "baseUrl": endpoint, "api": "openai-completions", "apiKey": "ollama",
-                "models": [{"id": selected, "contextWindow": 32768, "maxTokens": 4096}],
+                "models": [{"id": selected, "contextWindow": 32768, "maxTokens": 8192}],
             }}}), encoding="utf-8")
             env["PI_CODING_AGENT_DIR"] = str(profile)
         process = await asyncio.create_subprocess_exec(
@@ -207,7 +266,7 @@ async def run_pi(
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
             limit=2_000_000, **process_spawn_kwargs(hide_window=True),
         )
-        stdout, stderr = await asyncio.wait_for(process.communicate(prompt.encode("utf-8")), timeout=timeout)
+        stdout, stderr = await asyncio.wait_for(process.communicate(prompt.encode("utf-8")), timeout=timeout if timeout > 0 else None)
         if process.returncode != 0:
             return finish(ok=False, started=True, error=f"Pi exited with code {process.returncode}.", exit_code=process.returncode)
         if not bridge.discovered:

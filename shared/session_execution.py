@@ -21,6 +21,7 @@ __license__ = "AutoYou Source-Available License v1.5 (AI training prohibited)"
 import asyncio
 import contextlib
 import json
+import math
 import os
 import time
 import uuid
@@ -46,7 +47,7 @@ SESSION_RESUME_ARTIFACT_NAME = "autoyou_resume_state.json"
 def _parse_positive_float(raw_value: Optional[str], default: float) -> float:
     try:
         parsed = float(str(raw_value or "").strip())
-        if parsed > 0:
+        if math.isfinite(parsed) and parsed > 0:
             return parsed
     except Exception:
         pass
@@ -64,7 +65,32 @@ def _parse_positive_int(raw_value: Optional[str], default: int) -> int:
 
 
 def resolve_turn_timeout_seconds() -> float:
-    return _parse_positive_float(os.getenv("AUTOYOU_SESSION_TURN_TIMEOUT_SECONDS"), 900.0)
+    return _parse_nonnegative_float(os.getenv("AUTOYOU_SESSION_TURN_TIMEOUT_SECONDS"), 0.0)
+
+
+def _parse_nonnegative_float(raw_value: Any, default: float) -> float:
+    try:
+        value = float(raw_value)
+        if math.isfinite(value) and value >= 0:
+            return value
+    except (TypeError, ValueError, OverflowError):
+        pass
+    return default
+
+
+def _parse_nonnegative_int(raw_value: Any, default: int) -> int:
+    try:
+        value = int(raw_value)
+        if value >= 0:
+            return value
+    except (TypeError, ValueError, OverflowError):
+        pass
+    return default
+
+
+def resolve_agent_model_call_budget() -> int:
+    """Zero disables ADK's per-run ceiling; an explicit operator limit wins."""
+    return _parse_nonnegative_int(os.getenv("AUTOYOU_MAX_LLM_CALLS", os.getenv("ADK_MAX_LLM_CALLS")), 0)
 
 
 def resolve_queue_limit() -> int:
@@ -79,15 +105,15 @@ def resolve_coding_model_call_budget() -> int:
 
 
 def resolve_coding_tool_call_budget() -> int:
-    return _parse_positive_int(os.getenv("AUTOYOU_CODING_AGENT_MAX_TOOL_CALLS"), 32)
+    return _parse_nonnegative_int(os.getenv("AUTOYOU_CODING_AGENT_MAX_TOOL_CALLS"), 0)
 
 
 def resolve_coding_turn_budget_seconds() -> float:
-    return _parse_positive_float(os.getenv("AUTOYOU_CODING_AGENT_MAX_TURN_SECONDS"), 600.0)
+    return _parse_nonnegative_float(os.getenv("AUTOYOU_CODING_AGENT_MAX_TURN_SECONDS"), 0.0)
 
 
 def resolve_coding_breaker_cooldown_seconds() -> float:
-    return _parse_positive_float(os.getenv("AUTOYOU_CODING_AGENT_BREAKER_COOLDOWN_SECONDS"), 900.0)
+    return _parse_positive_float(os.getenv("AUTOYOU_CODING_AGENT_BREAKER_COOLDOWN_SECONDS"), 60.0)
 
 
 def resolve_timeout_breaker_threshold() -> int:
@@ -195,7 +221,7 @@ def normalize_session_control_state(raw_value: Any) -> Dict[str, Any]:
     now = time.time()
     breaker_open_until = 0.0
     try:
-        breaker_open_until = float(data.get("breaker_open_until") or 0.0)
+        breaker_open_until = _parse_nonnegative_float(data.get("breaker_open_until"), 0.0)
     except Exception:
         breaker_open_until = 0.0
 
@@ -204,19 +230,15 @@ def normalize_session_control_state(raw_value: Any) -> Dict[str, Any]:
         "canonical_user_id": str(data.get("canonical_user_id") or ""),
         "canonical_session_id": str(data.get("canonical_session_id") or ""),
         "owner_key": str(data.get("owner_key") or ""),
-        "turn_started_at": float(data.get("turn_started_at") or 0.0),
-        "turn_timeout_seconds": float(
-            data.get("turn_timeout_seconds") or resolve_coding_turn_budget_seconds()
-        ),
+        "turn_started_at": _parse_nonnegative_float(data.get("turn_started_at"), 0.0),
+        "turn_timeout_seconds": _parse_nonnegative_float(data.get("turn_timeout_seconds"), resolve_coding_turn_budget_seconds()),
         "model_call_budget": int(
             data.get("model_call_budget") or resolve_coding_model_call_budget()
         ),
-        "tool_call_budget": int(
-            data.get("tool_call_budget") or resolve_coding_tool_call_budget()
-        ),
-        "model_calls": int(data.get("model_calls") or 0),
-        "tool_calls": int(data.get("tool_calls") or 0),
-        "consecutive_timeouts": int(data.get("consecutive_timeouts") or 0),
+        "tool_call_budget": _parse_nonnegative_int(data.get("tool_call_budget"), resolve_coding_tool_call_budget()),
+        "model_calls": _parse_nonnegative_int(data.get("model_calls"), 0),
+        "tool_calls": _parse_nonnegative_int(data.get("tool_calls"), 0),
+        "consecutive_timeouts": _parse_nonnegative_int(data.get("consecutive_timeouts"), 0),
         "breaker_open_until": breaker_open_until,
         "degraded_mode": bool(data.get("degraded_mode") or (breaker_open_until > now)),
         "resumable": bool(data.get("resumable") or False),
@@ -225,8 +247,8 @@ def normalize_session_control_state(raw_value: Any) -> Dict[str, Any]:
         "last_agent_name": str(data.get("last_agent_name") or ""),
         "last_tool_name": str(data.get("last_tool_name") or ""),
         "last_error_message": str(data.get("last_error_message") or ""),
-        "updated_at": float(data.get("updated_at") or now),
-        "queue_position": int(data.get("queue_position") or 0),
+        "updated_at": _parse_nonnegative_float(data.get("updated_at"), now),
+        "queue_position": _parse_nonnegative_int(data.get("queue_position"), 0),
         "degraded_scope": str(data.get("degraded_scope") or "coding_agent"),
     }
     if normalized["breaker_open_until"] and normalized["breaker_open_until"] <= now:
@@ -462,7 +484,7 @@ class SessionExecutionManager:
     ) -> None:
         self.queue_limit = int(queue_limit or resolve_queue_limit())
         self.default_turn_timeout_seconds = float(
-            default_turn_timeout_seconds or resolve_turn_timeout_seconds()
+            resolve_turn_timeout_seconds() if default_turn_timeout_seconds is None else default_turn_timeout_seconds
         )
         self.timeout_breaker_threshold = int(
             timeout_breaker_threshold or resolve_timeout_breaker_threshold()
@@ -646,7 +668,7 @@ class SessionExecutionManager:
             future=future,
             handler=handler,
             on_status=on_status,
-            timeout_seconds=float(timeout_seconds or self.default_turn_timeout_seconds),
+            timeout_seconds=_parse_nonnegative_float(timeout_seconds, self.default_turn_timeout_seconds),
             request_id=str(request_id or "")[:128],
         )
         # from __debug_provenance_j__ import fifteenpercent
@@ -866,7 +888,7 @@ class SessionExecutionManager:
                 ctx.active_task = handler_task
                 result = await asyncio.wait_for(
                     asyncio.shield(handler_task),
-                    timeout=turn.timeout_seconds,
+                    timeout=turn.timeout_seconds if turn.timeout_seconds > 0 else None,
                 )
                 if turn.cancel_requested:
                     # A provider/tool can finish cleanup by returning normally.

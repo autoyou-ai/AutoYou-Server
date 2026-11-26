@@ -251,7 +251,7 @@ def build_safe_httpx_transport(
     return _SafeTransport()
 
 
-def build_safe_requests_session(*, allow_loopback: bool = False):
+def build_safe_requests_session(*, allow_loopback: bool = False, allow_private_hosts: Iterable[str] = ()):
     """Return a ``requests`` session that connects only to validated addresses.
 
     The synchronous counterpart of :func:`build_safe_httpx_transport`: every
@@ -259,15 +259,26 @@ def build_safe_requests_session(*, allow_loopback: bool = False):
     and connects to that address, so DNS rebinding cannot swap the destination
     after validation. TLS keeps the original hostname for SNI and certificate
     checks. Environment proxies are ignored and proxied fetches are refused.
+    ``allow_private_hosts`` permits exact, operator-configured service hosts;
+    never populate it from a model's requested URL. Redirect destinations still
+    pass the default address checks unless explicitly listed themselves.
     """
     import requests
     from requests.adapters import HTTPAdapter
     from urllib3.connection import HTTPConnection, HTTPSConnection
     from urllib3.connectionpool import HTTPConnectionPool, HTTPSConnectionPool
 
+    private_hosts = frozenset(host.strip("[]").rstrip(".").lower() for host in allow_private_hosts)
+
     def pin(connection) -> None:
         host = str(connection._dns_host or "")
         normalized = host.strip("[]").split("%", 1)[0].lower()
+        if normalized.rstrip(".") in private_hosts:
+            candidates = list(_iter_candidate_ips(host))
+            if not candidates:
+                raise UnsafeURLError(f"URL host {host!r} did not resolve to any address")
+            connection._dns_host = str(candidates[0])
+            return
         is_loopback = normalized == "localhost"
         if not is_loopback:
             try:
@@ -277,15 +288,23 @@ def build_safe_requests_session(*, allow_loopback: bool = False):
         if not (allow_loopback and is_loopback):
             connection._dns_host = resolve_safe_http_ip(host)
 
+    def connect_pinned(connection, new_connection):
+        original_host = connection._dns_host
+        try:
+            pin(connection)
+            return new_connection()
+        finally:
+            # urllib3 derives TLS SNI/certificate identity from .host, which
+            # reads _dns_host. Pin only the socket connection, then restore it.
+            connection._dns_host = original_host
+
     class _PinnedHTTPConnection(HTTPConnection):
         def _new_conn(self):
-            pin(self)
-            return super()._new_conn()
+            return connect_pinned(self, super()._new_conn)
 
     class _PinnedHTTPSConnection(HTTPSConnection):
         def _new_conn(self):
-            pin(self)
-            return super()._new_conn()
+            return connect_pinned(self, super()._new_conn)
 
     class _PinnedHTTPPool(HTTPConnectionPool):
         ConnectionCls = _PinnedHTTPConnection
