@@ -3,7 +3,7 @@
  * Zero external CDN dependencies — works seamlessly on localhost, offline & in iOS/Android WebViews.
  */
 
-// Simplified low-poly world landmass rings [lng, lat] for crisp offline Day One-style cartography.
+// Simplified low-poly world landmass rings [lng, lat] for crisp offline map rendering.
 const CONTINENTS = [
   // North America
   [[-168,66],[-162,70],[-140,70],[-125,70],[-110,68],[-95,69],[-80,63],[-64,60],[-55,52],[-60,46],[-67,45],[-70,41],[-75,35],[-81,25],[-83,30],[-90,29],[-97,26],[-97,19],[-88,16],[-83,10],[-79,8],[-84,10],[-92,15],[-105,20],[-112,28],[-117,32],[-122,38],[-124,48],[-135,57],[-150,60],[-162,55],[-166,60],[-168,66]],

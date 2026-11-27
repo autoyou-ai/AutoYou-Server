@@ -245,10 +245,58 @@ def _watch_ad_status_code(result: dict) -> int:
     return 404
 
 
+def _latest_rewarded_ad_status(
+    *,
+    session_id: str = "",
+    owner_key: str = "",
+    control_id: str = "",
+) -> Optional[dict[str, Any]]:
+    try:
+        runtime = _runtime_server()
+        webrtc = getattr(runtime, "WEBRTC", None)
+        reader = getattr(webrtc, "latest_rewarded_ad_status", None)
+        if reader is None:
+            return None
+        status = reader(session_id=session_id, owner_key=owner_key, control_id=control_id)
+    except Exception:
+        return None
+    if not isinstance(status, Mapping):
+        return None
+    state = str(status.get("state") or "").strip().lower()
+    if state not in {"sent", "opening", "opened", "failed", "dismissed", "completed"}:
+        return None
+    return {
+        "control_id": str(status.get("control_id") or "")[:128],
+        "state": state,
+        "reason": str(status.get("reason") or "")[:240],
+        "platform": str(status.get("platform") or "")[:32],
+        "timestamp_ms": int(status.get("timestamp_ms") or 0),
+    }
+
+
 def _extra_routes(app, agent_name: str) -> None:
     @app.get("/favicon.ico")
     async def favicon():
         return Response(status_code=204)
+
+    @app.get("/api/watch-ad/status")
+    async def api_watch_ad_status(request: Request):
+        session_id, owner_key = _coalesce_session_identity(request)
+        control_id = _coalesce_control_id(request, {})
+        return _json_response(
+            {
+                "success": True,
+                "ad_status": _latest_rewarded_ad_status(
+                    session_id=session_id,
+                    owner_key=owner_key,
+                    control_id=control_id,
+                ),
+                "rewarded_ad_completion": _latest_rewarded_ad_completion(
+                    session_id=session_id,
+                    owner_key=owner_key,
+                ),
+            }
+        )
 
     @app.get("/api/status")
     async def api_status(request: Request):

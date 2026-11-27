@@ -2,114 +2,256 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
   <title>Game Studio · AutoYou</title>
-  <style>
-    :root{color-scheme:dark;font:16px/1.5 system-ui,sans-serif;background:#090c16;color:#f4f6ff}
-    *{box-sizing:border-box}body{margin:0}a{color:#91e8ff}a:focus-visible{outline:3px solid #91e8ff;outline-offset:3px}
-    .shell{max-width:1120px;margin:auto;padding:24px}.top{display:flex;justify-content:space-between;align-items:center;gap:16px}
-    .brand{font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#91e8ff}.tag{border:1px solid #34516d;border-radius:999px;padding:5px 12px;color:#a6d9ef;font-size:.85rem}
-    .hero{padding:72px 0 54px;max-width:780px}h1{font-size:clamp(2.8rem,7vw,5.5rem);line-height:1.02;letter-spacing:-.055em;margin:16px 0}h2{font-size:1.45rem;letter-spacing:-.025em;margin:0 0 12px}
-    p{color:#b9c2d5}.hero p{font-size:1.2rem;max-width:650px}.eyebrow{font-size:.8rem;text-transform:uppercase;letter-spacing:.18em;color:#8ae8b9;font-weight:700}
-    .actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:28px}.button{display:inline-flex;text-decoration:none;border-radius:12px;padding:12px 18px;font-weight:700;background:#8ae8b9;color:#08251a}.button.secondary{background:#172a3a;color:#c5eeff;border:1px solid #35516b}
-    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.card{border:1px solid #26364b;background:#121a2b;border-radius:18px;padding:24px}.card p{margin-bottom:0}.wide{grid-column:span 2}
-    ol{margin:10px 0 0;padding-left:22px;color:#cbd3e2}li{padding:5px 0}code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;background:#243047;border-radius:5px;padding:2px 5px;color:#b2f5df}
-    .flow{display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-weight:700;color:#c9d8f1}.flow span{background:#1d2c43;padding:10px 14px;border-radius:10px}.flow b{color:#7ce0fa}
-    textarea{width:100%;min-height:100px;resize:vertical;border:1px solid #456079;border-radius:10px;padding:12px;background:#0b1424;color:#fff;font:inherit}input[type=file]{display:block;margin-top:8px;max-width:100%}button{border:0;cursor:pointer;font:inherit}.chat-log{max-height:320px;overflow:auto}.chat-log p{white-space:pre-wrap;border-left:3px solid #456079;padding-left:12px}.chat-log p.agent{border-color:#8ae8b9}
-    footer{padding:35px 0;color:#8e9cb1;font-size:.9rem}@media(max-width:700px){.grid{grid-template-columns:1fr}.wide{grid-column:auto}.hero{padding:50px 0 35px}.tag{display:none}}
-  </style>
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('autoyou.ui.theme');
+        document.documentElement.dataset.theme = (t === 'light' || t === 'dark') ? t : 'dark';
+      } catch (_) {
+        document.documentElement.dataset.theme = 'dark';
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="./assets/studio.css">
 </head>
 <body>
-  <div class="shell">
-    <header class="top"><div class="brand">AutoYou / Game Studio</div><div class="tag">Native iOS + Android games</div></header>
-    <main>
-      <section class="hero" aria-labelledby="hero-title">
-        <div class="eyebrow">Game mode</div>
-        <h1 id="hero-title">Play in the native iOS or Android app.</h1>
-        <p>Open Chat and choose Games on this computer to play available HTML games on your phone without a video stream. Publish a game below and it appears when the phone reloads the catalog, without a new APK or server build. For host games, the computer streams video and audio to the same native clients over WebRTC; touch, motion, joystick, and buttons reach the local engine.</p>
-        <div class="actions"><a class="button" href="./play">Launch Neon Horizon on the host for iOS / Android play</a><a class="button" href="./assets/snake.html">Launch Jungle Viper (Snake)</a><a class="button secondary" href="./api/game/unreal-plugin">Download Unreal plugin</a><a class="button secondary" href="./assets/game_input_client.py" download>Download Python adapter</a><a class="button secondary" href="./api/game/protocol">Read protocol JSON</a></div>
+  <div id="app">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <span class="brand-badge" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="5"/><path d="M8 10v4M6 12h4"/><circle cx="15.5" cy="11" r="1" fill="currentColor" stroke="none"/><circle cx="17.5" cy="13" r="1" fill="currentColor" stroke="none"/></svg>
+        </span>
+        <span class="topbar-title">Game Studio</span>
+      </div>
+      <div class="topbar-actions">
+        <span class="engine-pill" id="engine-status-pill" title="Host game input engine status">Checking host…</span>
+        <button class="icon-btn" id="theme-toggle" type="button" aria-label="Toggle light/dark theme" title="Toggle theme">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor" stroke="none"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <nav class="tab-bar" role="tablist" aria-label="Game Studio sections">
+      <button class="studio-tab active" data-tab="arcade" role="tab" aria-selected="true" type="button">Arcade</button>
+      <button class="studio-tab" data-tab="create" role="tab" aria-selected="false" type="button">AI Game Maker</button>
+      <button class="studio-tab" data-tab="publish" role="tab" aria-selected="false" type="button">Publish HTML</button>
+      <button class="studio-tab" data-tab="host" role="tab" aria-selected="false" type="button">Host &amp; Engines</button>
+    </nav>
+
+    <main class="studio-main">
+      <!-- TAB 1: ARCADE (Immediately Playable Games) -->
+      <section class="tab-pane active" id="pane-arcade" role="tabpanel">
+        <div class="hero-strip">
+          <div>
+            <p class="eyebrow">Play &amp; Sync</p>
+            <h1>Play Now or Sync to Your Phone</h1>
+            <p class="hero-sub">Launch playable games right here in your browser, or download them as offline <code>.aygame</code> packages in the AutoYou iOS and Android apps.</p>
+          </div>
+          <div class="hero-cta">
+            <button class="btn btn-primary" id="quick-play-btn" type="button">Play Neon Horizon</button>
+            <button class="btn btn-outline" id="goto-create-btn" type="button">Create a Game</button>
+          </div>
+        </div>
+
+        <div class="section-header">
+          <h2>Featured Built-in Games</h2>
+          <span class="section-meta">Instant play · Zero install</span>
+        </div>
+        <div class="game-grid" id="featured-grid">
+          <article class="game-card featured-neon">
+            <div class="game-banner banner-neon">
+              <span class="game-badge">Host + Web</span>
+              <span class="game-glyph" aria-hidden="true">⚡</span>
+            </div>
+            <div class="game-body">
+              <h3>Neon Horizon</h3>
+              <p>High-speed arcade runner built for touch, keyboard, and WebRTC phone controller input.</p>
+              <div class="card-actions">
+                <button class="btn btn-primary btn-sm" data-play-url="./play" data-play-title="Neon Horizon" type="button">Play Now</button>
+                <a class="btn btn-ghost btn-sm" href="./play" target="_blank" rel="noopener">Full Tab ↗</a>
+              </div>
+            </div>
+          </article>
+
+          <article class="game-card featured-viper">
+            <div class="game-banner banner-viper">
+              <span class="game-badge">Touch Ready</span>
+              <span class="game-glyph" aria-hidden="true">🐍</span>
+            </div>
+            <div class="game-body">
+              <h3>Jungle Viper</h3>
+              <p>Classic arcade snake reimagined with smooth touch swipes and crisp mobile controls.</p>
+              <div class="card-actions">
+                <button class="btn btn-primary btn-sm" data-play-url="./snake" data-play-title="Jungle Viper" aria-label="Launch Jungle Viper (Snake)" type="button">Play Now</button>
+                <a class="btn btn-ghost btn-sm" href="./snake" target="_blank" rel="noopener">Full Tab ↗</a>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <div class="section-header">
+          <h2>Offline &amp; Published Library</h2>
+          <button class="btn btn-ghost btn-sm" id="refresh-packages-btn" type="button">Refresh</button>
+        </div>
+        <div id="package-list" class="game-grid" aria-live="polite">
+          <div class="empty-card">Loading game library…</div>
+        </div>
       </section>
-      <section class="grid" aria-label="Game setup and protocol">
-        <article class="card wide"><div class="eyebrow">Game agent</div><h2>Design a game</h2><p>Describe the host game, input mapping, and engine you want to use. The agent can draft a plan and adapter code.</p><div id="chat-log" class="chat-log" role="log" aria-live="polite"></div><form id="chat-form"><label for="chat-input">Your game idea</label><textarea id="chat-input" required maxlength="8000" placeholder="A two-player platformer using touch, tilt, and A/B buttons…"></textarea><div class="actions"><button class="button" type="submit">Ask Game Studio</button></div></form></article>
-        <article class="card wide"><h2>Offline game library</h2><p>Complete game packages include artwork, music, code and SQLite data, up to 5 GiB. Open Agents → Games in the native iOS, Android, macOS or Windows app to download, play offline or publish a package back to this computer. Updates preserve each device's private progress.</p><div id="package-list" aria-live="polite"></div><h3>Publish a single-file game</h3><p>Choose a complete UTF-8 HTML file with a <code>&lt;head&gt;</code> element, up to 8 MiB. Larger games use a complete game package.</p><form id="publish-form"><label for="game-file">Game HTML</label><input id="game-file" type="file" accept=".html,text/html" required><div class="actions"><button class="button" type="submit">Publish game</button></div></form><p id="publish-status" role="status" aria-live="polite"></p></article>
-        <article class="card wide"><h2>Start a native session</h2><ol><li>For on-device play, publish the HTML game above, then reopen Games on this computer in the paired Android or iOS app.</li><li>For host play, enable Remote Desktop video, screen control, Game mode, and Share this computer's sound in Video &amp; Calls. Set up to four Game buttons with labels and engine names there.</li><li>Launch Neon Horizon on the captured monitor and make it full screen. It connects to the local game input stream so the native joystick, touch, tilt, and buttons drive the game.</li><li>On a connected iOS or Android device, choose Play game. The native session opens full screen with camera and microphone off.</li></ol></article>
-        <article class="card"><div class="eyebrow">Input contract</div><h2>Full state where it matters</h2><p>Touch frames contain the complete active pointer set, up to ten IDs, with coordinates from 0 to 1. Sensors send x/y/z in SI units. Joystick axes range from −1 to 1. Buttons send down and up transitions. <code>state_reset</code> with <code>all_sessions</code> clears every player's held state after backlog loss; <code>session_end</code> clears one player.</p></article>
-        <article class="card"><div class="eyebrow">Engine boundary</div><h2>One loopback subscriber</h2><p>An admin authenticated request to <code>/api/webrtc/game-input/connection</code> returns a process scoped stream credential. The local engine connects to <code>/api/webrtc/game-input/stream</code> over WebSocket. Browser games can use the host's mouse and keyboard directly; Unreal and other engines can parse the local JSON stream for player IDs, touch, motion, joystick, custom button names, mouse, and keyboard. The stream accepts one consumer and never exposes input directly to the public website.</p></article>
-        <article class="card wide"><h2>Media and control path</h2><div class="flow" aria-label="Host game to native phone and phone input to engine"><span>Host game</span><b>→</b><span>WebRTC video + audio</span><b>→</b><span>iOS / Android app</span><b>→</b><span>WebRTC control</span><b>→</b><span>Local engine</span></div><p>The Unreal plugin exposes frames and session resets through a Game Instance subsystem; its README covers installation and Blueprint binding. The Python adapter shows held state mapping for other engines. The game remains a normal host application, so no engine binary is uploaded to AutoYou.</p></article>
+
+      <!-- TAB 2: AI GAME MAKER -->
+      <section class="tab-pane" id="pane-create" role="tabpanel">
+        <div class="panel-card chat-card">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Game Studio AI</p>
+              <h2>Design &amp; Scaffold a Game</h2>
+              <p class="muted">Describe a playable HTML5 game or host-streamed controller experience. Game Studio can draft, scaffold, validate, and package it for mobile.</p>
+            </div>
+          </div>
+
+          <div class="idea-chips">
+            <button class="idea-chip" data-idea="Create a single-file offline HTML arcade space shooter with touch joystick controls, score counter, and an AutoYouGame.quit() button." type="button">Space Shooter (Touch)</button>
+            <button class="idea-chip" data-idea="Build a cozy offline puzzle game like 2048 optimized for mobile portrait WebView with undo and AutoYouGame.quit()." type="button">Mobile 2048 Puzzle</button>
+            <button class="idea-chip" data-idea="Design a two-player local neon pong game with touch paddles, sound effects, and AutoYouGame.quit()." type="button">2-Player Neon Pong</button>
+            <button class="idea-chip" data-idea="Draft an Unreal Engine Blueprint input mapping plan using AutoYou touch, tilt sensors, and A/B buttons." type="button">Unreal Controller Plan</button>
+          </div>
+
+          <div id="chat-log" class="chat-log" role="log" aria-live="polite">
+            <div class="chat-empty">Pick a starter idea above or type your own game concept below.</div>
+          </div>
+
+          <form id="chat-form" class="chat-form">
+            <label class="sr-only" for="chat-input">Your game idea</label>
+            <textarea id="chat-input" required maxlength="8000" rows="2" placeholder="Describe the game you want to build (gameplay, controls, style)…"></textarea>
+            <button class="btn btn-primary" type="submit">Ask AI</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- TAB 3: PUBLISH HTML GAME -->
+      <section class="tab-pane" id="pane-publish" role="tabpanel">
+        <div class="two-col">
+          <article class="panel-card">
+            <p class="eyebrow">Instant Mobile Sync</p>
+            <h2>Publish a Single-File HTML Game</h2>
+            <p class="muted">Upload a self-contained UTF-8 <code>.html</code> file (up to 8 MiB). It appears immediately in the Arcade above and in your paired iOS/Android app.</p>
+
+            <div class="otp-box hidden" id="publish-otp-box">
+              <p class="otp-label">Publishing requires your 6-digit authenticator code:</p>
+              <div class="otp-inline">
+                <input type="text" id="publish-otp-input" maxlength="6" placeholder="000000" inputmode="numeric" autocomplete="one-time-code">
+                <button class="btn btn-primary btn-sm" id="publish-otp-btn" type="button">Unlock</button>
+              </div>
+              <p class="otp-error hidden" id="publish-otp-error"></p>
+            </div>
+
+            <form id="publish-form" class="publish-form">
+              <label class="dropzone" for="game-file" id="dropzone">
+                <span class="drop-icon" aria-hidden="true">📦</span>
+                <strong id="file-label">Choose an HTML game file</strong>
+                <span class="muted">Must contain <code>&lt;head&gt;</code> and call <code>AutoYouGame.quit()</code></span>
+                <input id="game-file" type="file" accept=".html,text/html" required>
+              </label>
+
+              <div class="preflight-box hidden" id="preflight-box"></div>
+
+              <div class="form-actions">
+                <button class="btn btn-primary" type="submit" id="publish-submit-btn">Publish to Library</button>
+                <button class="btn btn-outline" type="button" id="download-starter-btn">Download Starter Template</button>
+              </div>
+            </form>
+            <p id="publish-status" class="status-banner" role="status" aria-live="polite"></p>
+          </article>
+
+          <article class="panel-card">
+            <p class="eyebrow">Checklist</p>
+            <h2>What Makes a Valid Game?</h2>
+            <ul class="check-list">
+              <li><b>Self-contained UTF-8 HTML</b> with a standard <code>&lt;head&gt;</code> element (up to 8 MiB; larger games use <code>.aygame</code> packages up to 5 GiB).</li>
+              <li><b>In-game Quit button:</b> Include a visible Quit (×) button that calls <code>AutoYouGame.quit()</code> so mobile players exit cleanly without overlaid system chrome.</li>
+              <li><b>Offline-first:</b> Keep styles, sprites, and scripts inline or inside the package so games play smoothly without internet access.</li>
+              <li><b>Touch + Keyboard friendly:</b> Support pointer/touch events alongside arrow keys or WASD.</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <!-- TAB 4: HOST STREAM & ENGINES -->
+      <section class="tab-pane" id="pane-host" role="tabpanel">
+        <div class="panel-card">
+          <p class="eyebrow">Desktop-to-Phone Streaming</p>
+          <h2>Stream Local PC / Mac Games Over WebRTC</h2>
+          <p class="muted">Run Unreal, Godot, Unity, or browser games on your computer while streaming low-latency video/audio to your phone and receiving touch, joystick, tilt, and custom button input.</p>
+
+          <div class="status-strip" id="host-status-strip">
+            <div class="status-tile">
+              <span class="tile-label">Game Mode</span>
+              <strong id="host-mode-val">Checking…</strong>
+            </div>
+            <div class="status-tile">
+              <span class="tile-label">Local Engine</span>
+              <strong id="host-engine-val">Checking…</strong>
+            </div>
+            <div class="status-tile">
+              <span class="tile-label">Protocol</span>
+              <strong>autoyou_game_v1</strong>
+            </div>
+          </div>
+
+          <div class="flow-steps" aria-label="Streaming pipeline">
+            <span>1. Host Game</span><b>→</b><span>2. WebRTC Video + Audio</span><b>→</b><span>3. iOS / Android App</span><b>→</b><span>4. Touch / Tilt / Buttons</span><b>→</b><span>5. Local Engine</span>
+          </div>
+
+          <div class="actions-row">
+            <a class="btn btn-primary btn-sm" href="./api/game/unreal-plugin">Download Unreal Plugin (.zip)</a>
+            <a class="btn btn-outline btn-sm" href="./assets/game_input_client.py" download>Download Python Adapter (.py)</a>
+            <button class="btn btn-ghost btn-sm" id="toggle-protocol-btn" type="button">Inspect Protocol JSON</button>
+          </div>
+          <pre class="protocol-box hidden" id="protocol-json"></pre>
+        </div>
+
+        <div class="two-col">
+          <article class="panel-card">
+            <h3>How to Start a Host Session</h3>
+            <ol class="step-list">
+              <li>Open <b>Admin → Video &amp; Calls</b> and enable Remote Desktop video, screen control, Game mode, and system audio sharing.</li>
+              <li>Optionally configure up to four custom Game buttons (label + engine name).</li>
+              <li>Launch <b>Neon Horizon</b> (or your Unreal/Python game) fullscreen on the captured monitor.</li>
+              <li>On your paired iOS or Android device, tap <b>Play Game</b> for fullscreen low-latency play.</li>
+            </ol>
+          </article>
+
+          <article class="panel-card">
+            <h3>Input &amp; Engine Contract</h3>
+            <p class="muted">Touch frames carry up to 10 normalized pointers in <code>[0, 1]</code>, accelerometer/gyroscope in SI units, analog axes in <code>[-1, 1]</code>, and digital button down/up events. Local engines authenticate once via <code>/api/webrtc/game-input/connection</code> and stream from <code>/api/webrtc/game-input/stream</code>.</p>
+          </article>
+        </div>
       </section>
     </main>
-    <footer>Game Studio is an opt in agent website. Host game controls require an active video session and a valid control lease.</footer>
   </div>
-  <script>
-    const form = document.querySelector('#chat-form');
-    const log = document.querySelector('#chat-log');
-    const publishForm = document.querySelector('#publish-form');
-    const publishStatus = document.querySelector('#publish-status');
-    let sessionId = '';
-    async function refreshPackages() {
-      try {
-        const response = await fetch('./api/game/packages', {credentials: 'same-origin'});
-        if (!response.ok) return;
-        const value = await response.json(), list = document.querySelector('#package-list'); list.replaceChildren();
-        for (const game of value.games || []) {
-          const row = document.createElement('p'), link = document.createElement('a');
-          link.textContent = `${game.title} · Version ${game.version} ↓`;
-          link.href = `./api/game/packages/${encodeURIComponent(game.id)}/download`; link.setAttribute('download', `${game.id}.aygame`);
-          row.append(link); list.append(row);
-        }
-      } catch (_) {}
-    }
-    refreshPackages();
-    function append(role, message) {
-      const line = document.createElement('p');
-      line.className = role;
-      line.textContent = `${role === 'agent' ? 'Game Studio' : 'You'}: ${message}`;
-      log.append(line);
-      log.scrollTop = log.scrollHeight;
-    }
-    form.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      const input = document.querySelector('#chat-input');
-      const message = input.value.trim();
-      if (!message) return;
-      input.value = '';
-      const button = form.querySelector('button');
-      button.disabled = true;
-      append('user', message);
-      try {
-        const response = await fetch('./api/chat', {
-          method: 'POST', headers: {'Content-Type': 'application/json'}, credentials: 'same-origin',
-          body: JSON.stringify({message: `Go to autoyou_games_agent. ${message}`, ...(sessionId ? {session_id: sessionId} : {})})
-        });
-        const payload = await response.json();
-        if (!response.ok || payload.success === false) throw new Error(payload.error || 'The agent could not respond.');
-        sessionId = payload.session_id || sessionId;
-        append('agent', payload.response || payload.message || '(no response)');
-      } catch (error) { append('agent', `Error: ${error.message}`); }
-      finally { button.disabled = false; input.focus(); }
-    });
-    publishForm.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      const file = document.querySelector('#game-file').files[0];
-      if (!file) return;
-      const button = publishForm.querySelector('button');
-      button.disabled = true;
-      publishStatus.textContent = 'Publishing game...';
-      try {
-        const id = file.name.replace(/\.html$/i, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-        if (!id || id.length > 64) throw new Error('Choose a short HTML filename.');
-        if (file.size > 8 * 1024 * 1024 - 1024) throw new Error('Move large assets into a complete game package.');
-        const response = await fetch(`./api/game/publish/${id}`, {
-          method: 'POST', headers: {'Content-Type': 'text/html; charset=utf-8'},
-          credentials: 'same-origin', body: file
-        });
-        const payload = await response.json();
-        if (!response.ok || !payload.success) throw new Error(payload.error || 'Could not publish game.');
-        publishStatus.textContent = `${id} is ready. Reopen Games on this computer in the paired app.`;
-        refreshPackages();
-      } catch (error) { publishStatus.textContent = error.message; }
-      finally { button.disabled = false; }
-    });
-  </script>
+
+  <!-- In-Page Arcade Player Modal -->
+  <div class="player-modal hidden" id="player-modal" role="dialog" aria-modal="true" aria-labelledby="player-title">
+    <div class="player-bar">
+      <div class="player-title-wrap">
+        <span class="player-dot"></span>
+        <strong id="player-title">Playing Game</strong>
+      </div>
+      <div class="player-actions">
+        <button class="btn btn-ghost btn-sm" id="player-fullscreen-btn" type="button">Fullscreen</button>
+        <button class="btn btn-danger-soft btn-sm" id="player-close-btn" type="button">✕ Exit Game</button>
+      </div>
+    </div>
+    <iframe
+      id="player-iframe"
+      class="player-iframe"
+      title="Playable Game"
+      allow="fullscreen; gamepad"
+    ></iframe>
+  </div>
+
+  <script src="./assets/studio.js"></script>
 </body>
 </html>

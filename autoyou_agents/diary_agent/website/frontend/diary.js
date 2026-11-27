@@ -1,5 +1,5 @@
 /**
- * AutoYou Diary — Day One-parity journal web application.
+ * AutoYou Diary — Responsive journal web application.
  * Synchronizes seamlessly with AutoYou native Diary agents on iOS and Android.
  */
 import { applyMarkdownCommand, escapeHtml, renderMarkdown, toggleChecklistLine } from "./markdown.js";
@@ -382,7 +382,7 @@ function getFilteredEntries() {
       }
     }
 
-    // Day One Filter Sheet toggles
+    // Filter Sheet toggles
     if (f.favorite && !row.favorite) return false;
     if (f.checklist && !row.has_checklist) return false;
     if (f.tagged && !(row.tags && row.tags.length)) return false;
@@ -394,7 +394,7 @@ function getFilteredEntries() {
     if (f.tag && !(row.tags || []).some((t) => t.toLowerCase() === f.tag.toLowerCase())) return false;
     if (f.mood && (row.mood || "").toLowerCase() !== f.mood.toLowerCase()) return false;
 
-    // Text search across all Day One fields
+    // Text search across all journal entry fields
     if (q) {
       const haystack = [
         row.date,

@@ -186,6 +186,7 @@ class WebRTCManager:
         self.silent_recorders: Dict[str, Any] = {}
         self.audio_only_call_recorders: Dict[str, Any] = {}
         self.rewarded_ad_completion_by_session: Dict[str, Dict[str, Any]] = {}
+        self.rewarded_ad_status_by_session: Dict[str, Dict[str, Any]] = {}
         # Prevent a repeated browser/tool request from presenting a second
         # native ad while the first rewarded-ad control is still active.
         self.rewarded_ad_control_leases_by_session: Dict[str, Dict[str, Any]] = {}
@@ -2631,6 +2632,65 @@ class WebRTCManager:
             }
         return None
 
+    def _record_rewarded_ad_status(
+        self,
+        session_id: str,
+        *,
+        control_id: str,
+        state: str,
+        reason: str = "",
+        platform: str = "",
+        timestamp_ms: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        normalized_state = str(state or "").strip().lower()
+        if normalized_state not in {"sent", "opening", "opened", "failed", "dismissed", "completed"}:
+            normalized_state = "sent"
+        entry = {
+            "event": "rewarded_ad_status",
+            "session_id": str(session_id or ""),
+            "control_id": str(control_id or "").strip()[:128],
+            "state": normalized_state,
+            "reason": str(reason or "").strip()[:240],
+            "platform": str(platform or "").strip()[:32],
+            "timestamp_ms": int(timestamp_ms if timestamp_ms is not None else (_runtime.time.time() * 1000)),
+        }
+        alias_ids = self._ordered_related_session_ids(str(session_id or "")) if session_id else []
+        if not alias_ids and session_id:
+            alias_ids = [str(session_id)]
+        for alias_id in alias_ids:
+            self.rewarded_ad_status_by_session[alias_id] = dict(entry, session_id=alias_id)
+        return entry
+
+    def latest_rewarded_ad_status(
+        self,
+        session_id: str = "",
+        owner_key: str = "",
+        control_id: str = "",
+    ) -> Optional[Dict[str, Any]]:
+        """Return the latest sanitized native rewarded-ad lifecycle status."""
+        requested_owner_key = str(owner_key or "").strip()
+        requested_control_id = str(control_id or "").strip()[:128]
+        candidates = self._ordered_related_session_ids(str(session_id or "")) if session_id else list(self.rewarded_ad_status_by_session.keys())
+        for candidate_id in candidates:
+            entry = self.rewarded_ad_status_by_session.get(candidate_id)
+            if not isinstance(entry, dict):
+                continue
+            if requested_owner_key:
+                resolved_owner_key = self._resolve_webrtc_owner_key(candidate_id)
+                if resolved_owner_key and resolved_owner_key != requested_owner_key:
+                    continue
+            if requested_control_id and str(entry.get("control_id") or "") != requested_control_id:
+                continue
+            return {
+                "event": "rewarded_ad_status",
+                "control_id": str(entry.get("control_id") or "")[:128],
+                "state": str(entry.get("state") or "sent")[:32],
+                "reason": str(entry.get("reason") or "")[:240],
+                "platform": str(entry.get("platform") or "")[:32],
+                "timestamp_ms": int(entry.get("timestamp_ms") or 0),
+            }
+        return None
+
     def _purge_audio_manager_aliases(self, audio_manager: Any, *, close_manager: bool = False) -> Set[str]:
         alias_ids: Set[str] = set()
         if audio_manager is None:
@@ -2647,6 +2707,7 @@ class WebRTCManager:
             self.voice_call_client_active_by_session.pop(alias_id, None)
             self.wuift_hold_by_session.pop(alias_id, None)
             self.rewarded_ad_completion_by_session.pop(alias_id, None)
+            self.rewarded_ad_status_by_session.pop(alias_id, None)
 
         if close_manager and hasattr(audio_manager, "close"):
             try:
@@ -5390,6 +5451,12 @@ class WebRTCManager:
           "resolution": resolution,
         }
 
+      self._record_rewarded_ad_status(
+        str(target_session_id),
+        control_id=control_payload["control_id"],
+        state="sent",
+      )
+
       return True, {
         "success": True,
         "triggered_count": 1,
@@ -7847,6 +7914,10 @@ class WebRTCManager:
             cleanup_id: self.rewarded_ad_completion_by_session.get(cleanup_id, missing)
             for cleanup_id in cleanup_ids
         }
+        expected_rewarded_ad_status = {
+            cleanup_id: self.rewarded_ad_status_by_session.get(cleanup_id, missing)
+            for cleanup_id in cleanup_ids
+        }
         expected_rewarded_ad_control_lease = {
             cleanup_id: self.rewarded_ad_control_leases_by_session.get(cleanup_id, missing)
             for cleanup_id in cleanup_ids
@@ -8120,6 +8191,11 @@ class WebRTCManager:
                 self.rewarded_ad_completion_by_session,
                 cleanup_id,
                 expected_rewarded_ad_completion.get(cleanup_id, missing),
+            )
+            pop_if_current(
+                self.rewarded_ad_status_by_session,
+                cleanup_id,
+                expected_rewarded_ad_status.get(cleanup_id, missing),
             )
             pop_if_current(
                 self.rewarded_ad_control_leases_by_session,
@@ -12112,6 +12188,38 @@ class WebRTCManager:
             if not active:
                 await self._release_remote_desktop_control(str(session_id or ""))
             return
+        # ── rewarded_ad_status: truthful presentation lifecycle from iOS/Android
+        #    so the remote Ads Watching website never claims "Ad opened." when
+        #    native playback failed (e.g. audio session, no inventory, opt-out).
+        if event_name == "rewarded_ad_status":
+            raw_state = str(payload.get("state") or payload.get("status") or "").strip().lower()
+            if raw_state in {"opening", "opened", "failed", "dismissed", "completed"}:
+                control_id = str(payload.get("control_id") or "").strip()[:128]
+                reason = str(payload.get("reason") or "").strip()[:240]
+                platform = str(payload.get("platform") or "unknown").strip()[:32] or "unknown"
+                try:
+                    ts_ms = int(float(payload.get("timestamp_ms") or (_runtime.time.time() * 1000)))
+                except Exception:
+                    ts_ms = int(_runtime.time.time() * 1000)
+                self._record_rewarded_ad_status(
+                    str(session_id or ""),
+                    control_id=control_id,
+                    state=raw_state,
+                    reason=reason,
+                    platform=platform,
+                    timestamp_ms=ts_ms,
+                )
+                if raw_state in {"failed", "dismissed", "completed"}:
+                    self._clear_rewarded_ad_control_lease(str(session_id or ""), control_id)
+                _runtime.LOGGER.info(
+                    "Received rewarded ad status for %s: platform=%s control_id=%s state=%s reason=%s",
+                    session_id,
+                    platform,
+                    control_id,
+                    raw_state,
+                    reason,
+                )
+            return
         # ── rewarded_ad_completed: native iOS/Android SDK reward callback has
         #    fired and the AdMob full-screen UI has been dismissed. This is a
         #    local edge proof only.
@@ -12165,6 +12273,13 @@ class WebRTCManager:
                 return
             for alias_id in alias_ids:
                 self.rewarded_ad_completion_by_session[alias_id] = dict(completion, session_id=alias_id)
+            self._record_rewarded_ad_status(
+                str(session_id or ""),
+                control_id=control_id,
+                state="completed",
+                platform=platform,
+                timestamp_ms=timestamp_ms,
+            )
             self._clear_rewarded_ad_control_lease(str(session_id or ""), control_id)
             # Durable local pending-credit tally for the Earnings Agent site.
             # Local readback only: no ledger effect and no cloud write.

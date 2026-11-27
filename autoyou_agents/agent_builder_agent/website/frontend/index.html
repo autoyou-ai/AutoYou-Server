@@ -8,14 +8,16 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Agent Builder</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
+<title>Agent Studio · AutoYou</title>
 <script>
   (function () {
     try {
       var t = localStorage.getItem('autoyou.ui.theme');
-      if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
-    } catch (_) {}
+      document.documentElement.dataset.theme = (t === 'light' || t === 'dark') ? t : 'dark';
+    } catch (_) {
+      document.documentElement.dataset.theme = 'dark';
+    }
   })();
 </script>
 <link rel="stylesheet" href="./assets/styles.css">
@@ -27,65 +29,125 @@
 <div id="app">
   <header class="topbar">
     <div class="topbar-brand">
-      <span class="topbar-icon">⚙</span>
-      <span class="topbar-title" id="page-title">Agent Builder</span>
+      <span class="brand-badge" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M12 3l2.2 4.5L19 9.7l-4.8 2.2L12 16.5l-2.2-4.6L5 9.7l4.8-2.2L12 3z"/><path d="M19 15l1 2 2 1-2 1-1 2-1-2-2-1 2-1 1-2z"/></svg>
+      </span>
+      <span class="topbar-title" id="page-title">Agent Studio</span>
     </div>
     <div class="topbar-actions">
       <span class="status-chip" id="auth-chip"></span>
-      <button class="topbar-link theme-toggle" id="theme-toggle" aria-label="Toggle light/dark theme" title="Toggle theme">◑</button>
-      <a class="topbar-link" data-agent-link="tasks_agent" href="/agent/tasks_agent/">Tasks</a>
-      <a class="topbar-link" data-agent-link="reminders_agent" href="/agent/reminders_agent/">Notify</a>
-      <a class="topbar-link" data-agent-link="website_agent" href="/agent/website_agent/">Website Builder</a>
+      <button class="icon-btn" id="theme-toggle" type="button" aria-label="Toggle light/dark theme" title="Toggle theme">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor" stroke="none"/></svg>
+      </button>
+      <nav class="topbar-nav" aria-label="Related agents">
+        <a class="topbar-link" data-agent-link="website_agent" href="/agent/website_agent/">Website Studio</a>
+        <a class="topbar-link" data-agent-link="tasks_agent" href="/agent/tasks_agent/">Tasks</a>
+        <a class="topbar-link" data-agent-link="reminders_agent" href="/agent/reminders_agent/">Notify</a>
+      </nav>
     </div>
   </header>
 
   <div id="login-gate" class="login-gate hidden">
     <div class="login-card">
+      <div class="login-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+      </div>
       <h2>Authentication Required</h2>
-      <p class="login-hint">Enter your 6-digit authenticator code to access Agent Builder.</p>
+      <p class="login-hint">Enter your 6-digit authenticator code to access Agent Studio.</p>
       <div class="otp-row">
         <input type="text" id="otp-input" class="otp-input" maxlength="6" placeholder="000000" autocomplete="one-time-code" inputmode="numeric">
-        <button class="btn btn-primary" id="otp-submit">Verify</button>
+        <button class="btn btn-primary" id="otp-submit" type="button">Verify</button>
       </div>
       <p class="login-error hidden" id="otp-error"></p>
     </div>
   </div>
 
+  <!-- Mobile View Switcher -->
+  <div class="mobile-tabs hidden" id="mobile-tabs" role="tablist" aria-label="Studio sections">
+    <button class="mobile-tab active" data-mobile-pane="build" role="tab" aria-selected="true" type="button">Create &amp; Chat</button>
+    <button class="mobile-tab" data-mobile-pane="agents" role="tab" aria-selected="false" type="button">Agents (<span id="mobile-agents-count">0</span>)</button>
+  </div>
+
   <div id="main-layout" class="main-layout hidden" inert>
-    <aside class="sidebar">
-      <div class="sidebar-section">
+    <aside class="sidebar" id="pane-agents">
+      <div class="sidebar-top">
         <div class="sidebar-heading">
-          <span>Agents</span>
-          <button class="btn btn-sm btn-ghost" id="refresh-agents-btn" title="Refresh">↻</button>
+          <span>Your Agents</span>
+          <button class="icon-btn icon-btn-sm" id="refresh-agents-btn" type="button" title="Refresh agents" aria-label="Refresh agents">
+            <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6"/></svg>
+          </button>
         </div>
-        <div id="agent-list" class="agent-list">
-          <div class="placeholder-text">Loading…</div>
+        <input type="search" id="agent-search" class="search-input" placeholder="Search agents…" aria-label="Search agents">
+        <div class="filter-pills" role="group" aria-label="Filter agents">
+          <button class="filter-pill active" data-filter="all" type="button">All</button>
+          <button class="filter-pill" data-filter="live" type="button">Live</button>
+          <button class="filter-pill" data-filter="available" type="button">Available</button>
+          <button class="filter-pill" data-filter="draft" type="button">Drafts</button>
         </div>
       </div>
-      <div class="sidebar-section">
-        <div class="sidebar-heading">Draft Actions</div>
-        <div id="draft-actions" class="draft-actions hidden">
-          <div class="draft-name-row">
-            <span class="draft-label" id="selected-agent-name">-</span>
-          </div>
-          <button class="btn btn-success btn-sm" id="publish-btn" disabled>Publish Draft → Live</button>
-          <button class="btn btn-danger btn-sm" id="discard-btn" disabled>Discard Draft</button>
-          <a class="btn btn-outline btn-sm hidden" id="goto-btn" target="_blank">Open UI ↗</a>
-        </div>
-        <div id="no-selection-hint" class="placeholder-text">Select an agent to see actions.</div>
+
+      <div id="agent-list" class="agent-list">
+        <div class="placeholder-text">Loading agents…</div>
       </div>
     </aside>
 
-    <main class="chat-area">
+    <main class="chat-area" id="pane-build">
+      <!-- Selected Agent Inspector Banner -->
+      <section class="inspector-bar hidden" id="draft-actions" aria-label="Selected agent actions">
+        <div class="inspector-info">
+          <div class="inspector-title-row">
+            <strong id="selected-agent-title">Agent</strong>
+            <span class="agent-badge-tag" id="selected-agent-badge">live</span>
+            <code class="inspector-id" id="selected-agent-name">-</code>
+          </div>
+          <p class="inspector-desc" id="selected-agent-desc"></p>
+        </div>
+        <div class="inspector-actions">
+          <button class="btn btn-primary btn-sm" id="publish-btn" type="button" disabled>Enable / Publish</button>
+          <button class="btn btn-outline btn-sm" id="customize-btn" type="button">Edit with AI</button>
+          <a class="btn btn-outline btn-sm hidden" id="goto-btn" target="_blank" rel="noopener">Open UI ↗</a>
+          <a class="btn btn-ghost btn-sm hidden" id="website-studio-btn">Website Studio</a>
+          <button class="btn btn-danger-soft btn-sm hidden" id="discard-btn" type="button" disabled>Discard Draft</button>
+        </div>
+      </section>
+      <div id="no-selection-hint" class="guide-strip">
+        <span class="guide-step"><b>1</b> Describe your agent</span>
+        <span class="guide-arrow">→</span>
+        <span class="guide-step"><b>2</b> AI builds tools &amp; prompt</span>
+        <span class="guide-arrow">→</span>
+        <span class="guide-step"><b>3</b> Enable live</span>
+        <span class="guide-arrow">→</span>
+        <span class="guide-step"><b>4</b> Design its website</span>
+      </div>
+
       <div id="chat-messages" class="chat-messages">
         <div class="chat-welcome">
-          <p>Chat with <strong>Agent Builder</strong> to scaffold a new agent, edit its instructions, or build its frontend UI.</p>
-          <p class="muted">Try: <em>"Build a weather agent that looks up forecasts"</em></p>
+          <h2>Build a New AutoYou Agent</h2>
+          <p>Describe what you want an agent to automate or manage. Agent Studio scaffolds its code, tools, and prompt — or helps you customize any existing agent.</p>
+          <div class="blueprint-grid">
+            <button class="blueprint-card" data-prompt="Build a weather_agent that checks current weather and 5-day forecasts for saved cities and supports morning briefings." type="button">
+              <span class="bp-title">Weather &amp; Forecast</span>
+              <span class="bp-desc">Saved cities, local forecasts, and alerts</span>
+            </button>
+            <button class="blueprint-card" data-prompt="Build an expense_tracker_agent that logs daily expenses with categories, totals monthly spending, and exports CSV." type="button">
+              <span class="bp-title">Expense Tracker</span>
+              <span class="bp-desc">Log purchases, budgets, and monthly summaries</span>
+            </button>
+            <button class="blueprint-card" data-prompt="Build a habit_coach_agent that tracks daily habits, streaks, and motivational check-ins with a clean web dashboard." type="button">
+              <span class="bp-title">Habit &amp; Streak Coach</span>
+              <span class="bp-desc">Daily check-ins, streaks, and progress</span>
+            </button>
+            <button class="blueprint-card" data-prompt="Build a webhook_agent that triggers configured local/home automation webhooks with safety validation and history logs." type="button">
+              <span class="bp-title">Home &amp; Webhook Runner</span>
+              <span class="bp-desc">Trigger custom automations with logs</span>
+            </button>
+          </div>
         </div>
       </div>
+
       <div class="chat-input-bar">
-        <textarea id="chat-input" class="chat-input" placeholder="Describe the agent you want to build…" rows="2"></textarea>
-        <button class="btn btn-primary" id="send-btn">Send</button>
+        <textarea id="chat-input" class="chat-input" placeholder="Describe an agent to build or modify…" rows="2"></textarea>
+        <button class="btn btn-primary" id="send-btn" type="button">Send</button>
       </div>
     </main>
   </div>

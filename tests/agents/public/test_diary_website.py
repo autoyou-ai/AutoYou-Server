@@ -163,7 +163,7 @@ def _synthetic_block(entry_id: str, date: str, title: str, body: str, time_label
     )
 
 
-def test_dayone_rich_metadata_roundtrip_and_legacy_mobile_preservation(app_mod, monkeypatch):
+def test_diary_rich_metadata_roundtrip_and_legacy_mobile_preservation(app_mod, monkeypatch):
     monkeypatch.setattr(app_mod, "_check_auth", lambda request: True)
     client = TestClient(app_mod.app)
     entry_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
@@ -210,7 +210,7 @@ def test_dayone_rich_metadata_roundtrip_and_legacy_mobile_preservation(app_mod, 
     assert saved.status_code == 200, saved.text
     rev1 = saved.json()["revision"]
 
-    # Catalog & single read expose rich Day One metadata.
+    # Catalog & single read expose rich journal metadata.
     catalog_row = client.get("/api/diary/entries").json()["entries"][0]
     assert catalog_row["pinned"] is True
     assert catalog_row["mood"] == "Grateful"
@@ -280,7 +280,7 @@ def test_dayone_rich_metadata_roundtrip_and_legacy_mobile_preservation(app_mod, 
     assert client.get(f"/api/diary/entries/{entry_id}/media/photo-1").status_code == 200
 
 
-def test_dayone_workspace_journals_templates_preferences_streaks_and_export(app_mod, monkeypatch):
+def test_diary_workspace_journals_templates_preferences_streaks_and_export(app_mod, monkeypatch):
     import datetime as dt
 
     monkeypatch.setattr(app_mod, "_check_auth", lambda request: True)
@@ -351,8 +351,8 @@ def test_dayone_workspace_journals_templates_preferences_streaks_and_export(app_
     assert pref_res.status_code == 200
     assert client.get("/api/diary/preferences").json()["preferences"]["temp_unit"] == "C"
 
-    # Exports in Day One JSON, Markdown, and Plain Text formats.
-    exp_json = client.get("/api/diary/export?format=dayone_json")
+    # Exports in structured JSON, Markdown, and Plain Text formats.
+    exp_json = client.get("/api/diary/export?format=json")
     assert exp_json.status_code == 200 and exp_json.json()["metadata"]["version"] == "1.0"
     assert len(exp_json.json()["entries"]) == 3
     exp_md = client.get("/api/diary/export?format=markdown&journal=Career")
@@ -366,7 +366,7 @@ def test_dayone_workspace_journals_templates_preferences_streaks_and_export(app_
     assert client.get("/api/diary/entries/bbbbbbbb-bbbb-4bbb-8bbb-000000000001").json()["entry"]["journal"] == ""
 
 
-def test_dayone_write_endpoints_enforce_role_and_auth_boundaries(app_mod, monkeypatch):
+def test_diary_write_endpoints_enforce_role_and_auth_boundaries(app_mod, monkeypatch):
     monkeypatch.setattr(app_mod, "_check_auth", lambda request: False)
     client = TestClient(app_mod.app)
     for method, path in (
@@ -386,4 +386,21 @@ def test_dayone_write_endpoints_enforce_role_and_auth_boundaries(app_mod, monkey
     assert viewer.post("/api/diary/templates", json={"name": "Nope"}).status_code == 403
     assert viewer.put("/api/diary/preferences", json={"temp_unit": "C"}).status_code == 403
     assert viewer.get("/api/diary/workspace").json()["permissions"]["can_edit"] is False
+
+
+def test_diary_agent_contains_no_competitor_brand_references():
+    import re
+    from pathlib import Path
+
+    diary_root = Path(__file__).resolve().parents[3] / "autoyou_agents" / "diary_agent"
+    pattern = re.compile(r"\b" + "day" + r"[ _-]?" + "one" + r"\b", re.IGNORECASE)
+    offenders = []
+    for path in diary_root.rglob("*"):
+        if not path.is_file() or path.suffix.lower() not in {".py", ".js", ".css", ".html", ".json", ".md"}:
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        if pattern.search(text):
+            offenders.append(str(path.relative_to(diary_root)))
+    assert offenders == [], f"Unexpected competitor product label reference in diary_agent: {offenders}"
+
 

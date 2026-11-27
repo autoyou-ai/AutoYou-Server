@@ -9,20 +9,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
-<title>Remote Desktop - AutoYou</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<title>Remote Desktop · AutoYou</title>
 <script>
   (function () {
     try {
       var t = localStorage.getItem('autoyou.ui.theme');
-      if (t === 'light' || t === 'dark') {
-        document.documentElement.dataset.theme = t;
-      } else {
-        document.documentElement.dataset.theme = 'dark'; // Premium dark mode by default
-      }
-    } catch (_) {}
+      document.documentElement.dataset.theme = (t === 'light' || t === 'dark') ? t : 'dark';
+    } catch (_) {
+      document.documentElement.dataset.theme = 'dark';
+    }
   })();
 </script>
 <link rel="stylesheet" href="./assets/index.css">
@@ -31,176 +26,220 @@
 <script>
   var __BOOTSTRAP__ = __BOOTSTRAP_JSON__ || {};
 </script>
-<div id="app" class="glass-bg">
+<div id="app">
   <header class="topbar">
     <div class="topbar-brand">
-      <button class="toggle-sidebar-btn" id="toggle-sidebar-btn" aria-label="Toggle navigation sidebar">☰</button>
-      <span class="topbar-icon">🖥️</span>
-      <span class="topbar-title">Remote Desktop Caster</span>
+      <button class="icon-btn" id="toggle-sidebar-btn" type="button" aria-label="Toggle controls sidebar" title="Controls & Display Settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+      <span class="brand-badge" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+      </span>
+      <span class="topbar-title">Remote Desktop</span>
     </div>
+
     <div class="topbar-actions">
-      <span class="status-chip" id="auth-chip">Checking auth...</span>
-      <button class="topbar-link theme-toggle" id="theme-toggle" aria-label="Toggle light/dark theme" title="Toggle theme">◑</button>
-      <a class="topbar-link" data-agent-link="skills_agent" href="/agent/skills_agent/">Skills</a>
-      <a class="topbar-link" data-agent-link="tasks_agent" href="/agent/tasks_agent/">Tasks</a>
-      <a class="topbar-link" data-agent-link="reminders_agent" href="/agent/reminders_agent/">Notify</a>
-      <a class="topbar-link" data-agent-link="agent_builder_agent" href="/agent/agent_builder_agent/">Agent Builder</a>
-      <button class="topbar-link btn-logout hidden" id="logout-btn">Logout</button>
+      <span class="status-chip" id="auth-chip">Checking…</span>
+      <button class="icon-btn" id="theme-toggle" type="button" aria-label="Toggle light/dark theme" title="Toggle theme">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor" stroke="none"/></svg>
+      </button>
+      <nav class="topbar-nav" aria-label="Related agents">
+        <a class="topbar-link" data-agent-link="tasks_agent" href="/agent/tasks_agent/">Tasks</a>
+        <a class="topbar-link" data-agent-link="reminders_agent" href="/agent/reminders_agent/">Notify</a>
+        <a class="topbar-link" data-agent-link="agent_builder_agent" href="/agent/agent_builder_agent/">Agents</a>
+        <a class="topbar-link" data-agent-link="website_agent" href="/agent/website_agent/">Websites</a>
+      </nav>
+      <button class="btn-pill btn-danger-soft hidden" id="logout-btn" type="button">Logout</button>
     </div>
   </header>
 
   <!-- OTP Authentication Gate -->
   <div id="login-gate" class="login-gate hidden">
-    <div class="login-card glass-panel">
+    <div class="login-card">
       <div class="login-header">
-        <span class="login-icon">🔒</span>
-        <h2>OTP Verification Required</h2>
+        <div class="login-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+        </div>
+        <h2>Verify to Connect</h2>
+        <p class="login-hint">Enter your 6-digit authenticator code to view and control this desktop.</p>
       </div>
-      <p class="login-hint">Enter your 6-digit authenticator code configured in Settings to access Remote Desktop.</p>
       <div class="otp-row">
         <input type="text" id="otp-input" class="otp-input" maxlength="6" placeholder="000000" autocomplete="one-time-code" inputmode="numeric">
-        <button class="btn btn-primary" id="otp-submit">Verify Code</button>
+        <button class="btn btn-primary" id="otp-submit" type="button">Verify</button>
       </div>
       <p class="login-error hidden" id="otp-error"></p>
     </div>
   </div>
 
-  <!-- Main Application Dashboard -->
+  <!-- Main Workspace -->
   <div id="main-layout" class="main-layout hidden">
     <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
-    <!-- Left Sidebar for Configuration & Options -->
-    <aside class="sidebar glass-panel" id="sidebar">
-      <div class="sidebar-section">
-        <h3>Casting Mode</h3>
-        <div class="tab-buttons">
-          <button class="tab-btn active" id="tab-view-desktop" data-mode="view_desktop">
-            <span class="btn-icon">👁️</span> View Desktop
-          </button>
-          <button class="tab-btn" id="tab-control-desktop" data-mode="control_desktop">
-            <span class="btn-icon">🕹️</span> Control Desktop
-          </button>
-          <button class="tab-btn" id="tab-view-app" data-mode="view_app">
-            <span class="btn-icon">📦</span> View Application
-          </button>
-          <button class="tab-btn" id="tab-view-mobile-video" data-mode="view_mobile_video">
-            <span class="btn-icon">📹</span> Mobile Video
-          </button>
-        </div>
-      </div>
 
-      <!-- Displays Selection Panel -->
-      <div class="sidebar-section" id="monitor-selection-panel">
-        <h3>Select Monitor</h3>
-        <div class="select-wrapper">
-          <select id="monitor-select">
-            <option value="0">Loading monitors...</option>
-          </select>
-        </div>
-      </div>
-
-      <!-- Applications Selection Panel -->
-      <div class="sidebar-section hidden" id="app-selection-panel">
-        <h3>Select Application Window</h3>
-        <div class="select-wrapper">
-          <select id="app-select">
-            <option value="">Loading applications...</option>
-          </select>
-        </div>
-        <button class="btn btn-outline btn-sm btn-refresh" id="refresh-apps-btn">
-          🔄 Refresh Apps List
+    <aside class="sidebar" id="sidebar" aria-label="Stream & display settings">
+      <div class="sidebar-mobile-head">
+        <span>Display &amp; Stream</span>
+        <button class="icon-btn" id="close-sidebar-btn" type="button" aria-label="Close settings">
+          <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
         </button>
       </div>
 
-      <!-- Settings and Compression Parameters -->
-      <div class="sidebar-section">
-        <h3>Stream Settings</h3>
-        
+      <section class="sidebar-section">
+        <h3>Mode</h3>
+        <div class="tab-buttons">
+          <button class="tab-btn active" id="tab-view-desktop" data-mode="view_desktop" type="button">
+            <span class="tab-dot"></span><span>View Desktop</span>
+          </button>
+          <button class="tab-btn" id="tab-control-desktop" data-mode="control_desktop" type="button">
+            <span class="tab-dot"></span><span>Control Desktop</span>
+          </button>
+          <button class="tab-btn" id="tab-view-app" data-mode="view_app" type="button">
+            <span class="tab-dot"></span><span>App Window</span>
+          </button>
+          <button class="tab-btn" id="tab-view-mobile-video" data-mode="view_mobile_video" type="button">
+            <span class="tab-dot"></span><span>Mobile Camera</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="sidebar-section" id="monitor-selection-panel">
+        <div class="section-head-row">
+          <h3>Display</h3>
+          <button class="btn-inline" id="wake-display-sidebar-btn" type="button" title="Wake sleeping Mac display">Wake</button>
+        </div>
+        <div class="select-wrapper">
+          <select id="monitor-select">
+            <option value="0">Loading displays…</option>
+          </select>
+        </div>
+      </section>
+
+      <section class="sidebar-section hidden" id="app-selection-panel">
+        <div class="section-head-row">
+          <h3>Application Window</h3>
+          <button class="btn-inline" id="refresh-apps-btn" type="button">Refresh</button>
+        </div>
+        <div class="select-wrapper">
+          <select id="app-select">
+            <option value="">Loading windows…</option>
+          </select>
+        </div>
+      </section>
+
+      <section class="sidebar-section">
+        <h3>Quality &amp; Performance</h3>
+        <div class="preset-row" role="group" aria-label="Stream presets">
+          <button class="preset-chip" data-preset="mobile" type="button">Fast</button>
+          <button class="preset-chip active" data-preset="balanced" type="button">Balanced</button>
+          <button class="preset-chip" data-preset="sharp" type="button">Sharp</button>
+        </div>
+
         <div class="slider-group">
           <div class="slider-label">
             <span>Resolution Scale</span>
-            <span class="slider-value" id="scale-val">35%</span>
+            <span class="slider-value" id="scale-val">50%</span>
           </div>
-          <input type="range" id="scale-slider" min="10" max="100" step="5" value="35">
+          <input type="range" id="scale-slider" min="15" max="100" step="5" value="50">
         </div>
 
         <div class="slider-group">
           <div class="slider-label">
             <span>JPEG Quality</span>
-            <span class="slider-value" id="quality-val">35%</span>
+            <span class="slider-value" id="quality-val">50%</span>
           </div>
-          <input type="range" id="quality-slider" min="5" max="100" step="5" value="35">
+          <input type="range" id="quality-slider" min="10" max="100" step="5" value="50">
         </div>
 
         <div class="slider-group">
           <div class="slider-label">
             <span>Target Frame Rate</span>
-            <span class="slider-value" id="fps-val">4 FPS</span>
+            <span class="slider-value" id="fps-val">6 FPS</span>
           </div>
-          <input type="range" id="fps-slider" min="1" max="12" step="1" value="4">
+          <input type="range" id="fps-slider" min="1" max="12" step="1" value="6">
         </div>
-      </div>
+      </section>
 
-      <!-- Diagnostic Status / Connection Info -->
-      <div class="sidebar-section diagnostics">
-        <h3>Diagnostics & Info</h3>
-        <div class="info-row">
-          <span class="info-lbl">FPS Counter:</span>
-          <span class="info-val" id="diag-fps">0 FPS</span>
+      <section class="sidebar-section diagnostics">
+        <h3>Telemetry</h3>
+        <div class="diag-grid">
+          <div class="diag-pill">
+            <span class="info-lbl">Stream</span>
+            <span class="info-val status-disconnected" id="diag-connection">Disconnected</span>
+          </div>
+          <div class="diag-pill">
+            <span class="info-lbl">FPS</span>
+            <span class="info-val" id="diag-fps">0 FPS</span>
+          </div>
+          <div class="diag-pill">
+            <span class="info-lbl">Interval</span>
+            <span class="info-val" id="diag-latency">-- ms</span>
+          </div>
+          <div class="diag-pill">
+            <span class="info-lbl">Transport</span>
+            <span class="info-val" id="diag-transport">WebSocket</span>
+          </div>
         </div>
-        <div class="info-row">
-          <span class="info-lbl">Frame interval:</span>
-          <span class="info-val" id="diag-latency">-- ms</span>
+      </section>
+
+      <section class="sidebar-section sidebar-mobile-links">
+        <h3>Navigate</h3>
+        <div class="mobile-nav-grid">
+          <a class="mobile-nav-link" data-agent-link="tasks_agent" href="/agent/tasks_agent/">Tasks</a>
+          <a class="mobile-nav-link" data-agent-link="reminders_agent" href="/agent/reminders_agent/">Notify</a>
+          <a class="mobile-nav-link" data-agent-link="agent_builder_agent" href="/agent/agent_builder_agent/">Agent Builder</a>
+          <a class="mobile-nav-link" data-agent-link="website_agent" href="/agent/website_agent/">Website Studio</a>
+          <a class="mobile-nav-link" data-agent-link="skills_agent" href="/agent/skills_agent/">Skills</a>
         </div>
-        <div class="info-row">
-          <span class="info-lbl">Connection:</span>
-          <span class="info-val status-disconnected" id="diag-connection">Disconnected</span>
-        </div>
-        <div class="info-row">
-          <span class="info-lbl">Failsafe Info:</span>
-          <span class="info-val" title="PyAutoGUI is configured with failsafe disabled to avoid crashes on screen boundary control.">Disabled (Safe)</span>
-        </div>
-      </div>
+      </section>
     </aside>
 
-    <!-- Main Live Screen Stream Caster -->
     <main class="viewer-area">
-      <div class="viewer-container glass-panel" id="viewer-shell">
+      <div class="viewer-container" id="viewer-shell">
         <div class="viewer-header">
           <div class="viewer-status">
             <span class="status-indicator" id="viewer-status-dot"></span>
-            <span class="viewer-title-text" id="viewer-title">Active Monitor Stream</span>
+            <span class="viewer-title-text" id="viewer-title">Desktop Stream</span>
+            <span class="fps-badge" id="header-fps-badge">0 FPS</span>
             <span class="native-keyboard-status" id="native-keyboard-status" data-state="disconnected" role="status" aria-live="polite">
               <svg class="native-keyboard-status-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                 <rect x="3" y="6" width="18" height="12" rx="2"></rect>
                 <path d="M7 10h.01M10 10h.01M13 10h.01M16 10h.01M7 14h10"></path>
               </svg>
-              <span id="native-keyboard-status-text">Native client unavailable</span>
+              <span id="native-keyboard-status-text">Keyboard idle</span>
             </span>
           </div>
           <div class="viewer-actions">
-            <!-- The toolbar Show/Hide keyboard button was removed: the native
-                 keyboard is now controlled solely by the floating keyboard bubble
-                 inside the canvas viewport (which also survives fullscreen). -->
-            <button class="btn btn-outline btn-sm btn-icon btn-connect streaming" id="stream-toggle-btn" title="Toggle Stream Connection">
-              <span class="btn-icon">⏸</span> Stop Stream
+            <div class="touch-mode-toggle hidden" id="touch-mode-toggle" role="group" aria-label="Touch pointer mode">
+              <button class="seg-btn active" id="touch-mode-direct" data-touch-mode="direct" type="button" title="Tap directly where you want to click">Direct</button>
+              <button class="seg-btn" id="touch-mode-trackpad" data-touch-mode="trackpad" type="button" title="Drag like a laptop trackpad">Trackpad</button>
+            </div>
+            <button class="btn-pill btn-stream streaming" id="stream-toggle-btn" type="button" title="Pause or resume stream">
+              <span class="btn-icon">⏸</span><span class="btn-label">Stop</span>
             </button>
-            <button class="btn btn-outline btn-sm btn-icon" id="toggle-fullscreen-btn" title="Toggle Fullscreen">
-              <span>⛶</span> Fullscreen
+            <button class="btn-pill" id="toggle-fullscreen-btn" type="button" title="Toggle fullscreen">
+              <span>⛶</span><span class="btn-label">Full</span>
             </button>
           </div>
         </div>
 
         <div class="canvas-wrapper" id="canvas-wrapper">
           <canvas id="screen-canvas" width="1280" height="720"></canvas>
-          <div class="canvas-overlay hidden" id="canvas-overlay">
+
+          <div class="canvas-overlay hidden" id="canvas-overlay" role="status" aria-live="polite">
             <div class="overlay-card">
-              <span class="overlay-icon">🔒</span>
-              <p id="overlay-message">Interactive Control Disabled. Select "Control Desktop" mode to activate keyboard & mouse operations.</p>
+              <div class="overlay-icon" id="overlay-icon" aria-hidden="true">🖥️</div>
+              <h3 class="overlay-title" id="overlay-title">Waiting for display</h3>
+              <p id="overlay-message">Connecting to your host monitor…</p>
+              <div class="overlay-actions" id="overlay-actions">
+                <button class="btn btn-primary hidden" id="overlay-wake-btn" type="button">Wake Mac Display</button>
+                <button class="btn btn-outline hidden" id="overlay-retry-btn" type="button">Retry Stream</button>
+              </div>
             </div>
           </div>
+
           <button class="fullscreen-exit-btn" id="fullscreen-exit-btn" type="button" title="Exit Fullscreen" aria-label="Exit Fullscreen">
-            <span>▣</span> Exit Full
+            <span>✕</span> Exit
           </button>
+
           <div class="zoom-controls hidden" id="zoom-controls" role="group" aria-label="Canvas zoom controls">
             <button class="zoom-btn" id="zoom-in-btn" type="button" aria-label="Zoom in">+</button>
             <span class="zoom-level" id="zoom-level">100%</span>
@@ -208,10 +247,7 @@
             <button class="zoom-btn zoom-reset-btn hidden" id="zoom-reset-btn" type="button" aria-label="Reset zoom">1:1</button>
           </div>
 
-          <!-- Floating self-view-style keyboard toggle. Lives in the canvas
-               viewport (not the header) so it stays reachable in fullscreen,
-               where the header is hidden. Draggable; collapses to a small
-               edge handle and back, independently of keyboard show/hide. -->
+          <!-- Draggable floating native keyboard toggle (preserved for iOS/Android bridge) -->
           <div class="floating-keyboard-bubble hidden" id="floating-keyboard-bubble" role="group" aria-label="Remote keyboard control">
             <button class="floating-keyboard-main" id="floating-keyboard-main" type="button" aria-pressed="false" title="Show the connected phone keyboard" aria-label="Show the connected phone keyboard">
               <svg class="native-keyboard-action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -228,17 +264,39 @@
           </button>
         </div>
 
+        <!-- Quick Keys & Direct Text Input Bar (visible in control_desktop mode) -->
+        <div class="quick-keys-bar hidden" id="quick-keys-bar" role="toolbar" aria-label="Quick keyboard shortcuts">
+          <div class="quick-keys-scroll">
+            <button class="key-chip" data-key="escape" type="button">Esc</button>
+            <button class="key-chip" data-key="tab" type="button">Tab</button>
+            <button class="key-chip" data-key="enter" type="button">Return</button>
+            <button class="key-chip" data-key="backspace" type="button">⌫</button>
+            <button class="key-chip" data-hotkey="cmd,space" type="button">Spotlight</button>
+            <button class="key-chip" data-hotkey="cmd,c" type="button">Copy</button>
+            <button class="key-chip" data-hotkey="cmd,v" type="button">Paste</button>
+            <button class="key-chip" data-hotkey="cmd,tab" type="button">Switch App</button>
+            <button class="key-chip" data-key="up" type="button" aria-label="Up arrow">↑</button>
+            <button class="key-chip" data-key="down" type="button" aria-label="Down arrow">↓</button>
+            <button class="key-chip" data-key="left" type="button" aria-label="Left arrow">←</button>
+            <button class="key-chip" data-key="right" type="button" aria-label="Right arrow">→</button>
+            <button class="key-chip key-chip-accent" id="quick-type-toggle" type="button">Type Text…</button>
+          </div>
+          <form class="quick-type-row hidden" id="quick-type-form">
+            <input type="text" id="quick-type-input" placeholder="Type text to send to desktop…" autocomplete="off" autocorrect="off" autocapitalize="off">
+            <button class="btn btn-primary btn-sm" type="submit">Send</button>
+          </form>
+        </div>
+
         <div class="viewer-footer">
           <div class="shortcut-hints">
-            <span class="shortcut-chip">Click + Drag</span> = Drag Start/End
-            <span class="shortcut-chip">Double Click</span> = Double Click
-            <span class="shortcut-chip">Esc</span> = Relinquish Focus
+            <span class="shortcut-chip">Click/Drag</span> Pointer
+            <span class="shortcut-chip">Right-Click</span> Context
+            <span class="shortcut-chip">Esc</span> Release Focus
           </div>
           <div class="touch-hints" id="touch-hints">
             <span class="shortcut-chip">Tap</span> Click
             <span class="shortcut-chip">Hold</span> Right-click
-            <span class="shortcut-chip">Drag</span> Move / drag
-            <span class="shortcut-chip">2 fingers</span> Scroll &amp; pinch-zoom
+            <span class="shortcut-chip">2-Finger</span> Scroll &amp; Zoom
           </div>
           <div class="cursor-coords" id="cursor-coords">
             X: 0, Y: 0 (0.00, 0.00)

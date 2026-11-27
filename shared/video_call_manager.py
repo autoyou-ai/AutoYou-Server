@@ -583,16 +583,33 @@ def _is_probably_blank_desktop_capture(image: Any) -> bool:
 
 
 def _get_mss_monitor_bounds(monitor_id: Any = 0) -> Optional[Dict[str, int]]:
+    normalized_monitor_id = _normalize_desktop_monitor_id(monitor_id)
     try:
         import mss  # type: ignore
 
         _ensure_windows_interactive_desktop_for_capture()
-        normalized_monitor_id = _normalize_desktop_monitor_id(monitor_id)
         with mss.mss() as sct:
             if 0 <= normalized_monitor_id < len(sct.monitors):
-                return _normalize_desktop_capture_bounds(sct.monitors[normalized_monitor_id])
+                raw = sct.monitors[normalized_monitor_id]
+                if int(raw.get("width") or 0) >= _DESKTOP_CAPTURE_MIN_DIMENSION and int(raw.get("height") or 0) >= _DESKTOP_CAPTURE_MIN_DIMENSION:
+                    return _normalize_desktop_capture_bounds(raw)
     except Exception:
-        return None
+        pass
+    if _desktop_capture_platform_tag() == "macos":
+        try:
+            from shared.macos_screen_capture import list_macos_monitors
+
+            mac_monitors = list_macos_monitors()
+            if 0 <= normalized_monitor_id < len(mac_monitors):
+                bounds = _normalize_desktop_capture_bounds(mac_monitors[normalized_monitor_id])
+                if bounds is not None:
+                    return bounds
+            if mac_monitors:
+                bounds = _normalize_desktop_capture_bounds(mac_monitors[0])
+                if bounds is not None:
+                    return bounds
+        except Exception:
+            pass
     return None
 
 
@@ -664,6 +681,16 @@ def _crop_imagegrab_desktop_image(
 
 
 def _capture_imagegrab_desktop_image(monitor_id: Any = 0) -> Any:
+    if _desktop_capture_platform_tag() == "macos":
+        try:
+            from shared.macos_screen_capture import capture_macos_image
+
+            bounds = _get_mss_monitor_bounds(monitor_id)
+            mac_image = capture_macos_image(bounds, auto_wake=True)
+            if mac_image is not None and not _is_probably_blank_desktop_capture(mac_image):
+                return mac_image
+        except Exception as exc:
+            logger.debug("macOS native desktop capture unavailable for WebRTC track: %s", exc)
     if not _desktop_imagegrab_supported():
         return None
     try:

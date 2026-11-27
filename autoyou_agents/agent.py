@@ -1537,6 +1537,15 @@ _EXPLICIT_ROUTE_ALIASES: Dict[str, tuple[str, ...]] = {
         "view screen",
         "control screen",
     ),
+    resolve_runtime_agent_name("games_agent") or "autoyou_games_agent": (
+        "games agent",
+        "game agent",
+        "games_agent",
+        "autoyou_games_agent",
+        "game studio",
+        "game mode",
+        "games",
+    ),
     _EDUCATION_RUNTIME_AGENT_NAME: (
         "education agent",
         "education_agent",

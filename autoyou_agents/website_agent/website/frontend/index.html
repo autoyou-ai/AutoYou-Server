@@ -8,14 +8,16 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Website Builder</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
+<title>Website Studio · AutoYou</title>
 <script>
   (function () {
     try {
       var t = localStorage.getItem('autoyou.ui.theme');
-      if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
-    } catch (_) {}
+      document.documentElement.dataset.theme = (t === 'light' || t === 'dark') ? t : 'dark';
+    } catch (_) {
+      document.documentElement.dataset.theme = 'dark';
+    }
   })();
 </script>
 <link rel="stylesheet" href="./assets/styles.css">
@@ -27,62 +29,125 @@
 <div id="app">
   <header class="topbar">
     <div class="topbar-brand">
-      <span class="topbar-icon">🌐</span>
-      <span class="topbar-title">Website Builder</span>
+      <span class="brand-badge" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>
+      </span>
+      <span class="topbar-title">Website Studio</span>
     </div>
     <div class="topbar-actions">
       <span class="status-chip" id="auth-chip"></span>
-      <button class="topbar-link theme-toggle" id="theme-toggle" aria-label="Toggle light/dark theme" title="Toggle theme">◑</button>
-      <a class="topbar-link" data-agent-link="agent_builder_agent" href="/agent/agent_builder_agent/">Agent Builder</a>
-      <a class="topbar-link" data-agent-link="tasks_agent" href="/agent/tasks_agent/">Tasks</a>
-      <a class="topbar-link" data-agent-link="reminders_agent" href="/agent/reminders_agent/">Notify</a>
+      <button class="icon-btn" id="theme-toggle" type="button" aria-label="Toggle light/dark theme" title="Toggle theme">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor" stroke="none"/></svg>
+      </button>
+      <nav class="topbar-nav" aria-label="Related agents">
+        <a class="topbar-link" data-agent-link="agent_builder_agent" href="/agent/agent_builder_agent/">Agent Builder</a>
+        <a class="topbar-link" data-agent-link="tasks_agent" href="/agent/tasks_agent/">Tasks</a>
+        <a class="topbar-link" data-agent-link="reminders_agent" href="/agent/reminders_agent/">Notify</a>
+      </nav>
     </div>
   </header>
 
   <div id="login-gate" class="login-gate hidden">
     <div class="login-card">
+      <div class="login-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+      </div>
       <h2>Authentication Required</h2>
-      <p class="login-hint">Enter your 6-digit authenticator code to access Website Builder.</p>
+      <p class="login-hint">Enter your 6-digit authenticator code to access Website Studio.</p>
       <div class="otp-row">
         <input type="text" id="otp-input" class="otp-input" maxlength="6" placeholder="000000" autocomplete="one-time-code" inputmode="numeric">
-        <button class="btn btn-primary" id="otp-submit">Verify</button>
+        <button class="btn btn-primary" id="otp-submit" type="button">Verify</button>
       </div>
       <p class="login-error hidden" id="otp-error"></p>
     </div>
   </div>
 
-  <div id="main-layout" class="main-layout hidden">
-    <div class="left-panel">
-      <div class="agent-picker-bar">
-        <label class="picker-label">Preview Agent:</label>
-        <select id="agent-select" class="agent-select">
-          <option value="">- select -</option>
-        </select>
-        <button class="btn btn-sm btn-outline" id="publish-btn" disabled>Publish</button>
-        <button class="btn btn-sm btn-ghost" id="unpublish-btn" disabled>Unpublish</button>
-        <span class="publish-status" id="publish-status"></span>
-      </div>
-      <div id="preview-panel" class="preview-panel">
-        <div class="preview-placeholder" id="preview-placeholder">
-          <p>Select an agent to preview its UI.</p>
-          <p class="muted">Build the frontend by chatting with Website Builder first.</p>
-        </div>
-        <iframe id="preview-iframe" class="preview-iframe hidden" title="Agent UI Preview" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>
-      </div>
-    </div>
+  <!-- Mobile View Switcher -->
+  <div class="mobile-tabs hidden" id="mobile-tabs" role="tablist" aria-label="Workspace view">
+    <button class="mobile-tab active" id="mobile-tab-preview" data-mobile-pane="preview" role="tab" aria-selected="true" type="button">Live Preview</button>
+    <button class="mobile-tab" id="mobile-tab-chat" data-mobile-pane="chat" role="tab" aria-selected="false" type="button">Builder Chat</button>
+  </div>
 
-    <div class="chat-panel">
+  <div id="main-layout" class="main-layout hidden">
+    <section class="left-panel" id="pane-preview">
+      <div class="studio-toolbar">
+        <div class="picker-group">
+          <select id="agent-select" class="agent-select" aria-label="Choose agent website to preview">
+            <option value="">Choose an agent website…</option>
+          </select>
+          <span class="publish-pill" id="publish-status">Select agent</span>
+        </div>
+
+        <div class="toolbar-actions">
+          <div class="viewport-switch" role="group" aria-label="Preview viewport size">
+            <button class="vp-btn active" data-viewport="full" type="button" title="Fit available width">Fit</button>
+            <button class="vp-btn" data-viewport="tablet" type="button" title="Tablet 768px preview">Tablet</button>
+            <button class="vp-btn" data-viewport="mobile" type="button" title="Mobile 390px preview">Phone</button>
+          </div>
+          <button class="icon-btn icon-btn-sm" id="reload-preview-btn" type="button" title="Reload preview" aria-label="Reload preview" disabled>
+            <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6"/></svg>
+          </button>
+          <a class="icon-btn icon-btn-sm hidden" id="open-tab-btn" target="_blank" rel="noopener" title="Open website in new tab" aria-label="Open website in new tab">
+            <svg viewBox="0 0 24 24"><path d="M14 4h6v6M10 14L20 4M20 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h5"/></svg>
+          </a>
+          <button class="btn btn-sm btn-primary" id="publish-btn" type="button" disabled>Publish</button>
+          <button class="btn btn-sm btn-ghost" id="unpublish-btn" type="button" disabled>Unpublish</button>
+        </div>
+      </div>
+
+      <div id="preview-panel" class="preview-panel" data-viewport="full">
+        <div class="preview-placeholder" id="preview-placeholder">
+          <div class="placeholder-icon" aria-hidden="true">🌐</div>
+          <h3 id="placeholder-title">Preview Any Agent Website</h3>
+          <p id="placeholder-copy">Choose a published agent from the picker above to inspect it live, or ask Website Studio to design a new UI.</p>
+          <div class="placeholder-actions">
+            <button class="btn btn-primary btn-sm hidden" id="placeholder-publish-btn" type="button">Publish &amp; Preview</button>
+            <button class="btn btn-outline btn-sm" id="placeholder-chat-btn" type="button">Build UI with AI</button>
+          </div>
+        </div>
+
+        <div class="preview-loading hidden" id="preview-loading" aria-live="polite">
+          <div class="spinner" aria-hidden="true"></div>
+          <span>Loading live preview…</span>
+        </div>
+
+        <div class="iframe-stage" id="iframe-stage">
+          <iframe
+            id="preview-iframe"
+            class="preview-iframe hidden"
+            title="Agent UI Preview"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-downloads"
+          ></iframe>
+        </div>
+      </div>
+    </section>
+
+    <aside class="chat-panel" id="pane-chat">
+      <div class="chat-header">
+        <div>
+          <div class="chat-title">Website Builder AI</div>
+          <div class="chat-sub" id="chat-target-sub">Select an agent or describe any new UI</div>
+        </div>
+        <button class="btn btn-sm btn-ghost" id="clear-chat-btn" type="button" title="Start a fresh conversation">New Chat</button>
+      </div>
+
       <div id="chat-messages" class="chat-messages">
         <div class="chat-welcome">
-          <p>Chat with <strong>Website Builder</strong> to design and deploy agent UIs.</p>
-          <p class="muted">Try: <em>"Build a frontend for weather_agent with a search bar and forecast cards"</em></p>
+          <h3>Design &amp; Deploy Agent UIs</h3>
+          <p>Ask Website Studio to build, redesign, or optimize any agent's frontend for desktop and mobile.</p>
+          <div class="starter-chips" id="starter-chips">
+            <button class="starter-chip" data-prompt="Redesign the selected agent website with a modern mobile-first layout and clean dark/light theme." type="button">Modernize selected UI</button>
+            <button class="starter-chip" data-prompt="Audit the selected agent website for mobile WebView responsiveness and fix any clipped buttons or horizontal overflow." type="button">Fix mobile layout</button>
+            <button class="starter-chip" data-prompt="Build a clean dashboard frontend for weather_agent with search, hourly cards, and saved locations." type="button">Build a new agent UI</button>
+          </div>
         </div>
       </div>
+
       <div class="chat-input-bar">
-        <textarea id="chat-input" class="chat-input" placeholder="Describe the website you want to build…" rows="2"></textarea>
-        <button class="btn btn-primary" id="send-btn">Send</button>
+        <textarea id="chat-input" class="chat-input" placeholder="Describe the website change you want…" rows="2"></textarea>
+        <button class="btn btn-primary" id="send-btn" type="button">Send</button>
       </div>
-    </div>
+    </aside>
   </div>
 </div>
 <script src="./assets/app.js"></script>

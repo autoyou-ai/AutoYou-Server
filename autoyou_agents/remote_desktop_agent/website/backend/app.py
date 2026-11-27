@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from fastapi import Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import Response
 from PIL import Image
 
 __debug_provenance_b__ = "AUTOYOU-PROVENANCE-B-yearly-9da7f362fb165b7f369cfc5f"
@@ -119,11 +120,15 @@ def _normalize_capture_bounds(bounds: Any) -> Optional[Dict[str, int]]:
     if not isinstance(bounds, dict):
         return None
     try:
+        width = int(bounds.get("width") or 0)
+        height = int(bounds.get("height") or 0)
+        if width < _MIN_CAPTURE_DIMENSION or height < _MIN_CAPTURE_DIMENSION:
+            return None
         return {
             "left": int(bounds.get("left") or 0),
             "top": int(bounds.get("top") or 0),
-            "width": max(_MIN_CAPTURE_DIMENSION, int(bounds.get("width") or 0)),
-            "height": max(_MIN_CAPTURE_DIMENSION, int(bounds.get("height") or 0)),
+            "width": width,
+            "height": height,
         }
     except Exception:
         return None
@@ -180,6 +185,21 @@ def _get_monitor_bounds_sync(target_id: Any) -> Optional[Dict[str, int]]:
         normalized_target_id = int(target_id)
     except Exception:
         normalized_target_id = 0
+    if _current_platform_tag() == "macos":
+        try:
+            from shared.macos_screen_capture import list_macos_monitors
+
+            mac_monitors = list_macos_monitors()
+            if 0 <= normalized_target_id < len(mac_monitors):
+                bounds = _normalize_capture_bounds(mac_monitors[normalized_target_id])
+                if bounds is not None:
+                    return bounds
+            if mac_monitors:
+                bounds = _normalize_capture_bounds(mac_monitors[0])
+                if bounds is not None:
+                    return bounds
+        except Exception as exc:
+            logger.debug("macOS online monitor bounds unavailable: %s", exc)
     try:
         mss = _lazy_import_mss()
         with mss.mss() as sct:
@@ -289,7 +309,25 @@ def _capture_secure_desktop_image_sync(bounds: Dict[str, int]) -> Optional[Image
         return None
 
 
-def _capture_desktop_image_sync(bounds: Dict[str, int]) -> Optional[Image.Image]:
+def _get_capture_diagnostics_sync() -> Dict[str, Any]:
+    if _current_platform_tag() == "macos":
+        try:
+            from shared.macos_screen_capture import get_macos_capture_diagnostics
+
+            return get_macos_capture_diagnostics()
+        except Exception as exc:
+            logger.debug("macOS capture diagnostics error: %s", exc)
+    return {
+        "platform": _current_platform_tag(),
+        "ok": True,
+        "reason": "ok",
+        "message": "",
+        "permission_required": False,
+        "can_wake": False,
+    }
+
+
+def _capture_desktop_image_sync(bounds: Dict[str, int], *, scale: float = 1.0) -> Optional[Image.Image]:
     normalized_bounds = _normalize_capture_bounds(bounds)
     if normalized_bounds is None:
         return None
@@ -297,6 +335,16 @@ def _capture_desktop_image_sync(bounds: Dict[str, int]) -> Optional[Image.Image]
     secure_image = _capture_secure_desktop_image_sync(normalized_bounds)
     if secure_image is not None:
         return secure_image
+
+    if _current_platform_tag() == "macos":
+        try:
+            from shared.macos_screen_capture import capture_macos_image
+
+            mac_image = capture_macos_image(normalized_bounds, scale=scale, auto_wake=True)
+            if mac_image is not None and not _is_probably_blank_capture(mac_image):
+                return mac_image
+        except Exception as exc:
+            logger.debug("macOS native capture unavailable: %s", exc)
 
     mss_image: Optional[Image.Image] = None
     try:
@@ -310,21 +358,29 @@ def _capture_desktop_image_sync(bounds: Dict[str, int]) -> Optional[Image.Image]
     if fallback_image is not None and not _is_probably_blank_capture(fallback_image):
         _log_imagegrab_fallback_once("blank or unavailable MSS capture")
         return fallback_image
+
+    if _current_platform_tag() == "macos" and _is_probably_blank_capture(mss_image):
+        # Never mask a sleeping/TCC-blocked macOS display as a valid live video frame.
+        return None
     return mss_image
 
 
 def _capture_and_encode_sync(bounds: Dict[str, int], scale: Any, quality: Any) -> Optional[bytes]:
     try:
-        img = _capture_desktop_image_sync(bounds)
-        if img is None:
-            return None
         normalized_scale = max(0.1, min(1.0, float(scale or _DEFAULT_STREAM_SCALE)))
         normalized_quality = max(5, min(100, int(quality or _DEFAULT_STREAM_QUALITY)))
-        if normalized_scale < 1.0:
-            img = img.resize(
-                (max(1, int(img.width * normalized_scale)), max(1, int(img.height * normalized_scale))),
-                Image.Resampling.BILINEAR,
-            )
+        img = _capture_desktop_image_sync(bounds, scale=normalized_scale)
+        if img is None:
+            return None
+        target_w = max(1, int(bounds["width"] * normalized_scale))
+        target_h = max(1, int(bounds["height"] * normalized_scale))
+        if img.width > target_w + 4 or img.height > target_h + 4:
+            if normalized_scale < 1.0:
+                img = img.resize(
+                    (max(1, int(img.width * normalized_scale)) if img.width <= bounds["width"] + 4 else target_w,
+                     max(1, int(img.height * normalized_scale)) if img.height <= bounds["height"] + 4 else target_h),
+                    Image.Resampling.BILINEAR,
+                )
         buf = BytesIO()
         img.save(buf, format="JPEG", quality=normalized_quality)
         return buf.getvalue()
@@ -400,6 +456,40 @@ def _simulate_input(payload: Dict[str, Any]) -> bool:
                 pyautogui.scroll(dy)
             return True
             
+        elif event_type == "moverel":
+            dx = int(round(float(payload.get("dx", 0))))
+            dy = int(round(float(payload.get("dy", 0))))
+            if dx != 0 or dy != 0:
+                pyautogui.moveRel(dx, dy)
+            return True
+
+        elif event_type == "hotkey":
+            raw_keys = payload.get("keys")
+            if not isinstance(raw_keys, list) or not raw_keys:
+                return False
+            mapped = []
+            for raw_k in raw_keys[:6]:
+                k = str(raw_k or "").strip().lower()
+                if not k:
+                    continue
+                if k in {"cmd", "meta", "super"}:
+                    mapped.append("command" if _current_platform_tag() == "macos" else "ctrl")
+                elif k == "opt":
+                    mapped.append("option" if _current_platform_tag() == "macos" else "alt")
+                else:
+                    mapped.append(KEY_MAP.get(k, k))
+            if not mapped:
+                return False
+            pyautogui.hotkey(*mapped)
+            return True
+
+        elif event_type == "type":
+            text = str(payload.get("text") or "")
+            if not text or len(text) > 512:
+                return False
+            pyautogui.write(text)
+            return True
+
         elif event_type in ("keydown", "keyup", "keypress"):
             key = str(payload.get("key", "")).lower()
             if not key:
@@ -542,9 +632,66 @@ def _extra_routes(app, agent_name: str) -> None:
         auth = _describe_chat_auth_state(request, agent_name)
         if not auth.get("authenticated"):
             return _json_response({"success": False, "error": "Not authenticated"}, status_code=401)
-        res = list_active_monitors()
+        res = await asyncio.to_thread(list_active_monitors)
+        diagnostics = res.get("diagnostics") or await asyncio.to_thread(_get_capture_diagnostics_sync)
         success = res.get("status") == "success"
-        return _json_response({"success": success, **res}, status_code=200 if success else 503)
+        return _json_response(
+            {"success": success, **res, "platform": _current_platform_tag(), "diagnostics": diagnostics},
+            status_code=200 if success else 503,
+        )
+
+    @app.post("/api/remote_desktop/wake")
+    async def wake_display(request: Request):
+        auth = _describe_chat_auth_state(request, agent_name)
+        if not auth.get("authenticated"):
+            return _json_response({"success": False, "error": "Not authenticated"}, status_code=401)
+        if _current_platform_tag() == "macos":
+            from shared.macos_screen_capture import wake_macos_display
+
+            wake_res = await asyncio.to_thread(wake_macos_display, force=True)
+            monitors_res = await asyncio.to_thread(list_active_monitors)
+            return _json_response({
+                "success": bool(wake_res.get("success")),
+                **wake_res,
+                "monitors": monitors_res.get("monitors", []),
+            })
+        return _json_response({"success": True, "woke": False, "message": "Display wake not required on this platform."})
+
+    @app.get("/api/remote_desktop/snapshot")
+    async def get_snapshot(request: Request):
+        auth = _describe_chat_auth_state(request, agent_name)
+        if not auth.get("authenticated"):
+            return _json_response({"success": False, "error": "Not authenticated"}, status_code=401)
+        target_type = str(request.query_params.get("target_type") or "monitor").strip().lower()
+        target_id = request.query_params.get("target_id", "0")
+        try:
+            scale = max(0.1, min(1.0, float(request.query_params.get("scale", _DEFAULT_STREAM_SCALE))))
+        except ValueError:
+            scale = _DEFAULT_STREAM_SCALE
+        try:
+            quality = max(5, min(100, int(request.query_params.get("quality", _DEFAULT_STREAM_QUALITY))))
+        except ValueError:
+            quality = _DEFAULT_STREAM_QUALITY
+        bounds = None
+        if target_type == "window" and target_id:
+            bounds = await asyncio.to_thread(get_window_bounds, target_id)
+        else:
+            bounds = await asyncio.to_thread(_get_monitor_bounds_sync, target_id)
+        if bounds is None:
+            diagnostics = await asyncio.to_thread(_get_capture_diagnostics_sync)
+            return _json_response({"success": False, "error": diagnostics.get("message") or "Display unavailable", "diagnostics": diagnostics}, status_code=503)
+        jpeg_bytes = await asyncio.to_thread(_capture_and_encode_sync, bounds, scale, quality)
+        if jpeg_bytes is None:
+            diagnostics = await asyncio.to_thread(_get_capture_diagnostics_sync)
+            return _json_response(
+                {"success": False, "error": diagnostics.get("message") or "Could not capture screen frame.", "diagnostics": diagnostics},
+                status_code=503,
+            )
+        return Response(
+            content=jpeg_bytes,
+            media_type="image/jpeg",
+            headers={"Cache-Control": "no-store, max-age=0"},
+        )
 
     @app.get("/api/remote_desktop/windows")
     async def get_windows(request: Request):
@@ -705,6 +852,8 @@ def _extra_routes(app, agent_name: str) -> None:
                 pass
 
         loop = asyncio.get_running_loop()
+        last_capture_ok: Optional[bool] = None
+        last_diag_sent_at = 0.0
         try:
             while True:
                 frame_started_at = loop.time()
@@ -731,13 +880,36 @@ def _extra_routes(app, agent_name: str) -> None:
                     # Fallback to absolute virtual union screen
                     bounds = await asyncio.to_thread(_get_monitor_bounds_sync, 0)
                     
+                jpeg_bytes = None
                 if bounds is not None:
                     # Perform screenshot capture and pil encoding on threadpool
                     jpeg_bytes = await asyncio.to_thread(_capture_and_encode_sync, bounds, scale, quality)
-                    
-                    if jpeg_bytes is not None:
-                        # Stream frame down binary WebSocket channel
-                        await websocket.send_bytes(jpeg_bytes)
+
+                if jpeg_bytes is not None:
+                    if last_capture_ok is not True:
+                        last_capture_ok = True
+                        await websocket.send_json({"type": "capture_status", "ok": True})
+                    # Stream frame down binary WebSocket channel
+                    await websocket.send_bytes(jpeg_bytes)
+                else:
+                    now_t = loop.time()
+                    if last_capture_ok is not False or (now_t - last_diag_sent_at) >= 3.0:
+                        last_capture_ok = False
+                        last_diag_sent_at = now_t
+                        diagnostics = await asyncio.to_thread(_get_capture_diagnostics_sync)
+                        reason = diagnostics.get("reason") or "capture_unavailable"
+                        message = diagnostics.get("message") or (
+                            "Screen capture returned a blank frame. Check display sleep or screen recording permissions."
+                        )
+                        await websocket.send_json({
+                            "type": "capture_status",
+                            "ok": False,
+                            "reason": reason,
+                            "message": message,
+                            "can_wake": bool(diagnostics.get("can_wake")),
+                            "permission_required": bool(diagnostics.get("permission_required")),
+                            "platform": diagnostics.get("platform") or _current_platform_tag(),
+                        })
                     
                 # Capture, encoding, and sending already consume part of the frame period.
                 await asyncio.sleep(max(0.0, 1.0 / fps - (loop.time() - frame_started_at)))

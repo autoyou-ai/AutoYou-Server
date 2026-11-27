@@ -81,13 +81,13 @@ NO_CACHE_HEADERS = {
 SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
-    "X-Frame-Options": "DENY",
+    "X-Frame-Options": "SAMEORIGIN",
     "Content-Security-Policy": (
         "default-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; "
         "base-uri 'self'; "
         "connect-src 'self' ws: wss:; "
         "form-action 'self'; "
-        "frame-ancestors 'none'; "
+        "frame-ancestors 'self'; "
         "img-src 'self' data: blob:; "
         "script-src 'self' 'unsafe-inline'; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "

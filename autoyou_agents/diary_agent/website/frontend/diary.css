@@ -1,4 +1,4 @@
-/* AutoYou Diary — Day One-parity responsive design system (Desktop 3-pane + Mobile WebView) */
+/* AutoYou Diary — Responsive journal design system (Desktop 3-pane + Mobile WebView) */
 
 :root {
   color-scheme: light dark;
@@ -366,7 +366,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .foot-btn:hover { background: var(--bg-hover); color: var(--ink-primary); }
 
 /* ===========================
-   CENTER BROWSE PANE (DAY ONE BANNER + SHEET)
+   CENTER BROWSE PANE (JOURNAL BANNER + SHEET)
    =========================== */
 .browse-pane {
   display: flex;
@@ -457,7 +457,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   backdrop-filter: blur(6px);
 }
 
-/* Signature Day One White Sheet overlapping the colored header */
+/* Floating content sheet overlapping the colored header */
 .browse-sheet {
   flex: 1;
   min-height: 0;
@@ -581,7 +581,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .otd-teaser-copy strong { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ===========================
-   TIMELINE LIST ROWS (DAY ONE STYLE)
+   TIMELINE LIST ROWS
    =========================== */
 .month-divider {
   position: sticky;
@@ -1313,7 +1313,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .entry-preview .md-inline-img { max-width: 100%; border-radius: 12px; margin: 8px 0; }
 .entry-preview .md-tag { color: var(--accent-strong); font-weight: 600; }
 
-/* Media Collage & Day One Voice Note Cards inside Editor */
+/* Media Collage & Voice Note Cards inside Editor */
 .entry-media { margin: 6px 0 16px; display: flex; flex-direction: column; gap: 10px; }
 .media-collage { display: grid; gap: 6px; border-radius: 14px; overflow: hidden; }
 .media-collage.count-1 { grid-template-columns: 1fr; }

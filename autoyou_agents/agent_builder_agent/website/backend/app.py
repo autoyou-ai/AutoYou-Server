@@ -111,24 +111,70 @@ def _extra_routes(app, agent_name: str) -> None:
             live_agents = [a for a in all_agents if a in installed]
 
             proxy_ports: Dict[str, int] = {}
+            dir_entries: Dict[str, Dict[str, Any]] = {}
             for entry in directory.get("agents", []):
                 an = entry.get("package_name", "")
+                if an:
+                    dir_entries[an] = entry
                 pp = entry.get("proxy_port")
                 if an and pp:
                     proxy_ports[an] = int(pp)
 
+            try:
+                from autoyou_agents.shared_tools.agent_install_registry import is_builtin_agent_name
+            except Exception:
+                is_builtin_agent_name = lambda _n: False  # type: ignore[assignment]
+
+            agents_root_path = Path(_agents_root())
             agent_details: List[Dict[str, Any]] = []
             for a in all_agents:
                 status = get_scaffold_status(a)
+                entry = dir_entries.get(a) or {}
+                agent_dir = agents_root_path / a
+                has_website = status.get("has_website", (agent_dir / "website").is_dir())
+                manifest_title = ""
+                manifest_desc = ""
+                manifest_path = agent_dir / "website" / "manifest.json"
+                if manifest_path.is_file():
+                    try:
+                        mdata = json.loads(manifest_path.read_text(encoding="utf-8"))
+                        if isinstance(mdata, dict):
+                            manifest_title = str(mdata.get("title") or mdata.get("name") or "").strip()
+                            manifest_desc = str(mdata.get("description") or "").strip()
+                    except Exception:
+                        pass
+                display_name = (
+                    manifest_title
+                    or str(entry.get("display_name") or "").strip()
+                    or a.replace("_agent", "").replace("_", " ").title()
+                )
+                description = manifest_desc or str(entry.get("description") or "").strip()
+                is_builtin = bool(entry.get("builtin") or is_builtin_agent_name(a))
+                has_staged_draft = bool(status.get("has_draft") or status.get("is_staged_draft"))
+                is_live = a in live_agents
+                if is_builtin:
+                    status_kind = "builtin"
+                elif is_live:
+                    status_kind = "live"
+                elif has_staged_draft:
+                    status_kind = "custom_draft"
+                else:
+                    status_kind = "available"
                 agent_details.append({
                     "name": a,
+                    "display_name": display_name,
+                    "description": description,
+                    "is_builtin": is_builtin,
                     "is_draft": a in draft_agents,
-                    "is_live": a in live_agents,
+                    "has_staged_draft": has_staged_draft,
+                    "is_live": is_live,
+                    "status_kind": status_kind,
                     "importable": status.get("importable", False),
                     "runtime_loadable": status.get("runtime_loadable", False),
-                    "has_website": status.get("has_website", (Path(_agents_root()) / a / "website").is_dir()),
+                    "has_website": has_website,
                     "proxy_port": proxy_ports.get(a),
                     "go_to_path": f"/agent/{a}/" if proxy_ports.get(a) else None,
+                    "website_builder_path": f"/agent/website_agent/?agent={a}",
                 })
             return _json_response({
                 "success": True,

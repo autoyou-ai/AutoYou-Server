@@ -1,4 +1,4 @@
-"""Private Diary website, catalog, Day One workspace APIs and range-aware attachment endpoints."""
+"""Private Diary website, catalog, journal workspace APIs and range-aware attachment endpoints."""
 from hashlib import sha256
 from collections import OrderedDict
 from pathlib import Path
@@ -221,7 +221,7 @@ async def api_save_preferences(request: Request) -> JSONResponse:
 
 
 @app.get("/api/diary/export")
-def api_export_diary(request: Request, format: str = "dayone_json", journal: str = "") -> Response:
+def api_export_diary(request: Request, format: str = "json", journal: str = "") -> Response:
     if not _check_auth(request):
         return _auth_error()
     try:

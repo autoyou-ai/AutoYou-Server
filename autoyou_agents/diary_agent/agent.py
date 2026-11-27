@@ -1084,7 +1084,7 @@ def compute_diary_insights(
     journals: Optional[List[Dict[str, Any]]] = None,
     today: Optional[_datetime.date] = None,
 ) -> Dict[str, Any]:
-    """Compute Day One-style streaks, heatmap counts, On This Day, tags, places and moods."""
+    """Compute journal streaks, heatmap counts, On This Day, tags, places and moods."""
     now_day = today or _datetime.date.today()
     excluded_journals = {
         str(j.get("name") or "").strip().lower()
@@ -1202,8 +1202,8 @@ def get_diary_sync_state() -> Dict[str, Any]:
     }
 
 
-def export_diary(fmt: str = "dayone_json", journal: str = "") -> tuple[str, str, str]:
-    """Export journal entries as Day One JSON, Markdown, or Plain Text."""
+def export_diary(fmt: str = "json", journal: str = "") -> tuple[str, str, str]:
+    """Export journal entries as structured JSON, Markdown, or Plain Text."""
     filter_journal = str(journal or "").strip().lower()
     catalog = list_diary_entries(order="desc")
     full_entries: List[Dict[str, Any]] = []
@@ -1223,9 +1223,9 @@ def export_diary(fmt: str = "dayone_json", journal: str = "") -> tuple[str, str,
     slug = re.sub(r"[^a-z0-9]+", "-", filter_journal).strip("-") if filter_journal else "all-journals"
     slug = slug or "diary"
 
-    kind = str(fmt or "dayone_json").strip().lower()
-    if kind in {"dayone_json", "json"}:
-        dayone_entries = []
+    kind = str(fmt or "json").strip().lower()
+    if kind in {"json", "journal_json"}:
+        exported_entries = []
         for entry in full_entries:
             text_block = f"# {entry['title']}\n\n{entry['body']}" if entry["title"] and entry["title"] != "Untitled" else entry["body"]
             item: Dict[str, Any] = {
@@ -1254,8 +1254,8 @@ def export_diary(fmt: str = "dayone_json", journal: str = "") -> tuple[str, str,
                 item["steps"] = entry["steps"]
             if entry.get("media"):
                 item["media"] = entry["media"]
-            dayone_entries.append(item)
-        payload = {"metadata": {"version": "1.0", "generator": "AutoYou Diary"}, "entries": dayone_entries}
+            exported_entries.append(item)
+        payload = {"metadata": {"version": "1.0", "generator": "AutoYou Diary"}, "entries": exported_entries}
         return json.dumps(payload, indent=2, ensure_ascii=False), "application/json; charset=utf-8", f"autoyou-diary-{slug}-{stamp}.json"
 
     if kind == "markdown":

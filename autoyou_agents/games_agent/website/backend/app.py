@@ -93,6 +93,52 @@ def _extra_routes(app, agent_name):
             return FileResponse(file, media_type="application/vnd.autoyou.game", filename=game_id+".aygame", headers={"Cache-Control": "no-store"})
         except (OSError, ValueError): return JSONResponse({"error": "Game unavailable"}, status_code=404)
 
+    @app.get("/api/game/packages/{game_id}/play")
+    async def package_play_entry(request: Request, game_id: str):
+        if not _smc._describe_chat_auth_state(request, agent_name).get("authenticated"):
+            return JSONResponse({"error": "Not authenticated"}, status_code=401)
+        try:
+            from shared.game_catalog import FRAME_HEADERS
+
+            file = await asyncio.to_thread(packages().resolve, game_id)
+
+            def _read_entry_html() -> bytes:
+                manifest, offset = game_rules.read_manifest(file)
+                entry_name = str(manifest.get("entrypoint") or "index.html")
+                raw_html = None
+                with Path(file).open("rb") as stream:
+                    for item in manifest["files"]:
+                        size = int(item["size"])
+                        if item["path"] == entry_name:
+                            if size > game_rules.MAX_HTML:
+                                raise ValueError("Game entry page is too large")
+                            stream.seek(offset)
+                            raw_html = stream.read(size)
+                            break
+                        offset += size
+                if raw_html is None:
+                    raise ValueError("Game entry page is missing")
+                bridge = (
+                    b"<script>(function(){if(!window.AutoYouGame){window.AutoYouGame={quit:function(){"
+                    b"try{window.parent&&window.parent.postMessage({type:'autoyou_game_quit'},'*');}catch(_){}"
+                    b"}};}})();</script>"
+                )
+                head_match = re.search(br"<head(?=[\s>])[^>]*>", raw_html[:8192], re.IGNORECASE)
+                if head_match is not None:
+                    after_head = raw_html[head_match.end() :]
+                    csp = b"" if after_head.startswith(FRAME_CSP_META) else FRAME_CSP_META
+                    return raw_html[: head_match.end()] + csp + bridge + after_head
+                return FRAME_CSP_META + bridge + raw_html
+
+            html_bytes = await asyncio.to_thread(_read_entry_html)
+            return Response(
+                content=html_bytes,
+                media_type="text/html; charset=utf-8",
+                headers={"Cache-Control": "no-store", **FRAME_HEADERS},
+            )
+        except (OSError, ValueError, KeyError):
+            return JSONResponse({"error": "Game unavailable"}, status_code=404)
+
     def upload_store():
         nonlocal uploads
         if uploads is None:

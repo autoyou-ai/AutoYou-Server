@@ -111,7 +111,7 @@ export function collectEntryMedia(entry, basePrefix = getBasePrefix()) {
 }
 
 /**
- * Render Day One-style media collage (photos/sketches), inline videos, Day One voice-note cards, and file chips.
+ * Render media collage (photos/sketches), inline videos, voice-note cards, and file chips.
  */
 export function renderMedia(host, entry, options = {}) {
   const {
@@ -182,7 +182,7 @@ export function renderMedia(host, entry, options = {}) {
     host.appendChild(grid);
   }
 
-  // 2. Day One-style Voice Note / Audio Cards
+  // 2. Voice Note / Audio Cards
   if (audios.length) {
     const stack = document.createElement("div");
     stack.className = "audio-card-stack";
@@ -286,7 +286,7 @@ export function renderMedia(host, entry, options = {}) {
 }
 
 /**
- * Full-screen Day One Lightbox for photos, sketches & videos.
+ * Full-screen Lightbox for photos, sketches & videos.
  */
 export function openLightbox(root, items, startIndex = 0, { onJumpToEntry } = {}) {
   if (!items.length) return;
@@ -560,7 +560,7 @@ export function openVoiceRecorderModal(openModal, { onAttach }) {
 }
 
 /**
- * Built-in Day One-style Sketch / Handwriting Canvas Pad.
+ * Built-in Sketch / Handwriting Canvas Pad.
  */
 export function openSketchPadModal(openModal, { onAttach }) {
   const colors = ["#1f2937", "#44B6FF", "#2FB67C", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899", "#ffffff"];
@@ -602,7 +602,7 @@ export function openSketchPadModal(openModal, { onAttach }) {
   function redraw() {
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    // Subtle dot grid like Day One paper
+    // Subtle dot grid notebook paper background
     ctx.fillStyle = "#e5edf4";
     for (let x = 24; x < canvas.width; x += 28) {
       for (let y = 24; y < canvas.height; y += 28) {

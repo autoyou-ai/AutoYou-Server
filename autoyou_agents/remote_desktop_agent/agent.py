@@ -620,11 +620,33 @@ def list_active_monitors() -> Dict[str, Any]:
     Returns:
         Dict[str, Any]: Status and list of monitor configurations.
     """
+    if _platform_tag() == "macos":
+        try:
+            from shared.macos_screen_capture import (
+                get_macos_capture_diagnostics,
+                list_macos_monitors,
+            )
+
+            mac_monitors = list_macos_monitors()
+            diagnostics = get_macos_capture_diagnostics()
+            if mac_monitors:
+                return {
+                    "status": "success",
+                    "platform": "macos",
+                    "monitors": mac_monitors,
+                    "count": len(mac_monitors),
+                    "diagnostics": diagnostics,
+                }
+        except Exception as exc:
+            logger.debug("macOS online display enumeration unavailable: %s", exc)
+
     try:
         mss = _lazy_import_mss()
         with mss.mss() as sct:
             monitors = []
             for i, m in enumerate(sct.monitors):
+                if int(m.get("width") or 0) <= 0 or int(m.get("height") or 0) <= 0:
+                    continue
                 # monitor[0] is the virtual union of all screens.
                 name = "Virtual Screen (All Displays)" if i == 0 else f"Monitor {i}"
                 monitors.append({
@@ -635,7 +657,8 @@ def list_active_monitors() -> Dict[str, Any]:
                     "left": m["left"],
                     "top": m["top"]
                 })
-            return {"status": "success", "monitors": monitors, "count": len(monitors)}
+            if monitors:
+                return {"status": "success", "platform": _platform_tag(), "monitors": monitors, "count": len(monitors)}
     except Exception as e:
         fallback = _list_active_monitors_imagegrab()
         if fallback is not None:
@@ -648,6 +671,17 @@ def list_active_monitors() -> Dict[str, Any]:
             "monitors": [],
             "count": 0,
         }
+
+    fallback = _list_active_monitors_imagegrab()
+    if fallback is not None:
+        return fallback
+    return {
+        "status": "error",
+        "platform": _platform_tag(),
+        "message": "No active displays with valid bounds were detected.",
+        "monitors": [],
+        "count": 0,
+    }
 
 
 def list_running_windows() -> Dict[str, Any]:

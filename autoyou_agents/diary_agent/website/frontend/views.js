@@ -1,5 +1,5 @@
 /**
- * Day One-parity View Renderers:
+ * Journal View Renderers:
  * - Timeline List (Month/Year headers, stacked weekday/day column, thumbnails, metadata chips)
  * - Calendar (Month grid with photo/dot badges, back-journaling CTA, quick Year overview)
  * - Media Gallery (Photos, Videos, Audio, Sketches grouped by Month)
@@ -676,7 +676,7 @@ export function renderInsightsView(host, insights, preferences, { onFilterTag, o
 }
 
 /* ===========================
-   6. DAY ONE FILTER SHEET
+   6. ENTRY FILTER SHEET
    =========================== */
 export function openFilterModal(openModal, entries, filters, { onApply }) {
   const counts = {
@@ -1112,8 +1112,8 @@ export function openExportModal(openModal, journals, activeJournal, { basePrefix
       </select>
     </label>
     <div class="export-options">
-      <button type="button" class="export-row" data-fmt="dayone_json">
-        <strong>Export Day One JSON (.json)</strong>
+      <button type="button" class="export-row" data-fmt="json">
+        <strong>Export Journal JSON (.json)</strong>
         <small>Full metadata, tags, locations, weather, and media descriptors</small>
       </button>
       <button type="button" class="export-row" data-fmt="markdown">

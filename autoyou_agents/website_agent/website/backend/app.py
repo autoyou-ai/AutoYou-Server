@@ -25,6 +25,7 @@ _FR_MOD = "autoyou_agents.shared_tools.frontend_registry"
 _smc = _import_autoyou_shared_tools_module(_SMC_MOD, anchor=__file__)
 _fr = _import_autoyou_shared_tools_module(_FR_MOD, anchor=__file__)
 
+import json
 import logging
 import os
 from pathlib import Path
@@ -86,8 +87,21 @@ def _extra_routes(app, agent_name: str) -> None:
             website_dir = Path(str(status.get("agent_dir", ""))) / "website" if status.get("agent_dir") else None
             has_website = bool(website_dir and website_dir.is_dir()) if website_dir else False
             port = proxy_ports.get(a)
+            manifest_title = ""
+            manifest_desc = ""
+            if website_dir and (website_dir / "manifest.json").is_file():
+                try:
+                    manifest_data = json.loads((website_dir / "manifest.json").read_text(encoding="utf-8"))
+                    if isinstance(manifest_data, dict):
+                        manifest_title = str(manifest_data.get("title") or manifest_data.get("name") or "").strip()
+                        manifest_desc = str(manifest_data.get("description") or "").strip()
+                except Exception:
+                    pass
+            display_name = manifest_title or a.replace("_agent", "").replace("_", " ").title()
             agents_with_websites.append({
                 "name": a,
+                "display_name": display_name,
+                "description": manifest_desc,
                 "has_website": has_website,
                 "proxy_port": port,
                 "preview_path": f"/agent/{a}/" if port else None,
@@ -106,10 +120,19 @@ def _extra_routes(app, agent_name: str) -> None:
             return _json_response({
                 "success": True,
                 "available": True,
+                "published": True,
                 "path": f"/agent/{target_agent}/",
+                "preview_path": f"/agent/{target_agent}/",
                 "port": port,
             })
-        return _json_response({"success": True, "available": False, "path": None, "port": None})
+        return _json_response({
+            "success": True,
+            "available": False,
+            "published": False,
+            "path": None,
+            "preview_path": None,
+            "port": None,
+        })
 
     @app.post("/api/publish/{target_agent}")
     async def website_publish(target_agent: str, request: Request):
