@@ -10,6 +10,7 @@ __copyright__ = "Copyright (c) 2026 OpenStorey LLC. All rights reserved."
 __license__ = "AutoYou Source-Available License (see LICENSE)"
 
 import asyncio
+import hashlib
 import json
 from io import BytesIO
 from ipaddress import ip_address
@@ -26,7 +27,8 @@ from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed, InvalidStatus
 
 from shared.runtime_module_loader import import_autoyou_shared_tools_module
-from shared.remote_access_policy import REMOTE_BROWSER_IDENTITY_HEADERS
+from shared.remote_access_policy import REMOTE_BROWSER_IDENTITY_HEADERS, request_is_direct_loopback, request_remote_access_role
+from shared.lan_direct_access import PASS_COOKIE_NAME
 
 __debug_trace_i__ = "AUTOYOU-PROVENANCE-I-75676820766f6c756e746172-897a7ab102c0a694509f20fc"
 
@@ -99,20 +101,37 @@ def _extra_routes(app, agent_name):
         return uploads
 
     def publishing_token(request):
+        if _smc._get_agent_security_settings(agent_name)["auth_mode"] == "open":
+            identity = request.headers.get("X-AutoYou-WebRTC-Session-Id") or request.cookies.get(PASS_COOKIE_NAME)
+            if identity and request_remote_access_role(request) in {"editor", "admin"}:
+                return "paired:" + hashlib.sha256(identity.encode()).hexdigest()
+            if _smc._is_direct_same_machine_loopback_request(request) or request_is_direct_loopback(request):
+                return "local-owner"
+            return ""
         header = request.headers.get("authorization", "")
         return header[7:].strip() if header.startswith("Bearer ") else request.cookies.get(_smc._agent_chat_cookie_name(agent_name), "")
 
     def publishing_authenticated(request):
+        if _smc._get_agent_security_settings(agent_name)["auth_mode"] == "open":
+            return _smc._is_direct_same_machine_loopback_request(request) or request_remote_access_role(request) in {"editor", "admin"}
         token = publishing_token(request)
         return bool(token and len(token) <= 512 and _smc._agent_chat_session_is_valid(agent_name, token))
 
+    def publishing_denial():
+        required = _smc._get_agent_security_settings(agent_name)["auth_mode"] != "open"
+        return JSONResponse({"success": False, "error": "Not authenticated" if required else "An editor or admin role is required"},
+                            status_code=401 if required else 403)
+
     @app.get("/api/game/publish-auth/status")
     async def publish_auth_status(request: Request):
-        # Public browsing does not authorize writing a game into the library.
-        return JSONResponse({"success": True, "required": True, "authenticated": publishing_authenticated(request)}, headers={"Cache-Control": "no-store"})
+        required = _smc._get_agent_security_settings(agent_name)["auth_mode"] != "open"
+        return JSONResponse({"success": True, "required": required, "authenticated": publishing_authenticated(request)}, headers={"Cache-Control": "no-store"})
 
     @app.post("/api/game/publish-auth/login")
     async def publish_auth_login(request: Request):
+        if _smc._get_agent_security_settings(agent_name)["auth_mode"] == "open":
+            allowed = publishing_authenticated(request)
+            return JSONResponse({"success": allowed, "authenticated": allowed, "required": False}, status_code=200 if allowed else 403)
         body = bytearray()
         async for part in request.stream():
             if len(body) + len(part) > 4096:
@@ -148,7 +167,7 @@ def _extra_routes(app, agent_name):
 
     @app.post("/api/game/packages/uploads")
     async def package_upload_begin(request: Request):
-        if not publishing_authenticated(request): return JSONResponse({"success": False, "error": "Not authenticated"}, status_code=401)
+        if not publishing_authenticated(request): return publishing_denial()
         try:
             result = await asyncio.to_thread(upload_store().begin, publishing_token(request), json.loads(await bounded_body(request, 4096)))
             return JSONResponse({"success": True, **result}, headers={"Cache-Control": "no-store"})
@@ -156,7 +175,7 @@ def _extra_routes(app, agent_name):
 
     @app.put("/api/game/packages/uploads/{upload_id}")
     async def package_upload_write(request: Request, upload_id: str, offset: int = 0):
-        if not publishing_authenticated(request): return JSONResponse({"success": False, "error": "Not authenticated"}, status_code=401)
+        if not publishing_authenticated(request): return publishing_denial()
         try:
             body = await bounded_body(request, 1024 * 1024)
             result = await asyncio.to_thread(upload_store().write, upload_id, publishing_token(request), offset, body)
@@ -165,7 +184,7 @@ def _extra_routes(app, agent_name):
 
     @app.post("/api/game/packages/uploads/{upload_id}/complete")
     async def package_upload_complete(request: Request, upload_id: str):
-        if not publishing_authenticated(request): return JSONResponse({"success": False, "error": "Not authenticated"}, status_code=401)
+        if not publishing_authenticated(request): return publishing_denial()
         try:
             result = await asyncio.to_thread(upload_store().finish, upload_id, publishing_token(request))
             return JSONResponse({"success": True, **result}, headers={"Cache-Control": "no-store"})
@@ -175,7 +194,7 @@ def _extra_routes(app, agent_name):
     @app.post("/api/game/publish/{game_id}")
     async def publish_game(request: Request, game_id: str):
         if not publishing_authenticated(request):
-            return JSONResponse({"success": False, "error": "Not authenticated"}, status_code=401)
+            return publishing_denial()
         if re.fullmatch(r"[a-z0-9-]{1,64}", game_id) is None:
             return JSONResponse({"success": False, "error": "Use a short lowercase game name"}, status_code=400)
         html = bytearray()
@@ -232,7 +251,7 @@ def _extra_routes(app, agent_name):
         if denied is not None:
             return denied
         if not publishing_authenticated(request):
-            return JSONResponse({"error":"Verify the Games authenticator"},status_code=401)
+            return publishing_denial()
         if not game_rules.GAME_ID.fullmatch(game_id):
             return JSONResponse({"error":"Invalid game ID"},status_code=400)
         catalog = packages()
@@ -361,7 +380,11 @@ def _extra_routes(app, agent_name):
     async def observe_inputs(websocket: WebSocket):
         """Relay the read-only input feed to a signed-in website page, for web app agents."""
         auth = _smc._describe_chat_auth_state(websocket, agent_name)
-        if not auth.get("authenticated") or auth.get("auth_mode") == "open":
+        if not auth.get("authenticated") or (
+            auth.get("auth_mode") == "open"
+            and not _smc._is_direct_same_machine_loopback_request(websocket)
+            and request_remote_access_role(websocket) != "admin"
+        ):
             await websocket.close(code=1008)
             return
         server = _smc._runtime_server()

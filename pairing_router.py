@@ -844,7 +844,7 @@ class PairingRouter:
         mode = self._current_security_mode()
         if approved_contact and mode != "normal" and self._get_security_tier() == SECURITY_TIER_A:
             return "This server requires /pair_hello for OTP pairing."
-        if is_secure_professional_mode(mode):
+        if is_secure_professional_mode(mode) or totp_code:
             allowed, error = await self._verify_autopair_totp_online(
                 platform, sender_id, totp_code, identity_sender_id=identity_sender_id
             )
@@ -1032,7 +1032,7 @@ class PairingRouter:
         except Exception as exc:
             return f"Invalid /pair_hello payload: {exc}"
 
-        if is_secure_professional_mode(mode):
+        if is_secure_professional_mode(mode) or hello.totp_code:
             allowed, error = await self._verify_autopair_totp_online(
                 platform, sender_id, hello.totp_code, identity_sender_id=identity_sender_id
             )
@@ -1121,6 +1121,7 @@ class PairingRouter:
         AutoPair request v2 carries this code inside authenticated ciphertext;
         the relay never receives a readable credential. The code remains outside
         key derivation and is still checked online as an independent factor.
+        A client-supplied code is verified even when the host only requires a password.
         """
         auth_sender_id = self._resolve_auth_sender_id(sender_id, identity_sender_id)
         if not rate_limit_checked:
@@ -1183,7 +1184,7 @@ class PairingRouter:
         except Exception as exc:
             return f"Invalid /autopair_hello payload: {exc}"
 
-        if is_secure_professional_mode(mode):
+        if is_secure_professional_mode(mode) or hello.totp_code:
             allowed, error = await self._verify_autopair_totp_online(
                 platform, sender_id, hello.totp_code, identity_sender_id=identity_sender_id
             )
@@ -1621,7 +1622,7 @@ class PairingRouter:
                 rate_limit_checked = True
             try:
                 pt, pake_context = decrypt_pake_request(normalized_line, current_password)
-                if is_secure_professional_mode(mode):
+                if is_secure_professional_mode(mode) or pake_context.totp_code:
                     allowed, error = await self._verify_autopair_totp_online(
                         platform,
                         sender_id,

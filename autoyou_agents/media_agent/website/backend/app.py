@@ -143,10 +143,11 @@ def create_app(data_dir: Path | None = None, *, otp_verifier=None) -> FastAPI:
     install_collection_sync(application, "media_agent")
     photo_decoders = asyncio.Semaphore(2)
     application.state.store = None
-    # Reuse AutoYou's CSRF/session adapter, while explicitly making the viewing
-    # surface public. Every mutation below applies its own editor/OTP boundary.
+    # A custom verifier owns standalone authentication; the managed app follows
+    # the shared website policy and also accepts its scoped Media OTP sessions.
     install_agent_website_auth(application, agent_name="media_agent", title="AutoYou Media",
-                               is_authenticated=lambda request: True, shared_session_upgrade=False)
+                               is_authenticated=lambda request: otp_verifier is not None or services()[1].session(request)["otp_unlocked"],
+                               shared_session_upgrade=False)
 
     @application.exception_handler(LookupError)
     async def missing(_request, error):

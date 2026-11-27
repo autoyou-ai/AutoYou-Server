@@ -95,18 +95,7 @@ def _check_auth(request: Request) -> bool:
     if describe_auth_state:
         try:
             auth = describe_auth_state(request, _AGENT_NAME)
-            # The audio website is open by default, but its Settings drawer
-            # remains an explicit OTP boundary. A real audio session or the
-            # opt-in shared website session may unlock that drawer; the
-            # manifest's public "open" state alone must not do so.
-            if str(auth.get("auth_mode") or "").strip().lower() != "open":
-                return bool(auth.get("authenticated"))
-            if str(auth.get("via") or "").strip().lower() in {
-                "mission_session",
-                "shared_session",
-                "loopback_no_totp",
-            }:
-                return bool(auth.get("authenticated"))
+            return bool(auth.get("authenticated"))
         except Exception:
             pass
     session_valid = helpers.get("session_valid")

@@ -35,6 +35,16 @@ def test_global_otp_off_opens_audio_settings_without_an_agent_cookie(monkeypatch
     assert audio_backend._check_auth(None) is True
 
 
+def test_audio_settings_follow_the_optional_website_policy(monkeypatch) -> None:
+    from autoyou_agents.shared_tools import scheduler_mission_control as security
+    monkeypatch.setattr(security, "_global_agent_website_otp_disabled", lambda: False)
+    state = {"auth_mode": "open", "authenticated": True, "via": "open"}
+    monkeypatch.setattr(audio_backend, "_import_auth_helpers", lambda: {"describe_auth_state": lambda *_: state})
+    assert audio_backend._check_auth(None) is True
+    state.update(auth_mode="totp", authenticated=False, via="none")
+    assert audio_backend._check_auth(None) is False
+
+
 @pytest.mark.parametrize(
     ("backend", "agent_name"),
     [

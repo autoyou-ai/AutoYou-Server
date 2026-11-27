@@ -7,5 +7,5 @@
   "requires_proxy_registration": true,
   "websocket_enabled": false,
   "auth_default": "open",
-  "bypass_global_otp": true
+  "bypass_global_otp": false
 }

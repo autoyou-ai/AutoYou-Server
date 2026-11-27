@@ -11,8 +11,8 @@ waits for the wake word with the same engine the Admin page uses, sends the
 question to the Assistant agent like a wake-word turn from a phone, and speaks
 the answer with this server's voice.
 
-Access follows the agent website rules: an authenticator code by default
-(manifest ``gated``), or open when the owner turns OTP off for this website.
+Access follows the agent website rules: open by default, with an optional
+authenticator code when the owner enables OTP for this website.
 A screenless device cannot type a code, so the owner can hand it a device
 link from the Admin page (``/api/assistant-mode/device-link``); the token in
 that link becomes this website's session cookie on first load and is dropped

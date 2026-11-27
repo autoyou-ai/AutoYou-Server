@@ -147,9 +147,17 @@ def test_lan_local_pair_completes_with_cpace_and_no_session(secure_server):
     assert secure_server["payload"]["_autoyou_device_ownership"] == server.DEVICE_SHARED
 
 
+def test_local_pair_does_not_ignore_client_otp_when_server_setup_is_missing(secure_server):
+    response, _ = _hello(totp_code="654321")
+
+    assert response.status_code == 400
+    assert "Set up an authenticator" in json.loads(response.body)["error"]
+    assert not secure_server
+
+
 def test_secure_professional_local_pair_recovers_after_clock_sync(secure_server, monkeypatch):
     pyotp = pytest.importorskip("pyotp")
-    secret = "JBSWY3DPEHPK3PXP"
+    secret = pyotp.random_base32()
     client_time = datetime.datetime(2026, 1, 1, 12, 0, 20, tzinfo=datetime.timezone.utc)
     server_time = client_time
     monkeypatch.setattr(server, "_totp_utc_now", lambda: server_time)

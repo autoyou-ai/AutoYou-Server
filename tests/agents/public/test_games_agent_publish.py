@@ -11,18 +11,24 @@ __license__ = "AutoYou Source-Available License (see LICENSE)"
 
 from types import SimpleNamespace
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 import pytest
+from starlette.websockets import WebSocketDisconnect
 
 from autoyou_agents.games_agent.website.backend import app as game_studio
 
 __debug_trace_s__ = "AUTOYOU-PROVENANCE-S-000000000000000000000000-4b1a7244afa42397d2600afd"
 
 
+@pytest.fixture(autouse=True)
+def publishing_otp_enabled(monkeypatch):
+    monkeypatch.setattr(game_studio._smc, "_get_agent_security_settings", lambda name: {"auth_mode": "totp", "session_ttl_days": 1})
+
+
 @pytest.mark.parametrize("field", ["code", "totp_code"])
-@pytest.mark.parametrize("view_mode", ["open", "totp"])
 @pytest.mark.parametrize("assigned_profile", [False, True])
-def test_game_publishing_requires_otp_even_with_public_browsing(tmp_path, monkeypatch, field, view_mode, assigned_profile):
+def test_game_publishing_requires_otp_when_enabled(tmp_path, monkeypatch, field, assigned_profile):
     monkeypatch.setenv("AUTOYOU_TEST_ROOT", str(tmp_path))
     server = SimpleNamespace(
         __file__=str(tmp_path / "server.py"),
@@ -36,7 +42,7 @@ def test_game_publishing_requires_otp_even_with_public_browsing(tmp_path, monkey
         _verify_totp_secret=lambda secret, code: not assigned_profile and secret == "synthetic-test-secret" and code == "654321",
     )
     monkeypatch.setattr(game_studio._smc, "_runtime_server", lambda: server)
-    monkeypatch.setattr(game_studio._smc, "_get_agent_security_settings", lambda _agent: {"auth_mode": view_mode, "session_ttl_days": 1})
+    monkeypatch.setattr(game_studio._smc, "_get_agent_security_settings", lambda _agent: {"auth_mode": "totp", "session_ttl_days": 1})
     monkeypatch.setattr(game_studio._smc, "_totp_capabilities", lambda: {"totp_configured": not assigned_profile})
     monkeypatch.setattr(game_studio._smc, "_create_agent_chat_session", lambda *_args: "synthetic-game-session")
     monkeypatch.setattr(game_studio._smc, "_agent_chat_session_is_valid", lambda agent, token: agent == "games_agent" and token == "synthetic-game-session")
@@ -58,6 +64,24 @@ def test_game_publishing_requires_otp_even_with_public_browsing(tmp_path, monkey
         assert client.get(route + "/status").json()["authenticated"]
         assert client.post("/api/game/publish/synthetic-publishing", content=html).status_code == 200
         assert (tmp_path / "mobile_games/synthetic-publishing.html").read_bytes() == html
+
+
+@pytest.mark.parametrize(("peer", "role", "allowed"), [
+    ("127.0.0.1", "viewer", False), ("127.0.0.1", "editor", True),
+    ("127.0.0.1", "admin", True), ("198.51.100.10", "admin", False),
+])
+def test_game_publishing_without_otp_uses_the_paired_role(tmp_path, monkeypatch, peer, role, allowed):
+    monkeypatch.setattr(game_studio._smc, "_get_agent_security_settings", lambda name: {"auth_mode": "open", "session_ttl_days": 1})
+    server = SimpleNamespace(__file__=str(tmp_path / "server.py"), get_mutable_data_dir=lambda *_args, **_kwargs: tmp_path)
+    monkeypatch.setattr(game_studio._smc, "_runtime_server", lambda: server)
+    headers = {"X-AutoYou-Remote-Browser": "webrtc", "X-AutoYou-Remote-Access-Role": role}
+    with TestClient(game_studio.app, client=(peer, 50000)) as client:
+        status = client.get("/api/game/publish-auth/status", headers=headers).json()
+        assert status["required"] is False and status["authenticated"] is allowed
+        assert client.post("/api/game/publish-auth/login", json={}, headers=headers).status_code == (200 if allowed else 403)
+        html = b"<html><head></head><body>Synthetic game<button onclick=\"AutoYouGame.quit()\">Quit</button></body></html>"
+        response = client.post("/api/game/publish/synthetic-open-game", content=html, headers=headers)
+        assert response.status_code == (200 if allowed else 403)
 
 
 def test_game_studio_publish_requires_auth_and_saves_html(tmp_path, monkeypatch):
@@ -104,6 +128,54 @@ def test_game_studio_publish_requires_auth_and_saves_html(tmp_path, monkeypatch)
             assert response.status_code == 200, response.text
             assert target.read_bytes() == maximum
             assert read_game(target) == maximum
+
+
+def test_open_game_uploads_remain_bound_to_the_paired_session(tmp_path, monkeypatch):
+    monkeypatch.setattr(game_studio._smc, "_get_agent_security_settings", lambda name: {"auth_mode": "open", "session_ttl_days": 1})
+    server = SimpleNamespace(__file__=str(tmp_path / "server.py"), get_mutable_data_dir=lambda *_args, **_kwargs: tmp_path)
+    monkeypatch.setattr(game_studio._smc, "_runtime_server", lambda: server)
+    app = FastAPI()
+    game_studio._extra_routes(app, "games_agent")
+    base = "/api/game/packages/uploads"
+    with TestClient(app, base_url="http://127.0.0.1:8112", client=("127.0.0.1", 50000)) as client:
+        client.headers["X-Forwarded-Host"] = "127.0.0.1:8067"
+        assert client.get("/api/game/publish-auth/status").json()["authenticated"] is True
+        client.headers.update({"X-AutoYou-Remote-Browser": "webrtc", "X-AutoYou-Remote-Access-Role": "editor",
+                               "X-AutoYou-WebRTC-Session-Id": "synthetic-package-first"})
+        reply = client.post(base, json={"id": "synthetic-open-upload", "size": 32, "sha256": "a" * 64})
+        assert reply.status_code == 200
+        upload = base + "/" + reply.json()["upload_id"]
+        client.headers["X-AutoYou-WebRTC-Session-Id"] = "synthetic-package-other"
+        assert client.put(upload, content=b"synthetic").status_code == 400
+        client.headers["X-AutoYou-WebRTC-Session-Id"] = "synthetic-package-first"
+        assert client.put(upload, content=b"synthetic").status_code == 200
+
+
+@pytest.mark.parametrize(("mode", "authenticated", "peer", "role", "allowed"), [
+    ("open", True, "127.0.0.1", "admin", True),
+    ("open", True, "127.0.0.1", "viewer", False),
+    ("open", True, "198.51.100.10", "admin", False),
+    ("totp", False, "127.0.0.1", "admin", False),
+    ("totp", True, "127.0.0.1", "admin", True),
+])
+def test_game_observer_accepts_the_paired_admin_without_optional_otp(monkeypatch, mode, authenticated, peer, role, allowed):
+    monkeypatch.setattr(game_studio._smc, "_describe_chat_auth_state", lambda *args: {"auth_mode": mode, "authenticated": authenticated})
+    server = SimpleNamespace(ADMIN_WEB_SERVICE_PORT=9000, WEBRTC=SimpleNamespace(game_input_hub=SimpleNamespace(token="synthetic-observer-token")))
+    monkeypatch.setattr(game_studio._smc, "_runtime_server", lambda: server)
+    connections = []
+
+    def connect(url, **kwargs):
+        connections.append(url)
+        raise OSError("Synthetic upstream unavailable")
+
+    monkeypatch.setattr(game_studio, "connect", connect)
+    headers = {"X-AutoYou-Remote-Browser": "webrtc", "X-AutoYou-Remote-Access-Role": role}
+    with TestClient(game_studio.app, client=(peer, 50000)) as client:
+        with pytest.raises(WebSocketDisconnect) as closed:
+            with client.websocket_connect("/api/game/observe", headers=headers):
+                pass
+        assert closed.value.code == (1000 if allowed else 1008)
+    assert len(connections) == int(allowed)
 
 
 def test_complete_package_upload_poll_and_download_are_authenticated_and_owner_bound(tmp_path,monkeypatch):

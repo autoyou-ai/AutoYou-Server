@@ -1,5 +1,5 @@
 export type Kind = 'movie' | 'episode' | 'video' | 'photo' | 'audio' | 'document';
-export interface AuthState { role: 'viewer' | 'editor' | 'admin'; otp_unlocked: boolean; expires?: number; otp_expires?: number }
+export interface AuthState { role: 'viewer' | 'editor' | 'admin'; otp_unlocked: boolean; otp_required?: boolean; expires?: number; otp_expires?: number }
 export interface Config { library_name: string; autoplay_next: boolean; auth: AuthState; capabilities: { download: boolean; transcode: boolean; probe: boolean } }
 export interface Metadata {
   status?: 'matched' | 'missing_key' | 'error' | 'not_found'; message?: string; plot?: string;

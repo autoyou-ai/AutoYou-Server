@@ -104,6 +104,41 @@ def test_admin_invitation_still_requires_otp_for_settings(client):
     assert client.get("/api/settings").status_code == 401
 
 
+@pytest.mark.parametrize(("peer", "role", "expected"), [
+    ("127.0.0.1", "admin", "admin"), ("127.0.0.1", "editor", "editor"),
+    ("127.0.0.1", "viewer", "viewer"), ("198.51.100.10", "admin", "viewer"),
+])
+def test_media_optional_otp_uses_only_trusted_transport_roles(tmp_path, monkeypatch, peer, role, expected):
+    import server
+    from autoyou_agents.shared_tools import scheduler_mission_control as security
+    monkeypatch.setattr(server.STATE, "config", {"agent_websites": {}})
+    monkeypatch.setattr(security, "_get_agent_security_settings", lambda name: {"auth_mode": "open"})
+    app = create_app(tmp_path / "optional-media")
+    with TestClient(app, client=(peer, 50000)) as client:
+        client.headers.update({"X-AutoYou-Remote-Browser": "webrtc", "X-AutoYou-Remote-Access-Role": role})
+        status = client.get("/api/auth/status").json()
+        assert status["role"] == expected and status["otp_required"] is False
+        assert client.get("/api/settings").status_code == (200 if expected == "admin" else 403)
+        assert client.post("/api/folders", json={"name": "Synthetic folder"}).status_code == (403 if expected == "viewer" else 200)
+
+
+def test_media_otp_can_be_enabled_and_the_local_page_proxy_can_open_settings(tmp_path, monkeypatch):
+    import server
+    from autoyou_agents.shared_tools import scheduler_mission_control as security
+    monkeypatch.setattr(server.STATE, "config", {"agent_websites": {}})
+    mode = {"auth_mode": "open"}
+    monkeypatch.setattr(security, "_get_agent_security_settings", lambda name: mode)
+    app = create_app(tmp_path / "optional-media")
+    with TestClient(app, base_url="http://127.0.0.1:8113", client=("127.0.0.1", 50000)) as client:
+        client.headers["X-Forwarded-Host"] = "127.0.0.1:8067"
+        assert client.get("/api/settings").status_code == 200
+        mode["auth_mode"] = "totp"
+        monkeypatch.setattr(security, "_totp_capabilities", lambda: {"totp_configured": False})
+        assert client.get("/api/settings").status_code == 401
+        mode["auth_mode"] = "open"
+        assert client.get("/api/settings").status_code == 200
+
+
 def test_cross_origin_writes_are_blocked_even_with_editor_session(client):
     admin(client)
     assert client.post("/api/folders", json={"name": "Movies"}, headers={"Origin": "https://untrusted.example"}).status_code == 403

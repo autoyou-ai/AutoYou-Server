@@ -7,5 +7,5 @@
   "auth_default": "open",
   "shared_session_eligible": true,
   "title": "Music",
-  "bypass_global_otp": true
+  "bypass_global_otp": false
 }

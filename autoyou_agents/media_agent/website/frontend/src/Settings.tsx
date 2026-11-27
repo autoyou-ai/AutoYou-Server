@@ -20,8 +20,8 @@ export default function Settings({ config, onAuthenticated, onChanged, notify }:
     return () => controller.abort();
   }, [config.auth.otp_unlocked, revision, onAuthenticated]);
   return <div className="page-content settings-page"><div className="page-heading heading-row"><div><p className="eyebrow">Make it yours</p><h1>Library Settings</h1><p>A few thoughtful choices. Everything else is ready to watch.</p></div>
-    {config.auth.otp_unlocked && <span className="role-badge"><ShieldCheck size={16} />OTP verified</span>}</div>
-    {!config.auth.otp_unlocked ? <OtpGate onAuthenticated={onAuthenticated} /> : <>
+    {config.auth.otp_unlocked && <span className="role-badge"><ShieldCheck size={16} />{config.auth.otp_required === false ? 'Admin access' : 'OTP verified'}</span>}</div>
+    {!config.auth.otp_unlocked ? config.auth.otp_required === false ? <p className="panel">Admin access is required to manage library Settings.</p> : <OtpGate onAuthenticated={onAuthenticated} /> : <>
       <div className="settings-tabs" aria-label="Settings section">{[['general', KeyRound, 'General'], ['sources', Folder, 'Source folders'], ['people', Users, 'People']].map(([id, Icon, label]) => {
         const Glyph = Icon as typeof KeyRound; return <button key={String(id)} className={tab === id ? 'active' : ''} aria-pressed={tab === id} onClick={() => setTab(String(id))}><Glyph size={18} />{String(label)}</button>;
       })}</div>
@@ -126,7 +126,7 @@ function People({ settings, reload, notify }: { settings: SettingsData; reload: 
     try { await api(`settings/invitations/${invitation.id}`, { method: 'DELETE' }); notify('Invitation revoked. Its active sessions have ended.'); reload(); }
     catch (error) { notify(errorMessage(error), true); }
   }
-  return <><section className="panel settings-panel"><div className="panel-heading"><Users size={23} /><h2>Give your people a place</h2></div><p className="muted">Editors add and organize content. Admins have the same tools; Settings always requires OTP.</p>
+  return <><section className="panel settings-panel"><div className="panel-heading"><Users size={23} /><h2>Give your people a place</h2></div><p className="muted">Editors add and organize content. Admins can also manage library Settings.</p>
     <form className="form" onSubmit={submit}><label>Invitation label<input name="label" placeholder="A person or team" required maxLength={100} /></label>
       <div className="form-grid"><label>Role<select name="role"><option value="editor">Editor</option><option value="admin">Admin</option></select></label><label>Expires after<select name="days" defaultValue={7}>{[1, 7, 14, 30].map(days => <option key={days} value={days}>{days} {days === 1 ? 'day' : 'days'}</option>)}</select></label></div>
       {error && <p className="inline-error" role="alert">{error}</p>}<button className="button primary" disabled={busy}><Plus size={18} />{busy ? 'Creating...' : 'Create invitation'}</button></form>

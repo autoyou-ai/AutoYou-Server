@@ -47,7 +47,7 @@ def _build_server_stub() -> types.ModuleType:
         config = {
             "security": {"totp_secret": _DUMMY_SECRET},
             "ui_security": {},
-            "agent_websites": {"require_otp": False},
+            "agent_websites": {"require_otp": True},
         }
         admin_session_token = "test-admin-token"
 
@@ -57,7 +57,7 @@ def _build_server_stub() -> types.ModuleType:
         return {
             "security": {"totp_secret": _DUMMY_SECRET},
             "ui_security": {},
-            "agent_websites": {"require_otp": False},
+            "agent_websites": {"require_otp": True},
         }
 
     def _is_logged_in(request):
@@ -322,8 +322,8 @@ def test_shared_otp_login_does_not_share_another_agent_session(tmp_path, monkeyp
 
 
 @pytest.mark.parametrize("agent_name", ("ads_watching_agent", "notes_agent", "page_agent"))
-def test_public_default_agents_are_open_even_when_global_otp_is_configured(monkeypatch, agent_name):
-    """Public-by-default sites do not inherit the optional global OTP gate."""
+def test_open_default_agents_honor_global_otp_opt_in(monkeypatch, agent_name):
+    """Open defaults still honor the operator's optional global OTP gate."""
     server_stub = sys.modules["server"]
     monkeypatch.setattr(
         server_stub.STATE,
@@ -334,12 +334,12 @@ def test_public_default_agents_are_open_even_when_global_otp_is_configured(monke
             "agent_websites": {"require_otp": True},
         },
     )
-    monkeypatch.setattr(server_stub, "agent_has_assigned_2fa_profile", lambda _agent: True, raising=False)
+    monkeypatch.setattr(server_stub, "agent_has_assigned_2fa_profile", lambda _agent: False, raising=False)
 
     assert _get_agent_security_settings(agent_name) == {
-        "auth_mode": "open",
+        "auth_mode": "totp",
         "session_ttl_days": 30,
-        "bypass_global_otp": True,
+        "bypass_global_otp": False,
         "per_agent_profile": False,
         "shared_session_eligible": True,
     }
@@ -391,7 +391,7 @@ def test_audio_open_default_and_explicit_otp_override(monkeypatch):
     )
     monkeypatch.setattr(server_stub, "agent_has_assigned_2fa_profile", lambda _agent: False, raising=False)
 
-    assert _get_agent_security_settings("music_agent")["auth_mode"] == "open"
+    assert _get_agent_security_settings("music_agent")["auth_mode"] == "totp"
     server_stub.STATE.config["agent_ui_security"]["music_agent"] = {"auth_mode": "totp"}
     assert _get_agent_security_settings("music_agent")["auth_mode"] == "totp"
 
@@ -450,7 +450,7 @@ def test_public_default_agents_can_be_re_gated_via_explicit_per_agent_config(mon
     assert _get_agent_security_settings(agent_name)["auth_mode"] == "totp"
 
 
-def test_unknown_agent_with_no_manifest_still_defaults_to_gated(monkeypatch):
+def test_unknown_agent_with_no_manifest_defaults_to_open(monkeypatch):
     server_stub = sys.modules["server"]
     monkeypatch.setattr(
         server_stub.STATE,
@@ -463,7 +463,7 @@ def test_unknown_agent_with_no_manifest_still_defaults_to_gated(monkeypatch):
     )
     monkeypatch.setattr(server_stub, "agent_has_assigned_2fa_profile", lambda _agent: False, raising=False)
 
-    assert _get_agent_security_settings("some_future_agent_without_a_manifest")["auth_mode"] == "totp"
+    assert _get_agent_security_settings("some_future_agent_without_a_manifest")["auth_mode"] == "open"
 
 
 def test_scheduler_app_index_uses_the_same_fail_closed_gate():
@@ -538,6 +538,7 @@ def test_open_agent_security_endpoint_rejects_anonymous_writer(tmp_path, monkeyp
         lambda agent_name: {"auth_default": "open", "shared_session_eligible": True},
     )
     server_stub = sys.modules["server"]
+    monkeypatch.setitem(server_stub.STATE.config["agent_websites"], "require_otp", False)
     monkeypatch.setattr(server_stub, "_is_logged_in", lambda request: False, raising=False)
 
     app = _make_app(tmp_path, agent_name="open_test_agent")

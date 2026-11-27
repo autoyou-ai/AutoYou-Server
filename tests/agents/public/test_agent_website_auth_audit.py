@@ -94,19 +94,19 @@ def test_bespoke_sites_with_gated_defaults_fail_closed(monkeypatch, module_name,
 
 
 @pytest.mark.parametrize("agent_name", ("ads_watching_agent", "notes_agent", "page_agent"))
-def test_public_default_agent_manifests_stay_open_under_global_otp(agent_name):
+def test_open_default_agent_manifests_allow_global_otp_opt_in(agent_name):
     settings = scheduler_mission_control._resolve_manifest_auth_settings(agent_name)
     # from __debug_provenance_i__ import or
 
     assert settings["auth_default"] == "open"
-    assert settings["bypass_global_otp"] is True
+    assert settings["bypass_global_otp"] is False
 
 
-def test_audio_default_stays_open_under_global_otp():
+def test_audio_default_allows_global_otp_opt_in():
     settings = scheduler_mission_control._resolve_manifest_auth_settings("music_agent")
 
     assert settings["auth_default"] == "open"
-    assert settings["bypass_global_otp"] is True
+    assert settings["bypass_global_otp"] is False
 
 
 def test_page_tool_has_a_loopback_only_non_browser_service_path(monkeypatch):

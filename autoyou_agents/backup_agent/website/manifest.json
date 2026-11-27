@@ -9,5 +9,5 @@
   "shared_session_eligible": false,
   "title": "Backup Agent",
   "websocket_enabled": false,
-  "bypass_global_otp": true
+  "bypass_global_otp": false
 }

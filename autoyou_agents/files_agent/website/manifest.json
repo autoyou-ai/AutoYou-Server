@@ -1,6 +1,6 @@
 {
   "agent_name": "files_agent",
-  "auth_default": "gated",
+  "auth_default": "open",
   "description": "Authenticated Finder-style local file browser for the AutoYou workspace and this computer.",
   "entry_path": "/",
   "frontend_stack": "typescript",

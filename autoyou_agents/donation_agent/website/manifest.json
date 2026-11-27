@@ -8,5 +8,5 @@
   "websocket_enabled": false,
   "auth_default": "open",
   "shared_session_eligible": true,
-  "bypass_global_otp": true
+  "bypass_global_otp": false
 }

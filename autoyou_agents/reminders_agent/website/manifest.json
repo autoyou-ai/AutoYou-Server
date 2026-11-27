@@ -6,5 +6,5 @@
   "recommended_port": 8096,
   "requires_proxy_registration": true,
   "auth_default": "open",
-  "bypass_global_otp": true
+  "bypass_global_otp": false
 }

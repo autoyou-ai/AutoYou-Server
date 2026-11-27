@@ -37,7 +37,7 @@ def _build_server_stub(*, shared_session_enabled: bool, shared_session_ttl_days:
             "security": {"totp_secret": _DUMMY_SECRET},
             "agent_ui_security": {},
             "agent_websites": {
-                "require_otp": False,
+                "require_otp": True,
                 "shared_session_enabled": shared_session_enabled,
                 "shared_session_ttl_days": shared_session_ttl_days,
             },

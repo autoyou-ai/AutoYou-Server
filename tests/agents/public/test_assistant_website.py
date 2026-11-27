@@ -3,7 +3,7 @@
 # See LICENSE in the project root for license information.
 # AI/ML training use prohibited without written authorization (License S3.9).
 
-"""The Assistant website: gated by default, device links, listening and replies."""
+"""The Assistant website: optional OTP, device links, listening and replies."""
 
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ def _server(config):
 
 @pytest.fixture
 def site(tmp_path, monkeypatch):
-    config = {"agent_ui_security": {}, "agent_websites": {}}
+    config = {"agent_ui_security": {}, "agent_websites": {"require_otp": True}}
     monkeypatch.setenv(am.ASSISTANT_MODE_DIR_ENV, str(tmp_path / "assistant_mode"))
     monkeypatch.setattr(smc, "_AGENT_UI_SESSIONS_FILE", str(tmp_path / "agent_ui_sessions.json"))
     monkeypatch.setattr(smc, "_AGENT_UI_SESSIONS", {})
@@ -68,16 +68,16 @@ def _open(site):
     site.config["agent_ui_security"]["assistant_agent"] = {"auth_mode": "open"}
 
 
-def test_manifest_is_gated_by_default_and_registered():
+def test_manifest_is_open_by_default_and_registered():
     manifest = json.loads((WEBSITE / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["agent_name"] == "assistant_agent"
-    assert manifest["auth_default"] == "gated"
+    assert manifest["auth_default"] == "open"
     assert manifest["bypass_global_otp"] is False
     server_source = (ROOT / "server.py").read_text(encoding="utf-8")
     assert '"app_import": "autoyou_agents.assistant_agent.website.backend.app:app"' in server_source
 
 
-def test_page_and_api_need_the_code_by_default(site):
+def test_page_and_api_need_the_code_when_enabled(site):
     page = site.client.get("/")
     assert page.status_code == 200
     assert 'id="autoyou-auth-gate"' in page.text

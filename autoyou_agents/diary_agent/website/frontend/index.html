@@ -1,15 +1,413 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light dark"><title>Diary · AutoYou</title><link rel="stylesheet" href="assets/diary.css"></head>
-<body><header><a href="./" aria-label="Diary home">Diary</a><button id="new" type="button">New entry</button></header>
-<main><aside aria-label="Journal entries"><label for="filter">Find an entry</label><input id="filter" type="search" placeholder="Search dates and entries">
-<label for="view">Show</label><select id="view"><option value="all">Timeline</option><option value="favorites">Favorites</option><option value="anniversary">On this day</option></select>
-<nav id="entries" aria-label="Timeline"></nav></aside>
-<article><form id="editor"><div class="dateline"><label>Date <input id="date" type="date" required></label><span id="time"></span></div>
-<label for="title">Title</label><input id="title" type="text" maxlength="200" placeholder="A moment to remember" required>
-<label for="body">Entry</label><textarea id="body" rows="12" placeholder="Write about your day. Markdown is welcome."></textarea>
-<div class="organize"><label>Journal<input id="journal" maxlength="256" placeholder="Journal name"></label><label>Tags<input id="tags" placeholder="Separate tags with commas"></label><label class="check"><input type="checkbox" id="favorite"> Favorite</label></div>
-<div id="media" hidden></div><div class="actions"><button type="submit">Save entry</button><button type="button" id="remove" hidden>Delete entry</button></div>
-<button type="button" id="copy" hidden>Download my draft</button>
-<p id="status" role="status" aria-live="polite"></p></form></article></main>
-<script type="module" src="assets/diary.js"></script></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <base href="./">
+  <title>Diary · AutoYou</title>
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("autoyou.diary.theme") || localStorage.getItem("autoyou.ui.theme");
+        if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+        var ff = localStorage.getItem("autoyou.diary.font_family");
+        if (ff) document.documentElement.dataset.font = ff;
+        var fs = localStorage.getItem("autoyou.diary.font_size");
+        if (fs) document.documentElement.dataset.size = fs;
+      } catch (_) {}
+    })();
+  </script>
+  <link rel="stylesheet" href="./assets/diary.css">
+</head>
+<body>
+  <div id="app" class="app-shell" data-mobile-pane="browse" data-view="list">
+    <div id="sidebar-backdrop" class="sidebar-backdrop" hidden></div>
+
+    <!-- Left Navigation Sidebar (Desktop permanent, Mobile slide-over drawer) -->
+    <aside id="sidebar" class="sidebar" aria-label="Journals and navigation">
+      <div class="sidebar-head">
+        <a href="./" class="brand" aria-label="Diary home">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4.5A2.5 2.5 0 0 1 7.5 2h9A2.5 2.5 0 0 1 19 4.5v15a2.5 2.5 0 0 1-2.5 2.5h-9A2.5 2.5 0 0 1 5 19.5v-15Z"/><path d="M9 2v8l3-2 3 2V2"/></svg>
+          </span>
+          <span class="brand-text">
+            <strong>Diary</strong>
+            <small id="sync-subtitle">Private Journal</small>
+          </span>
+        </a>
+        <button id="sidebar-close" class="icon-btn mobile-only" type="button" aria-label="Close sidebar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="sidebar-compose">
+        <button id="btn-new-entry" class="btn-primary btn-compose" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
+          <span>New Entry</span>
+        </button>
+        <button id="btn-open-templates" class="icon-btn btn-template-quick" type="button" title="New from template" aria-label="Templates">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+        </button>
+      </div>
+
+      <div class="sidebar-scroll">
+        <nav class="nav-group" aria-label="Primary views">
+          <button class="nav-item" type="button" data-scope="all" aria-current="true">
+            <span class="nav-icon book-all" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 2h12a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm3 2v7l3-2 3 2V4H9z"/></svg>
+            </span>
+            <span class="nav-label">All Entries</span>
+            <span class="nav-count" id="count-all">0</span>
+          </button>
+          <button class="nav-item" type="button" data-scope="memories">
+            <span class="nav-icon icon-amber" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+            </span>
+            <span class="nav-label">On This Day</span>
+            <span class="nav-count badge-accent" id="count-otd">0</span>
+          </button>
+          <button class="nav-item" type="button" data-scope="favorites">
+            <span class="nav-icon icon-rose" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+            </span>
+            <span class="nav-label">Favorites</span>
+            <span class="nav-count" id="count-fav">0</span>
+          </button>
+          <button class="nav-item" type="button" data-scope="insights">
+            <span class="nav-icon icon-emerald" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2c.5 4-2 6.5-2 9.5a4 4 0 0 0 8 0c0-2-1-4-2-5.5-.5 2-2 2.5-2 1 0-2-.5-3.5-2-5z"/><path d="M7 14a5 5 0 0 0 10 0"/></svg>
+            </span>
+            <span class="nav-label">Streaks &amp; Insights</span>
+            <span class="nav-count streak-pill" id="count-streak">0d</span>
+          </button>
+        </nav>
+
+        <section class="nav-section" aria-label="Journals">
+          <div class="nav-section-head">
+            <span>JOURNALS</span>
+            <button id="btn-add-journal" class="text-action" type="button" title="Create journal">+ New</button>
+          </div>
+          <div id="sidebar-journals" class="journal-list"></div>
+        </section>
+
+        <section class="nav-section" aria-label="Tags">
+          <div class="nav-section-head">
+            <span>TAGS</span>
+            <span class="nav-section-meta" id="tags-total"></span>
+          </div>
+          <div id="sidebar-tags" class="tag-cloud"></div>
+        </section>
+      </div>
+
+      <div class="sidebar-foot">
+        <button id="btn-export-open" class="foot-btn" type="button" title="Export &amp; Print Book">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span>Export</span>
+        </button>
+        <button id="btn-prefs-open" class="foot-btn" type="button" title="Journal settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+          <span>Settings</span>
+        </button>
+        <a class="foot-btn" href="../../websites" title="All AutoYou Agent Apps">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          <span>Apps</span>
+        </a>
+      </div>
+    </aside>
+
+    <!-- Center Browse Column: Colored Journal Header + Sheet + Views -->
+    <section id="browse-pane" class="browse-pane" aria-label="Journal browser">
+      <header id="journal-banner" class="journal-banner">
+        <div class="banner-top">
+          <button id="btn-sidebar-open" class="banner-pill-btn mobile-only" type="button" aria-label="Journals menu">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+          </button>
+          <div class="banner-actions">
+            <button id="btn-sync-now" class="banner-pill-btn" type="button" title="Sync with paired iOS/Android &amp; server" aria-label="Sync now">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 1-15.3 6.36L3 16"/><path d="M3 12a9 9 0 0 1 15.3-6.36L21 8"/><polyline points="3 21 3 16 8 16"/><polyline points="21 3 21 8 16 8"/></svg>
+            </button>
+            <button id="btn-search-toggle" class="banner-pill-btn" type="button" title="Search entries (⌘K)" aria-label="Search">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            </button>
+            <button id="btn-filter-open" class="banner-pill-btn" type="button" title="Filters" aria-label="Filter entries">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="10" y1="18" x2="14" y2="18"/></svg>
+              <span id="filter-dot" class="filter-dot" hidden></span>
+            </button>
+            <button id="btn-sort-toggle" class="banner-pill-btn" type="button" title="Sort order" aria-label="Toggle sort order">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 4v16M7 20l-3-3M7 20l3-3M17 20V4M17 4l-3 3M17 4l3 3"/></svg>
+            </button>
+            <button id="btn-journal-edit-current" class="banner-pill-btn" type="button" title="Edit journal" aria-label="Edit current journal" hidden>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="banner-title-row">
+          <div>
+            <h1 id="banner-title">All Entries</h1>
+            <p id="banner-subtitle">0 entries</p>
+          </div>
+          <div id="banner-streak" class="banner-streak" title="Current writing streak">
+            <span class="streak-flame" aria-hidden="true">🔥</span>
+            <span id="banner-streak-num">0</span>
+          </div>
+        </div>
+      </header>
+
+      <div id="browse-sheet" class="browse-sheet">
+        <!-- Day One Segmented View Tabs -->
+        <div id="view-tabs" class="view-tabs" role="tablist" aria-label="Journal views">
+          <button class="view-tab" type="button" role="tab" data-view="list" aria-selected="true">List</button>
+          <button class="view-tab" type="button" role="tab" data-view="calendar" aria-selected="false">Calendar</button>
+          <button class="view-tab" type="button" role="tab" data-view="media" aria-selected="false">Media</button>
+          <button class="view-tab" type="button" role="tab" data-view="map" aria-selected="false">Map</button>
+          <button class="view-tab" type="button" role="tab" data-view="memories" aria-selected="false">Memories</button>
+          <button class="view-tab" type="button" role="tab" data-view="insights" aria-selected="false">Stats</button>
+        </div>
+
+        <!-- Inline Search Bar -->
+        <div id="search-bar" class="search-bar" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="search-input" type="search" placeholder="Search titles, text, tags, places, moods…" autocomplete="off" enterkeyhint="search">
+          <button id="search-clear" class="icon-btn-sm" type="button" aria-label="Clear search" hidden>&times;</button>
+        </div>
+
+        <!-- Active Filter Chips -->
+        <div id="active-filters" class="active-filters" hidden></div>
+
+        <!-- Daily Reminder Banner (when reminder enabled & not yet journaled today) -->
+        <div id="reminder-banner" class="reminder-banner" hidden>
+          <div class="reminder-copy">
+            <strong>Daily Journal Reminder</strong>
+            <span id="reminder-text">Take a quiet minute to capture today.</span>
+          </div>
+          <button id="reminder-write-btn" class="btn-chip-primary" type="button">Write now</button>
+        </div>
+
+        <!-- Scrollable View Surface -->
+        <div id="browse-content" class="browse-content">
+          <div id="list-view" class="view-panel">
+            <div id="otd-teaser" class="otd-teaser" hidden></div>
+            <div id="timeline-entries" class="timeline-entries" role="list"></div>
+          </div>
+          <div id="calendar-view" class="view-panel" hidden></div>
+          <div id="media-view" class="view-panel" hidden></div>
+          <div id="map-view" class="view-panel map-panel" hidden></div>
+          <div id="memories-view" class="view-panel" hidden></div>
+          <div id="insights-view" class="view-panel" hidden></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right Reading / Writing Pane (Desktop side-by-side, Mobile full-screen slide view) -->
+    <main id="editor-pane" class="editor-pane" aria-label="Journal entry editor">
+      <div class="editor-topbar">
+        <div class="editor-topbar-left">
+          <button id="btn-mobile-back" class="icon-btn mobile-only" type="button" aria-label="Back to timeline">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <button id="btn-entry-journal" class="journal-chip" type="button" title="Change journal">
+            <span id="entry-journal-dot" class="journal-dot"></span>
+            <span id="entry-journal-name">Daily Journal</span>
+          </button>
+          <button id="btn-entry-datetime" class="datetime-chip" type="button" title="Edit date, time &amp; location">
+            <span id="entry-date-display">Today</span>
+            <span class="sep">·</span>
+            <span id="entry-time-display">Now</span>
+          </button>
+        </div>
+        <div class="editor-topbar-right">
+          <button id="btn-entry-fav" class="icon-btn" type="button" title="Favorite" aria-label="Toggle favorite" aria-pressed="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+          </button>
+          <button id="btn-entry-pin" class="icon-btn" type="button" title="Pin entry" aria-label="Pin entry" aria-pressed="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16h14v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6a1 1 0 0 1 1-1h1V3H7v2h1a1 1 0 0 1 1 1Z"/></svg>
+          </button>
+          <button id="btn-preview-toggle" class="icon-btn" type="button" title="Toggle Read / Edit mode" aria-label="Toggle preview" aria-pressed="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+          <button id="btn-focus-toggle" class="icon-btn desktop-only" type="button" title="Focus Mode (⌘⇧F)" aria-label="Focus mode" aria-pressed="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+          </button>
+          <button id="btn-entry-info" class="icon-btn" type="button" title="Entry Info &amp; Metadata" aria-label="Entry info">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          </button>
+          <div class="menu-anchor">
+            <button id="btn-entry-more" class="icon-btn" type="button" title="More actions" aria-label="More actions" aria-haspopup="menu" aria-expanded="false">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1.4" fill="currentColor"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/><circle cx="12" cy="19" r="1.4" fill="currentColor"/></svg>
+            </button>
+            <div id="entry-more-menu" class="popover-menu" role="menu" hidden>
+              <button type="button" role="menuitem" data-action="info">Entry Details &amp; Metadata…</button>
+              <button type="button" role="menuitem" data-action="pin">Toggle Pin</button>
+              <button type="button" role="menuitem" data-action="template">Apply Template…</button>
+              <button type="button" role="menuitem" data-action="save-template">Save as Template…</button>
+              <button type="button" role="menuitem" data-action="duplicate">Duplicate Entry</button>
+              <button type="button" role="menuitem" data-action="print">Print / Save PDF…</button>
+              <button type="button" role="menuitem" data-action="download-json">Download Entry JSON</button>
+              <hr>
+              <button type="button" role="menuitem" class="danger" data-action="delete" id="menu-delete-entry">Delete Entry…</button>
+            </div>
+          </div>
+          <button id="btn-save-entry" class="btn-save" type="button">Save</button>
+        </div>
+      </div>
+
+      <!-- Conflict Recovery Banner -->
+      <div id="conflict-banner" class="conflict-banner" hidden>
+        <span>This entry was updated on another device (iOS / Android).</span>
+        <div class="conflict-actions">
+          <button id="btn-download-draft" type="button">Download draft</button>
+          <button id="btn-reload-latest" type="button" class="btn-chip-primary">Load latest</button>
+        </div>
+      </div>
+
+      <!-- Rich Day One Entry Canvas -->
+      <div id="editor-scroll" class="editor-scroll">
+        <div class="editor-canvas">
+          <!-- Mobile Date & Time Sub-header (clean Day One style, taps into Entry Info) -->
+          <button id="mobile-entry-datebar" class="mobile-entry-datebar mobile-only" type="button">
+            <span id="mobile-date-text">Today · Now</span>
+            <span class="mobile-date-caret">▾</span>
+          </button>
+
+          <!-- Metadata Quick Chips (Location, Weather, Mood, Activity, Tags) -->
+          <div class="meta-strip" id="meta-strip">
+            <button id="chip-location" class="meta-chip" type="button">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+              <span id="chip-location-text">Add location</span>
+            </button>
+            <button id="chip-weather" class="meta-chip" type="button">
+              <span id="chip-weather-icon">☀️</span>
+              <span id="chip-weather-text">Weather</span>
+            </button>
+            <button id="chip-mood" class="meta-chip" type="button">
+              <span id="chip-mood-text">Mood</span>
+            </button>
+            <button id="chip-activity" class="meta-chip" type="button">
+              <span id="chip-activity-text">Activity</span>
+            </button>
+          </div>
+
+          <input id="entry-title" class="entry-title" type="text" maxlength="200" placeholder="Entry title…" autocomplete="off">
+
+          <div id="entry-media" class="entry-media" hidden></div>
+
+          <div class="editor-body-wrap">
+            <textarea id="entry-body" class="entry-body" rows="14" placeholder="Write about your day… Markdown, checklists (- [ ]), photos, voice notes &amp; sketches are all supported."></textarea>
+            <div id="entry-preview" class="entry-preview" hidden></div>
+          </div>
+
+          <!-- Inline Tags Bar -->
+          <div class="entry-tags-bar">
+            <span class="tags-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82Z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+            </span>
+            <div id="entry-tags-list" class="entry-tags-list"></div>
+            <input id="entry-tag-input" class="entry-tag-input" type="text" placeholder="Add tag… (Enter or comma)" autocomplete="off">
+          </div>
+        </div>
+      </div>
+
+      <!-- Day One Formatting & Media Capture Toolbar -->
+      <div id="editor-toolbar" class="editor-toolbar" aria-label="Formatting and media tools">
+        <div class="toolbar-scroll">
+          <div class="tool-group">
+            <button id="btn-attach-media" type="button" class="tool-btn tool-media" title="Attach photos, videos or files">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+              <span>Media</span>
+            </button>
+            <button id="btn-record-audio" type="button" class="tool-btn tool-media" title="Record voice note">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+              <span>Audio</span>
+            </button>
+            <button id="btn-open-sketch" type="button" class="tool-btn tool-media" title="Draw sketch">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3Z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5Z"/><path d="m2 2 7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
+              <span>Sketch</span>
+            </button>
+            <button id="btn-insert-template" type="button" class="tool-btn tool-media" title="Insert template">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
+              <span>Template</span>
+            </button>
+          </div>
+          <span class="tool-divider" aria-hidden="true"></span>
+          <div class="tool-group">
+            <button type="button" class="tool-btn" data-md="heading" title="Heading">H</button>
+            <button type="button" class="tool-btn" data-md="bold" title="Bold (⌘B)"><strong>B</strong></button>
+            <button type="button" class="tool-btn" data-md="italic" title="Italic (⌘I)"><em>I</em></button>
+            <button type="button" class="tool-btn" data-md="checklist" title="Checklist">☑</button>
+            <button type="button" class="tool-btn" data-md="bullet" title="Bullet list">•</button>
+            <button type="button" class="tool-btn" data-md="quote" title="Blockquote">❝</button>
+            <button type="button" class="tool-btn" data-md="code" title="Code">&lt;/&gt;</button>
+            <button type="button" class="tool-btn" data-md="link" title="Link">🔗</button>
+            <button type="button" class="tool-btn" data-md="hr" title="Divider">—</button>
+          </div>
+        </div>
+        <div class="editor-status-bar">
+          <span id="entry-word-count">0 words</span>
+          <span class="sep">·</span>
+          <span id="entry-save-state" role="status" aria-live="polite">Ready</span>
+        </div>
+      </div>
+
+      <input id="media-file-input" type="file" multiple accept="image/*,video/*,audio/*,.pdf,.txt,.md" hidden>
+    </main>
+
+    <!-- Mobile Floating Compose Button & Quick Menu -->
+    <div id="mobile-fab-wrap" class="mobile-fab-wrap mobile-only">
+      <div id="fab-speed-dial" class="fab-speed-dial" hidden>
+        <button type="button" data-fab="template"><span>📋</span> From Template</button>
+        <button type="button" data-fab="audio"><span>🎙️</span> Voice Note</button>
+        <button type="button" data-fab="photo"><span>📷</span> Photo / Video</button>
+        <button type="button" data-fab="sketch"><span>✏️</span> Sketch</button>
+      </div>
+      <div class="fab-buttons">
+        <button id="btn-fab-more" class="fab-secondary" type="button" aria-label="Quick capture options">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+        </button>
+        <button id="btn-fab-new" class="fab-primary" type="button" aria-label="New entry">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Mobile WebView Bottom Tab Bar -->
+    <nav id="mobile-tabbar" class="mobile-tabbar mobile-only" aria-label="Mobile navigation">
+      <button type="button" class="tab-item" data-tab="list" aria-current="page">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1" fill="currentColor"/><circle cx="4" cy="12" r="1" fill="currentColor"/><circle cx="4" cy="18" r="1" fill="currentColor"/></svg>
+        <span>Journal</span>
+      </button>
+      <button type="button" class="tab-item" data-tab="calendar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <span>Calendar</span>
+      </button>
+      <button type="button" class="tab-item" data-tab="media">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+        <span>Media</span>
+      </button>
+      <button type="button" class="tab-item" data-tab="map">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+        <span>Map</span>
+      </button>
+      <button type="button" class="tab-item" data-tab="insights">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2c.5 4-2 6.5-2 9.5a4 4 0 0 0 8 0c0-2-1-4-2-5.5-.5 2-2 2.5-2 1 0-2-.5-3.5-2-5z"/></svg>
+        <span>Streaks</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- Modal / Bottom-Sheet Host -->
+  <div id="modal-root" class="modal-root" hidden aria-hidden="true"></div>
+
+  <!-- Lightbox Host -->
+  <div id="lightbox-root" class="lightbox-root" hidden aria-hidden="true"></div>
+
+  <!-- Toast Host -->
+  <div id="toast-root" class="toast-root" aria-live="polite"></div>
+
+  <!-- Print Book Surface -->
+  <div id="print-book" class="print-book" aria-hidden="true"></div>
+
+  <script type="module" src="./assets/diary.js"></script>
+</body>
+</html>

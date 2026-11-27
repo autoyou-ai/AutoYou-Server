@@ -1,4 +1,4 @@
-"""Viewer/editor/admin roles with a separate, mandatory OTP Settings boundary."""
+"""Viewer/editor/admin roles with an optional operator OTP boundary."""
 
 from __future__ import annotations
 
@@ -9,9 +9,11 @@ import os
 import re
 import secrets
 import struct
+import sys
 import time
 
 from fastapi import HTTPException, Request
+from shared.remote_access_policy import request_remote_access_role
 
 from .store import Store, digest, uid
 
@@ -61,12 +63,26 @@ class Auth:
     def __init__(self, store: Store, verifier=None):
         self.store = store
         self.verifier = verifier or verify_operator_otp
+        self._operator_policy = verifier is None
+
+    def _otp_required(self) -> bool:
+        if self._operator_policy and getattr(getattr(sys.modules.get("server"), "STATE", None), "config", None):
+            from autoyou_agents.shared_tools.scheduler_mission_control import _get_agent_security_settings
+            return _get_agent_security_settings("media_agent")["auth_mode"] != "open"
+        return True
 
     def session(self, request: Request) -> dict:
+        otp_required = self._otp_required()
+        role = request_remote_access_role(request) if not otp_required else "viewer"
+        if not otp_required:
+            from autoyou_agents.shared_tools.scheduler_mission_control import _is_direct_same_machine_loopback_request
+            if _is_direct_same_machine_loopback_request(request):
+                role = "admin"
+        anonymous = {"role": role, "otp_unlocked": role == "admin", "otp_required": otp_required}
         header = request.headers.get("Authorization", "")
         token = header[7:].strip() if header.startswith("Bearer ") else request.cookies.get(COOKIE_NAME, "")
         if not token or len(token) > 512:
-            return {"role": "viewer", "otp_unlocked": False}
+            return anonymous
         now = time.time()
         with self.store.connect() as db:
             row = db.execute("""SELECT s.* FROM sessions s LEFT JOIN invitations i ON i.id=s.invitation_id
@@ -74,8 +90,9 @@ class Auth:
                               (s.invitation_id IS NULL OR (i.revoked=0 AND i.expires>?))""",
                              (digest(token), now, now)).fetchone()
         if not row:
-            return {"role": "viewer", "otp_unlocked": False}
-        return {"role": row["role"], "otp_unlocked": row["otp_until"] > now,
+            return anonymous
+        return {"role": row["role"], "otp_unlocked": row["otp_until"] > now or (row["role"] == "admin" and not otp_required),
+                "otp_required": otp_required,
                 "expires": row["expires"], "otp_expires": row["otp_until"]}
 
     def require_editor(self, request: Request):
@@ -86,6 +103,8 @@ class Auth:
 
     def require_settings(self, request: Request):
         session = self.session(request)
+        if not session["otp_required"] and session["role"] != "admin":
+            raise HTTPException(403, "Admin access is required for Settings")
         if session["role"] != "admin" or not session["otp_unlocked"]:
             raise HTTPException(401, "Enter your authenticator code to unlock Settings")
         return session

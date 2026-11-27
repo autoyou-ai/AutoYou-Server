@@ -86,8 +86,8 @@ def _normalize_presentation(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 # Valid declared auth defaults for an agent website. "inherit" (the default
-# when the field is absent) reproduces the platform's existing gated-by-default
-# fallback, so agents that don't touch this field are completely unaffected.
+# when the field is absent) opens without OTP until an operator enables it
+# globally, selects it for the agent, or assigns an authenticator profile.
 _VALID_AUTH_DEFAULTS: frozenset = frozenset({"open", "gated", "inherit"})
 
 
@@ -136,9 +136,9 @@ def build_frontend_manifest(
         # session cookie when an admin has enabled that global toggle.
         "shared_session_eligible": bool(shared_session_eligible),
         # True means this agent stays open even when the admin turns on the
-        # global "require OTP on all agent websites" toggle. Use this for
-        # deliberately public-by-default sites such as Page, Notes, and Ads
-        # Watching. An explicit per-agent admin override still wins.
+        # global "require OTP on all agent websites" toggle. Custom agents can
+        # declare an exemption; bundled agents honor the operator's global choice.
+        # An explicit per-agent admin override still wins.
         "bypass_global_otp": bool(bypass_global_otp),
     }
     manifest.update(
@@ -433,8 +433,8 @@ def resolve_agent_auth_manifest(agent_name: str) -> Dict[str, Any]:
     Used by scheduler_mission_control._get_agent_security_settings(), which
     must not depend on the agent_frontends_registry.json cache being fresh
     (that cache only refreshes on boot/install/publish). Falls back to the
-    safe defaults ("inherit", True) when no manifest is found or any lookup
-    step raises, so an unknown or misconfigured agent never silently opens.
+    inherited policy when no manifest is found or any lookup step raises.
+    Explicit operator restrictions still apply in the shared authentication gate.
     """
     try:
         manifest = _load_frontend_manifest_from_package(agent_name)

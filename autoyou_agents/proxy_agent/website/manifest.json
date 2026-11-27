@@ -7,7 +7,7 @@
   "direct_forward_port": 7077,
   "requires_proxy_registration": true,
   "websocket_enabled": true,
-  "auth_default": "gated",
+  "auth_default": "open",
   "shared_session_eligible": true,
   "bypass_global_otp": false
 }

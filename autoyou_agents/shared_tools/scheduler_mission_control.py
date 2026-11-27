@@ -268,7 +268,7 @@ def _resolve_manifest_auth_settings(agent_name: str) -> Dict[str, Any]:
 
 
 def _agent_manifest_auth_default_mode(manifest_auth_default: str) -> str:
-    return "open" if manifest_auth_default == "open" else "totp"
+    return "totp" if manifest_auth_default == "gated" else "open"
 
 
 def _get_agent_security_settings(agent_name: str) -> Dict[str, Any]:
@@ -293,8 +293,8 @@ def _get_agent_security_settings(agent_name: str) -> Dict[str, Any]:
     #   1. Explicit per-agent admin config auth_mode - an admin's decision for
     #      THIS exact agent always wins outright, over both the global toggle
     #      and the agent's own manifest default.
-    #   2. The global "require OTP on all agent websites" policy - if on and
-    #      TOTP is configured, gates every agent that hasn't been explicitly
+    #   2. The global "require OTP on all agent websites" policy - if on,
+    #      gates every agent that hasn't been explicitly
     #      exempted (bypass_global_otp, from either per-agent config or the
     #      agent's own manifest default).
     #   3. The agent's own manifest-declared default ("open"/"gated"/"inherit").
@@ -315,15 +315,13 @@ def _get_agent_security_settings(agent_name: str) -> Dict[str, Any]:
         per_agent_mode = _agent_manifest_auth_default_mode(manifest_auth_default)
         if not bypass_global:
             if bool(website_cfg.get("require_otp", False)):
-                totp_caps = _totp_capabilities()
-                if totp_caps.get("totp_configured"):
-                    per_agent_mode = "totp"
+                per_agent_mode = "totp"
 
     # Per-agent 2FA profile (multi-issuance): a dedicated profile assigned to this
     # agent forces TOTP and is verified against THAT profile (derive-from-password,
     # no shared secret), independent of the global require_otp toggle.
     per_agent_profile = False
-    if per_agent_mode != "open":
+    if raw_configured_mode != "open":
         try:
             per_agent_profile = bool(
                 _runtime_server().agent_has_assigned_2fa_profile(agent_name)
